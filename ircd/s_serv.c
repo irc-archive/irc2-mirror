@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.155 2004/02/17 16:27:24 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.159 2004/02/23 22:30:00 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -210,7 +210,7 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	** This logic here works the same way until "SQUIT host" hits
 	** the server having the target "host" as local link. Then it
 	** will do a real cleanup spewing SQUIT's and QUIT's to all
-	** directions, also to the link from which the orinal SQUIT
+	** directions, also to the link from which the original SQUIT
 	** came, generating one unnecessary "SQUIT host" back to that
 	** link.
 	**
@@ -243,6 +243,15 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, BadTo(parv[0]));
 		return 1;
 	    }
+	if (MyPerson(sptr))
+	{
+		char bufn[HOSTLEN+7];
+
+		sprintf(bufn, " (by %s)", sptr->name);
+		if (strlen(comment) > TOPICLEN)
+			comment[TOPICLEN] = '\0';
+		strcat(comment, bufn);
+	}
 	if (!MyConnect(acptr) && (cptr != acptr->from))
 	    {
 		/*
@@ -256,7 +265,7 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			sendto_one(acptr->from, ":%s SQUIT %s :%s",
 				    ST_UID(sptr) && ST_UID(acptr->from) ?
 				    sptr->serv->sid : sptr->name,
-				    ST_UID(acptr->from) ?
+				    ST_UID(acptr->from) && acptr->serv->sid[0] != '$' ?
 				    acptr->serv->sid : acptr->name, comment);
 			
 			sendto_flag(SCH_SERVER,
@@ -280,7 +289,8 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		    {
 			sendto_one(cptr, ":%s SQUIT %s :%s (Bounced for %s)",
 				   ST_UID(cptr) ? me.serv->sid : ME,
-				   ST_UID(cptr) && ST_UID(acptr) ? acptr->serv->sid:
+				   ST_UID(cptr) && ST_UID(acptr) &&
+				   acptr->serv->sid[0]!='$' ? acptr->serv->sid:
 				   acptr->name, comment, parv[0]);
 			sendto_flag(SCH_DEBUG, "Bouncing SQUIT %s back to %s",
 				    acptr->name, acptr->from->name);
@@ -310,12 +320,6 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			    (timeconnected % 3600)/60, 
 			    timeconnected % 60);
 	    }
-	if (!IsMasked(acptr))
-	{
-		sendto_flag(SCH_SERVER, "Received SQUIT %s from %s (%s)",
-			acptr->name, parv[0], comment);
-	}
-
 	return exit_client(cptr, acptr, sptr, comment);
 }
 
@@ -1349,7 +1353,7 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 			      ":%s SERVER %s %d %s :%s", ME, cptr->name,
 			      cptr->hopcount+1, cptr->serv->tok, cptr->info);
 #endif
-	sendto_flag(SCH_SERVER, "Sending SERVER %s (%d %s)", cptr->name,
+	sendto_flag(SCH_SERVER, "Received SERVER %s (%d %s)", cptr->name,
 		    1, cptr->info);
 	introduce_server(cptr, cptr);
 	

@@ -1,3 +1,52 @@
+2004-02-23  Piotr Kucharski
+
+	* s_serv.c/m_squit(): do not send compatibility sids in SQUIT.
+	* s_misc.c/exit_client(): moved adding "by whom" to comment of squit
+	  to m_squit().
+	* s_serv.c/m_squit(): add "by whom" to comment of squit.
+	* parse.c/find_matching_client(): traverse server list from bottom
+	  (ME) to up, so we find ourselves first (fixes trace bug).
+
+2004-02-22  Jakub Vlasek
+
+	* s_misc.c/exit_server(): moved "Received SQUIT", so the sequence on
+	  &SERVERS is not reversed.
+	* s_misc.c/exit_server(): added "from" parameter.
+	* s_misc.c/exit_client(): use "from" in remote squit reason.
+
+2004-02-22  Piotr Kucharski
+
+	* s_misc.c/exit_client(): removed unnecessary "Sending SQUIT" notice.
+	* s_serv.c/m_squit(): removed unnecessary "Received SQUIT", it's now
+	  in exit_server().
+
+2004-02-21  Piotr Kucharski
+
+	* channel.c/m_kick(): "KICK # me,other" caused desync on remote servers:
+	  it was sent in two consecutive KICKs, first one removed client from
+	  channel and second one thus failed. No more "NJOIN protocol error".
+	* s_user.c/register_user(): remove add_to_client_hash_table() when nick
+	  was "0", let m_nick() do it.
+	* s_user.c/m_nick(): reverted (wrong) fix from 2004-02-19 and disabled
+	  "NICK 0" before "USER".
+
+2004-02-19  Piotr Kucharski
+
+	* Makefile.in: when jv rewrote m_hash on 2002-07-04, sums were removed.
+	  no need to munch hash.c anymore.
+	* s_user.c/m_nick(): we were calling add_to_client_hash_table() twice
+	  with UID-nick! Hash tables get corrupted. It was caused by allowing
+	  "NICK 0" during registration and was causing endless loop in hash.
+	* s_user.c/m_unick(): fixed core in checking for collisions (local
+	  unregistered clients have no ->user struct).
+
+2004-02-18  Piotr Kucharski
+
+	* channel.c/m_part(): canonize list of channels first; move comment
+	  out of strtoken loop; allow empty comment, don't force it to be
+	  user nick.
+	* channel.c/m_part(): buffer overflow resulting in network desync.
+
 2004-02-17  Piotr Kucharski
 
 	* s_user.c/m_nick(): do not add to hash table nick of "0".

@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.181 2004/02/16 02:15:01 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.188 2004/02/22 16:40:11 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -2614,6 +2614,11 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		/* make sure user isn't already on channel */
 		if (IsMember(acptr, chptr))
 		    {
+			/* I know, it's hiding the bug under the carpet. But
+			** all 2.10 servers have this bug (and ignore it!),
+			** so we don't show it for them. --B. */
+			if (ST_UID(sptr))
+			{
 			sendto_flag(SCH_ERROR, "NJOIN protocol error from %s"
 				" (%s already on %s)",
 				    get_client_name(cptr, TRUE), acptr->name,
@@ -2621,6 +2626,7 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			sendto_one(cptr, "ERROR :NJOIN protocol error"
 				" (%s already on %s)",
 				acptr->name, chptr->chname);
+			}
 			continue;
 		    }
 		/* add user to channel */
@@ -2745,6 +2751,7 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	Reg	aChannel *chptr;
 	char	*p = NULL, *name, *comment = "";
+	int	size;
 
 	if (parc < 2 || parv[1][0] == '\0')
 	    {
@@ -2754,6 +2761,20 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 	*buf = '\0';
 
+	parv[1] = canonize(parv[1]);
+	comment = (BadPtr(parv[2])) ? "" : parv[2];
+	if (strlen(comment) > TOPICLEN)
+		comment[TOPICLEN] = '\0';
+
+	/*
+	** Broadcasted to other servers is ":nick PART #chan,#chans :comment",
+	** so we must make sure buf does not contain too many channels or later
+	** they get truncated! "10" comes from all fixed chars: ":", " PART "
+	** and ending "\r\n\0". We could subtract strlen(comment)+2 here too, 
+	** but it's not something we care, is it? :->
+	** Btw: if we ever change m_part to have UID as source, fix this! --B.
+	*/
+	size = BUFSIZE - strlen(parv[0]) - 10;
 	for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
 	    {
 		convert_scandinavian(name, cptr);
@@ -2774,12 +2795,6 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				   name);
 			continue;
 		    }
-		comment = (BadPtr(parv[2])) ? parv[0] : parv[2];
-		if (IsAnonymous(chptr) && (comment == parv[0]))
-			comment = "None";
-		if (strlen(comment) > (size_t) TOPICLEN)
-			comment[TOPICLEN] = '\0';
-
 		/*
 		**  Remove user from the old channel (if any)
 		*/
@@ -2787,6 +2802,18 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		    {	/* channel:*.mask */
 			if (*name != '&')
 			    {
+				/* We could've decreased size by 1 when
+				** calculating it, but I left it like that
+				** for the sake of clarity. --B. */
+				if (strlen(buf) + strlen(name) + 1
+					> size)
+				{
+					/* Anyway, if it would not fit in the
+					** buffer, send it right away. --B */
+					sendto_serv_butone(cptr, PartFmt,
+						parv[0], buf, comment);
+					*buf = '\0';
+				}
 				if (*buf)
 					(void)strcat(buf, ",");
 				(void)strcat(buf, name);
@@ -2906,6 +2933,10 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 				remove_user_from_channel(who,chptr);
 				penalty += 2;
+				/* Once user kicks himself out of channel,
+				** he cannot kick anymore, can he? --B. */
+				if (MyPerson(sptr) && who == sptr)
+					break;
 				if (penalty >= MAXPENALTY && MyPerson(sptr))
 					break;
 			    }
@@ -3560,16 +3591,21 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 	}
 
 	op.value.chptr = NULL;
+	/* Why do we wait until CD expires? --B. */
 	if (now - chptr->history > DELAYCHASETIMELIMIT)
 	{
 		int idlelimit1, idlelimit2;
 
-		/*
-		** This selects random idle limits in the range
-		** from CHECKFREQ to 4*CHECKFREQ
-		*/
-		idlelimit1 = CHECKFREQ + myrand() % (2*CHECKFREQ);
-		idlelimit2 = idlelimit1 + CHECKFREQ + myrand() % (2*CHECKFREQ);
+		if (reopmode != CHFL_REOPLIST)
+		{
+			/*
+			** This selects random idle limits in the range
+			** from CHECKFREQ to 4*CHECKFREQ
+			*/
+			idlelimit1 = CHECKFREQ + myrand() % (2*CHECKFREQ);
+			idlelimit2 = idlelimit1 + CHECKFREQ +
+				myrand() % (2*CHECKFREQ);
+		}
 
 		for (lp = chptr->members; lp; lp = lp->next)
 		{
@@ -3595,10 +3631,11 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 			{
 				continue;
 			}
-			/* If channel reop is heavily overdue, don't care about
-			** idle. Find the least idle client possible.
+			/* If +R list or channel reop is heavily overdue,
+			** don't care about idle. Find the least idle client.
 			*/
-			if (now - chptr->reop > 7*LDELAYCHASETIMELIMIT)
+			if (reopmode == CHFL_REOPLIST ||
+				now - chptr->reop > 7*LDELAYCHASETIMELIMIT)
 			{
 				if (op.value.cptr == NULL ||
 					lp->value.cptr->user->last >
@@ -3683,6 +3720,11 @@ time_t	collect_channel_garbage(time_t now)
 
 			if (IsSplit())
 			{
+				if (chptr->reop > 0)
+				{
+					/* Extend reop */
+					chptr->reop += CHECKFREQ;
+				}
 				continue;
 			}
 			if (chptr->reop == 0 || chptr->reop > now)
