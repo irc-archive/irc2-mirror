@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.72 1999/03/13 23:14:06 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.74 1999/04/10 16:24:28 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -397,8 +397,11 @@ char	*nick, *username;
 			time_t last = 0;
 
 			if (timeofday - last > 300)
+			    {
 				sendto_flag(SCH_AUTH, 
 			    "iauth not running! (refusing new connections)");
+				last = timeofday;
+			    }
 			sptr->exitc = EXITC_AUTHFAIL;
 			return ereject_user(cptr, "No iauth!",
 					    "Authentication failure!");
@@ -675,7 +678,7 @@ char	*nick, *username;
 ** m_nick
 **	parv[0] = sender prefix
 **	parv[1] = nickname
-** the following are only used between since version 2.9 between servers
+** the following are only used between servers since version 2.9
 **	parv[2] = hopcount
 **	parv[3] = username (login name, account)
 **	parv[4] = client host name

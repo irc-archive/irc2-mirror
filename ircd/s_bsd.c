@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.65 1999/03/13 23:14:06 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.68 1999/04/10 16:00:41 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -1384,14 +1384,15 @@ aClient	*cptr;
 	 * early returns from select()/poll().  It shouldn't delay sending
 	 * data, provided that io_loop() combines read_message() and
 	 * flush_fdary/connections() calls properly. -kalt
+	 * This call isn't always implemented, even when defined.. so be quiet
+	 * about errors. -kalt
 	 */
 	opt = 8192;
-	if (SETSOCKOPT(fd, SOL_SOCKET, SO_SNDLOWAT, &opt, opt) < 0)
-		report_error("setsockopt(SO_SNDLOWAT) %s:%s", cptr);
+	SETSOCKOPT(fd, SOL_SOCKET, SO_SNDLOWAT, &opt, opt);
 # endif
 #endif
 #if defined(IP_OPTIONS) && defined(IPPROTO_IP) && !defined(AIX) && \
-    !defined(SUN_GSO_BUG)
+    !defined(SUN_GSO_BUG) && !defined(INET6)
 	/*
 	 * Mainly to turn off and alert us to source routing, here.
 	 * Method borrowed from Wietse Venema's TCP wrapper.
@@ -2116,7 +2117,7 @@ int	ro;
 # endif			
 		    }
 #endif
-		Debug((DEBUG_L11, "udpfd %d resfd %d adfd %s", udpfd, resfd,
+		Debug((DEBUG_L11, "udpfd %d resfd %d adfd %d", udpfd, resfd,
 		       adfd));
 #if ! USE_POLL
 		Debug((DEBUG_L11, "highfd %d", highfd));
