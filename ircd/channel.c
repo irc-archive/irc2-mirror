@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.177 2004/02/13 21:04:09 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.181 2004/02/16 02:15:01 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1697,13 +1697,30 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				case MODE_REOPLIST :
 					tmp_chfl = CHFL_REOPLIST; break;
 				}
-				/* XXX: fix this in 2.11.1 */
-				if ((whatt & MODE_ADD) &&
-					tmp_chfl == CHFL_REOPLIST &&
-					MyClient(sptr))
+				if (tmp_chfl == CHFL_REOPLIST &&
+					(whatt & MODE_ADD))
 				{
-					/* ignore +R from a local client. */
-					break;
+					/* Just restarted servers will not have
+					** chanops leaving, so no other way to
+					** set ->reop. As we prefer not to op
+					** remote clients, set this here, upon
+					** each +R from remote server, so that
+					** reop_channel has a chance to work.
+					** It's mostly harmless, as chptr->reop
+					** will be reset to 0 in is_chan_op()
+					** and even if not, reop_channel() will
+					** NOT give ops if ops are already on
+					** the channel. --B. */
+					if (IsServer(sptr))
+					{
+						chptr->reop = timeofday +
+							LDELAYCHASETIMELIMIT;
+					}
+					/* XXX: fix this in 2.11.1 */
+					if (MyClient(sptr))
+					{
+						break;
+					}
 				}
 				if (ischop &&
 					(((whatt & MODE_ADD) &&
@@ -2639,8 +2656,13 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 
 		/* send join to local users on channel */
-		sendto_channel_butserv(chptr, acptr, ":%s JOIN %s", acptr->name,
-				       parv[1]);
+		/* Little syntax trick. Put ":" before channel name if it is
+		** not burst, so clients can use it for discriminating normal
+		** join from netjoin. 2.10.x is using NJOIN only during
+		** burst, but 2.11 always. Hence we check for EOB from 2.11
+		** to know what kind of NJOIN it is. --B. */
+		sendto_channel_butserv(chptr, acptr, ":%s JOIN %s%s", acptr->name,
+			(ST_NOTUID(sptr) || IsBursting(sptr)) ? "" : ":", parv[1]);
 		/* build MODE for local users on channel, eventually send it */
 		if (*mbuf)
 		    {
@@ -3576,7 +3598,7 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 			/* If channel reop is heavily overdue, don't care about
 			** idle. Find the least idle client possible.
 			*/
-			if (now - chptr->history > 7*LDELAYCHASETIMELIMIT)
+			if (now - chptr->reop > 7*LDELAYCHASETIMELIMIT)
 			{
 				if (op.value.cptr == NULL ||
 					lp->value.cptr->user->last >

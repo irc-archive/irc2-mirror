@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.143 2004/02/13 01:55:21 jv Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.155 2004/02/17 16:27:24 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -37,6 +37,7 @@ static	int	check_link (aClient *);
 static	int	get_version (char *version, char *id);
 static	void	trace_one (aClient *sptr, aClient *acptr);
 static	int	check_servername (char *hostname);
+static	void	report_listeners(aClient *sptr, char *to);
 const	char	*check_servername_errors[3][2] = {
 	{ "too long", "Bogus servername - too long" },
 	{ "invalid", "Bogus servername - invalid hostname" },
@@ -253,8 +254,8 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		    {
 			/* better server: just propagate upstream */
 			sendto_one(acptr->from, ":%s SQUIT %s :%s",
-				    ST_UID(acptr->from) ? sptr->serv->sid :
-				    sptr->name,
+				    ST_UID(sptr) && ST_UID(acptr->from) ?
+				    sptr->serv->sid : sptr->name,
 				    ST_UID(acptr->from) ?
 				    acptr->serv->sid : acptr->name, comment);
 			
@@ -279,7 +280,7 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		    {
 			sendto_one(cptr, ":%s SQUIT %s :%s (Bounced for %s)",
 				   ST_UID(cptr) ? me.serv->sid : ME,
-				   ST_UID(cptr) ? acptr->serv->sid:
+				   ST_UID(cptr) && ST_UID(acptr) ? acptr->serv->sid:
 				   acptr->name, comment, parv[0]);
 			sendto_flag(SCH_DEBUG, "Bouncing SQUIT %s back to %s",
 				    acptr->name, acptr->from->name);
@@ -1466,6 +1467,9 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 			/* send EOBs */
 			for (asptr = svrtop; asptr; asptr = asptr->nexts)
 			{
+				/* No appending of own SID */
+				if (asptr->bcptr == &me)
+					continue;
 				/* Send EOBs only for servers which already
 				 * finished bursting */
 				if (!IsBursting(asptr->bcptr))
@@ -1896,7 +1900,7 @@ static	void	report_ping(aClient *sptr, char *to)
 				   buf, cp->lseq, cp->lrecvd,
 				   cp->ping / (cp->recvd ? cp->recvd : 1),
 				   tmp->pref);
-			sendto_flag(SCH_DEBUG, "%s: %d", buf, cp->seq);
+			/* sendto_flag(SCH_DEBUG, "%s: %d", buf, cp->seq); */
 		    }
 	return;
 }
@@ -1947,18 +1951,43 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	int	wilds, doall;
 	char	*name, *cm;
 
-	if (IsServer(cptr) &&
-	    (stat != 'd' && stat != 'p' && stat != 'q' && stat != 's' &&
-	     stat != 'u' && stat != 'v' && stat != 'l' && stat != 'L') &&
-	    !((stat == 'o' || stat == 'c') && IsOper(sptr)))
-	    {
-		if (check_link(cptr))
-		    {
-			sendto_one(sptr, replies[RPL_TRYAGAIN], ME, BadTo(parv[0]),
-				   "STATS");
-			return 5;
-		    }
-	    }
+	/* If request from remote client, let's tame it a little. */
+	if (IsServer(cptr))
+	{
+		switch(stat)
+		{
+		/* These stats are available with no penalty for all. */
+		case 'd': case 'D':	/* defines */
+		case 'p': 		/* ping stats */
+		case 'P': 		/* ports listening */
+		case 'q': case 'Q':	/* Q:lines */
+		case 's': case 'S':	/* services */
+		case 'u': case 'U':	/* uptime */
+		case 'v': case 'V':	/* V:lines */
+		case 'l': case 'L':	/* links (wildcard is dropped later) */
+			break;
+		/* These are available with no penalty for opers. */
+		/* Although I have no idea, why only for opers. --B. */
+		case 'o': case 'O':	/* O:lines */
+		case 'c': case 'C':	/* C:/N: lines */
+		case 'h': case 'H':	/* H:/D: lines */
+		case 'a': case 'A':	/* iauth conf */
+		case 'b': case 'B':	/* B:lines */
+		case '?': 		/* connected servers */
+			if (IsOper(sptr))
+			{
+				break;
+			}
+			/* else fallthrough */
+		default:
+			if (check_link(cptr))
+			{
+				sendto_one(sptr, replies[RPL_TRYAGAIN], ME,
+					BadTo(parv[0]), "STATS");
+				return 5;
+			}
+		}
+	}
 	if (parc == 3)
 	    {
 		if (hunt_server(cptr, sptr, ":%s STATS %s %s",
@@ -2099,7 +2128,10 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	case 'o' : case 'O' : /* O (and o) lines */
 		report_configured_links(cptr, parv[0], CONF_OPS);
 		break;
-	case 'p' : case 'P' : /* ircd ping stats */
+	case 'P': /* ports listening */
+		report_listeners(sptr, parv[0]);
+		break;
+	case 'p' : /* ircd ping stats */
 		report_ping(sptr, parv[0]);
 		break;
 	case 'Q' : case 'q' : /* Q lines */
@@ -2457,18 +2489,10 @@ int	m_connect(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		port = atoi(parv[2]);
 	}
 	
-	if (parc < 3 || !port)
+	if (parc < 3 || port == 0)
 	{
-		if (tmpport < 0)
-		{
-			port = 0 - port;
-		}
-		else
-		{
-			port = tmpport;
-		}
-
-		if (!port)
+		port = abs(tmpport);
+		if (port == 0)
 		{
 			sendto_one(sptr,
 				":%s NOTICE %s :Connect: missing port number",
@@ -2476,10 +2500,11 @@ int	m_connect(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			return 0;
 		}
 	}
-	if (port < 0)
+	if (port <= 0)
 	{
 		sendto_one(sptr, "NOTICE %s :Connect: Illegal port number",
 				  parv[0]);
+		return 0;
 	}
 
 	/*
@@ -2488,8 +2513,8 @@ int	m_connect(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (!IsAnOper(cptr))
 	    {
 		sendto_ops_butone(NULL, &me,
-				  ":%s WALLOPS :Remote CONNECT %s %s from %s",
-				   ME, parv[1], parv[2] ? parv[2] : "",
+				  ":%s WALLOPS :Remote CONNECT %s %d from %s",
+				   ME, parv[1], port,
 				   get_client_name(sptr,FALSE));
 #if defined(USE_SYSLOG) && defined(SYSLOG_CONNECT)
 		syslog(LOG_DEBUG, "CONNECT From %s : %s %s", parv[0],
@@ -3592,39 +3617,29 @@ void	do_emulated_eob(aClient *sptr)
 	return;
 }
 
-static	void	dump_sid_map(aClient *sptr, aClient *root, char *pbuf)
+static	void	dump_sid_map(aClient *sptr, aClient *root, char *pbuf, int size)
 {
         int i = 1;
         aClient *acptr;
 	
-	/* Check if we still have space  */
-	if (pbuf - buf > BUFSIZE - (HOSTLEN + 5
-				    + 1 /* ' ' */
-				    + SIDLEN + 2 /* '(SID)' */
-				    + 1 /* ' ' */
-				    + sizeof(root->serv->verstr)
-				    + 6 /* ' BURST' */
-				    + 1 /* '\0' */
-				  )
-			)
-	{
-		return;
-	}
-
         *pbuf= '\0';
-	if (IsMasked(root))
+	if (IsBursting(root))
 	{
-		sprintf(pbuf, "%s %s%s", root->serv->sid, root->serv->verstr,
-				IsBursting(root) ? " BURST" : "");
+		snprintf(pbuf, size, "%s %s %d %s bursting %ds",
+			IsMasked(root) ? root->serv->maskedby->name : root->name,
+			root->serv->sid,
+			root->serv->usercnt[0] + root->serv->usercnt[1],
+			BadTo(root->serv->verstr),
+			MyConnect(root) ? timeofday - root->firsttime : -1);
 	}
 	else
 	{
-		sprintf(pbuf, "%s (%s)%s%s%s", root->name, root->serv->sid,
-				      	root->serv->verstr[0] ? " " : "",
-				      	root->serv->verstr,
-					IsBursting(root) ? " BURST" : "");
+		snprintf(pbuf, size, "%s %s %d %s",
+			IsMasked(root) ? root->serv->maskedby->name : root->name,
+			root->serv->sid,
+			root->serv->usercnt[0] + root->serv->usercnt[1],
+			BadTo(root->serv->verstr));
 	}
-
 	sendto_one(sptr, replies[RPL_MAP], ME, BadTo(sptr->name), buf);
 	
 	if (root->serv->down)
@@ -3656,7 +3671,9 @@ static	void	dump_sid_map(aClient *sptr, aClient *root, char *pbuf)
 		}
 		*(pbuf + 2) = '-';
 		*(pbuf + 3) = ' ';
-		dump_sid_map(sptr, acptr, pbuf + 4);
+		/* "pbuf + 4" and "size - 4" because each nesting 
+		** we add 4 chars in front of output line --B. */
+		dump_sid_map(sptr, acptr, pbuf + 4, size - 4);
 		i++;
 	}
 }
@@ -3751,15 +3768,30 @@ int	m_map(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	{
 		/* print full dump of the network */
 		sendto_one(sptr, replies[RPL_MAPSTART], ME, BadTo(sptr->name),
-				"Server name (SID)");
-		dump_sid_map(sptr, &me, buf);
+				"Server SID users version");
+		dump_sid_map(sptr, &me, buf, sizeof(buf) - 
+			strlen(BadTo(sptr->name)) - strlen(ME) - 8);
 		sendto_one(sptr, replies[RPL_MAPEND], ME, BadTo(sptr->name));
 		return 2;
 	}
 	sendto_one(sptr, replies[RPL_MAPSTART], ME, BadTo(sptr->name),
-			"Server name");
+			"Server");
 	dump_map(sptr, &me, &acptr, buf);
 	sendto_one(sptr, replies[RPL_MAPEND], ME, BadTo(sptr->name));
 	return 2;
 }
 
+static void report_listeners(aClient *sptr, char *to)
+{
+	aConfItem *tmp;
+
+	for (tmp = conf; tmp; tmp = tmp->next)
+	{
+		if ((tmp->status & CONF_LISTEN_PORT))
+		{
+			sendto_one(sptr, ":%s %d %s :%s %d %d", ME,
+				RPL_STATSDEFINE, to, BadTo(tmp->host), tmp->port,
+				tmp->clients);
+		}
+	}
+}
