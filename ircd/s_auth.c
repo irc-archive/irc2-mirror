@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char sccsid[] = "@(#)s_auth.c	1.18 4/18/94 (C) 1992 Darren Reed";
+static  char sccsid[] = "@(#)s_auth.c	1.19 27 Apr 1994 (C) 1992 Darren Reed";
 #endif
 
 #include "struct.h"
@@ -51,9 +51,10 @@ static  char sccsid[] = "@(#)s_auth.c	1.18 4/18/94 (C) 1992 Darren Reed";
  * of "unknown".
  */
 void	start_auth(cptr)
-Reg1	aClient	*cptr;
+Reg	aClient	*cptr;
 {
-	struct	sockaddr_in	sock;
+	struct	sockaddr_in	us, them;
+	int     ulen, tlen;
 
 	Debug((DEBUG_NOTICE,"start_auth(%x) fd %d status %d",
 		cptr, cptr->fd, cptr->status));
@@ -61,19 +62,16 @@ Reg1	aClient	*cptr;
 	    {
 #ifdef	USE_SYSLOG
 		syslog(LOG_ERR, "Unable to create auth socket for %s:%m",
-			get_client_name(cptr, TRUE));
+			get_client_name(cptr,TRUE));
 #endif
-		Debug((DEBUG_ERROR, "Unable to create auth socket for %s:%s",
-			get_client_name(cptr, TRUE),
-			strerror(get_sockerr(cptr))));
 		if (!DoingDNS(cptr))
 			SetAccess(cptr);
 		ircstp->is_abad++;
 		return;
 	    }
-	if (cptr->authfd >= (MAXCONNECTIONS-2))
+	if (cptr->authfd >= MAXCONNECTIONS)
 	    {
-		sendto_ops("Can't allocate fd for auth on %s",
+		sendto_flag(SCH_ERROR, "Can't allocate fd for auth on %s",
 			   get_client_name(cptr, TRUE));
 		(void)close(cptr->authfd);
 		return;
@@ -81,16 +79,33 @@ Reg1	aClient	*cptr;
 
 	set_non_blocking(cptr->authfd, cptr);
 
-	bcopy((char *)&cptr->ip, (char *)&sock.sin_addr,
-		sizeof(struct in_addr));
+	/* get remote host peer - so that we get right interface -- jrg */
+	tlen = ulen = sizeof(us);
+	(void)getpeername(cptr->fd, (struct sockaddr *)&them, &tlen);
 
-	sock.sin_port = htons(113);
-	sock.sin_family = AF_INET;
+	them.sin_port = htons(113);
+	them.sin_family = AF_INET;
 
-	(void)alarm((unsigned)4);
-	if (connect(cptr->authfd, (struct sockaddr *)&sock,
-		    sizeof(sock)) == -1 && errno != EINPROGRESS)
-	    {
+	/* We must bind the local end to the interface that they connected
+	   to: The local system might have more than one network address,
+	   and RFC931 check only sends port numbers: server takes IP addresses
+	   from query socket -- jrg */
+	(void)getsockname(cptr->fd, (struct sockaddr *)&us, &ulen);
+	us.sin_port = htons(0);  /* bind assigns us a port */
+	us.sin_family = AF_INET;
+	Debug((DEBUG_NOTICE,"auth(%x) from %s",
+	       cptr, inetntoa((char *)&us.sin_addr)));
+	if (bind(cptr->authfd, (struct sockaddr *)&us, ulen) >= 0)
+	  {
+	    (void)getsockname(cptr->fd, (struct sockaddr *)&us, &ulen);
+	    Debug((DEBUG_NOTICE,"auth(%x) to %s",
+		   cptr, inetntoa((char *)&them.sin_addr)));
+	    (void)alarm((unsigned)4);
+	    if (connect(cptr->authfd, (struct sockaddr *)&them,
+			tlen) == -1 && errno != EINPROGRESS)
+	      {
+		Debug((DEBUG_ERROR,"auth(%x) connect failed to %s - %d",
+		       cptr, inetntoa((char *)&them.sin_addr), errno));
 		ircstp->is_abad++;
 		/*
 		 * No error report from this...
@@ -101,8 +116,15 @@ Reg1	aClient	*cptr;
 		if (!DoingDNS(cptr))
 			SetAccess(cptr);
 		return;
-	    }
-	(void)alarm((unsigned)0);
+	      }
+	    (void)alarm((unsigned)0);
+	  } else {
+	    Debug((DEBUG_ERROR,"auth(%x) bind failed on %s port %d - %d",
+		  cptr, inetntoa((char *)&us.sin_addr),
+		  ntohs(us.sin_port), errno));
+	  }
+
+
 	cptr->flags |= (FLAGS_WRAUTH|FLAGS_AUTH);
 	if (cptr->authfd > highest_fd)
 		highest_fd = cptr->authfd;
@@ -153,11 +175,13 @@ authsenderr:
 			while (!local[highest_fd])
 				highest_fd--;
 		cptr->authfd = -1;
-		cptr->flags &= ~FLAGS_AUTH;
+		cptr->flags &= ~(FLAGS_AUTH|FLAGS_WRAUTH);
 		if (!DoingDNS(cptr))
 			SetAccess(cptr);
+		return;
 	    }
 	cptr->flags &= ~FLAGS_WRAUTH;
+
 	return;
 }
 
@@ -169,10 +193,10 @@ authsenderr:
  * if it is fragmented by IP.
  */
 void	read_authports(cptr)
-Reg1	aClient	*cptr;
+Reg	aClient	*cptr;
 {
-	Reg1	char	*s, *t;
-	Reg2	int	len;
+	Reg	char	*s, *t;
+	Reg	int	len;
 	char	ruser[USERLEN+1], system[8];
 	u_short	remp = 0, locp = 0;
 
@@ -193,7 +217,6 @@ Reg1	aClient	*cptr;
 		cptr->buffer[cptr->count] = '\0';
 	    }
 
-	cptr->lasttime = time(NULL);
 	if ((len > 0) && (cptr->count != (sizeof(cptr->buffer) - 1)) &&
 	    (sscanf(cptr->buffer, "%hd , %hd : USERID : %*[^:]: %10s",
 		    &remp, &locp, ruser) == 3))
