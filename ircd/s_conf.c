@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.150 2004/11/10 17:56:23 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.152 2004/11/19 17:31:23 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -407,9 +407,12 @@ int    match_ipmask(char *mask, aClient *cptr, int maskwithusername)
 	}
 
 	/* Make sure that the ipv4 notation still works. */
-	if (IN6_IS_ADDR_V4MAPPED(&addr) && m < 96)
+	if (IN6_IS_ADDR_V4MAPPED(&addr))
 	{
-		m += 96;
+		if (m <= 32)
+			m += 96;
+		if (m <= 96)
+			goto badmask;
 	}
 
 	j = m & 0x1F;	/* number not mutliple of 32 bits */
@@ -2435,7 +2438,7 @@ void do_tkline(char *who, int time, char *user, char *host, char *reason, int st
 		}
 		tkconf = aconf;
 	}
-	sendto_flag(SCH_OPER, "TKLINE %s@%s (%d) by %s :%s",
+	sendto_flag(SCH_TKILL, "TKLINE %s@%s (%d) by %s :%s",
 		aconf->name, aconf->host, time, who, reason);
 
 	/* get rid of tklined clients */
@@ -2503,7 +2506,7 @@ void do_tkline(char *who, int time, char *user, char *host, char *reason, int st
 			sendto_one(acptr, replies[ERR_YOUREBANNEDCREEP],
 				ME, acptr->name, aconf->name, aconf->host,
 				": ", aconf->passwd);
-			sendto_flag(SCH_NOTICE,
+			sendto_flag(SCH_TKILL,
 				"TKill line active for %s",
 				get_client_name(acptr, FALSE));
 			if (buff[0] == '\0')
@@ -2516,7 +2519,7 @@ void do_tkline(char *who, int time, char *user, char *host, char *reason, int st
 	}
 	if (count > 4)
 	{
-		sendto_flag(SCH_NOTICE, "TKill reaped %d souls", count);
+		sendto_flag(SCH_TKILL, "TKill reaped %d souls", count);
 	}
 
 	/* do next tkexpire, but not more often than once a minute */
@@ -2577,7 +2580,7 @@ int	m_untkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 
 	if (deleted)
 	{
-		sendto_flag(SCH_OPER, "UNTKLINE %s@%s by %s",
+		sendto_flag(SCH_TKILL, "UNTKLINE %s@%s by %s",
 			user, host, parv[0]);
 	}
 	return 1;

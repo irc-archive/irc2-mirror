@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: send.c,v 1.90 2004/11/11 22:05:37 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: send.c,v 1.94 2004/11/19 15:10:07 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -42,16 +42,18 @@ static	int	sentalong[MAXCONNECTIONS];
 **	Instead, mark it with FLAGS_DEADSOCK. This should
 **	generate ExitClient from the main loop.
 **
-**	If 'notice' is not NULL, it is assumed to be a format
-**	for a message to local opers. It can contain only one
-**	'%s', which will be replaced by the sockhost field of
-**	the failing link.
-**
-**	Also, the notice is skipped for "uninteresting" cases,
+**	The notice is skipped for "uninteresting" cases,
 **	like Persons and yet unknown connections...
 */
-static	int	dead_link(aClient *to, char *notice)
+static	int	dead_link(aClient *to, char *pattern, ...)
 {
+	char	notice[BUFSIZE];
+	va_list	va;
+
+	va_start(va, pattern);
+	vsprintf(notice, pattern, va);
+	va_end(va);
+
 	SetDead(to);
 	/*
 	 * If because of BUFFERPOOL problem then clean dbufs now so that
@@ -60,8 +62,8 @@ static	int	dead_link(aClient *to, char *notice)
 	DBufClear(&to->recvQ);
 	DBufClear(&to->sendQ);
 	if (!IsPerson(to) && !IsUnknown(to) && !(to->flags & FLAGS_CLOSING))
-		sendto_flag(SCH_ERROR, notice, get_client_name(to, FALSE));
-	Debug((DEBUG_ERROR, notice, get_client_name(to, FALSE)));
+		sendto_flag(SCH_ERROR, notice);
+	Debug((DEBUG_ERROR, notice));
 	return -1;
 }
 
@@ -155,19 +157,15 @@ int	send_message(aClient *to, char *msg, int len)
 		else
 # endif
 		{
-			char ebuf[BUFSIZE];
-
-			ebuf[0] = '\0';
+			to->exitc = EXITC_SENDQ;
 			if (IsService(to) || IsServer(to))
 			{
-				sprintf(ebuf,
+				return dead_link(to,
 				"Max SendQ limit exceeded for %s: %d > %d",
 					get_client_name(to, FALSE),
 					DBufLength(&to->sendQ), get_sendq(to));
 			}
-			to->exitc = EXITC_SENDQ;
-			return dead_link(to, ebuf[0] ? ebuf :
-				"Max Sendq exceeded");
+			return dead_link(to, "Max Sendq exceeded");
 		}
 	}
 # ifdef	ZIP_LINKS
@@ -215,7 +213,8 @@ tryagain:
 		{
 			to->exitc = EXITC_MBUF;
 			return dead_link(to,
-				"Buffer allocation error for %s");
+				"Buffer allocation error for %s",
+				get_client_name(to, FALSE));
 		}
 	}
 	/*
@@ -286,7 +285,8 @@ int	send_queued(aClient *to)
 			    {
 				to->exitc = EXITC_MBUF;
 				return dead_link(to,
-					 "Buffer allocation error for %s");
+					 "Buffer allocation error for %s",
+					get_client_name(to, FALSE));
 			    }
 		    }
 	    }
@@ -304,11 +304,14 @@ int	send_queued(aClient *to)
 				if (bysptr && !MyConnect(bysptr))
 				{
 					sendto_one(bysptr, ":%s NOTICE %s :"
-					"Write error to %s, closing link",
-					ME, bysptr->name, to->name);
+					"Write error (%s) to %s, closing link",
+					ME, bysptr->name, strerror(-rlen),
+					to->name);
 				}
 			}
-			return dead_link(to,"Write error to %s, closing link");
+			return dead_link(to,
+				"Write error (%s) to %s, closing link",
+				strerror(-rlen), get_client_name(to, FALSE));
 		}
 		(void)dbuf_delete(&to->sendQ, rlen);
 		to->lastsq = DBufLength(&to->sendQ)/1024;
@@ -333,7 +336,8 @@ int	send_queued(aClient *to)
 			    {
 				to->exitc = EXITC_MBUF;
 				return dead_link(to,
-					 "Buffer allocation error for %s");
+					 "Buffer allocation error for %s",
+					get_client_name(to, FALSE));
 			    }
 		    }
 #endif
@@ -393,7 +397,7 @@ static	int	vsendprep(char *pattern, va_list va)
  */
 static	int	vsendpreprep(aClient *to, aClient *from, char *pattern, va_list va)
 {
-	int	flag = 0, len;
+	int	len;
 
 	Debug((DEBUG_L10, "sendpreprep(%#x(%s),%#x(%s),%s)",
 		to, to->name, from, from->name, pattern));
@@ -1104,7 +1108,7 @@ void	sendto_flag(u_int chan, char *pattern, ...)
 	SChan	*shptr;
 	char	nbuf[1024];
 
-	if (chan < 0 || chan >= SCH_MAX)
+	if (chan >= SCH_MAX)
 		chan = SCH_NOTICE;
 	shptr = svchans + chan;
 
