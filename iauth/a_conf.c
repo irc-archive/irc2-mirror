@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: a_conf.c,v 1.37 2004/11/03 01:59:50 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: a_conf.c,v 1.39 2004/11/13 16:46:18 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -38,11 +38,11 @@ AnInstance *instances = NULL;
 static	void	conf_err(u_int nb, char *msg, char *chk)
 {
 	if (chk)
-		printf("configuration error line %d: %s\n", nb, msg);
+		fprintf(stderr, "configuration error line %d: %s\n", nb, msg);
 	else
 		sendto_log(ALOG_IRCD|ALOG_DCONF, LOG_ERR,
 			   "Configuration error line %d: %s", nb, msg);
-	exit(0);
+	exit(1);
 }
 
 /*

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: send.c,v 1.85 2004/11/02 16:20:00 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: send.c,v 1.90 2004/11/11 22:05:37 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -145,20 +145,12 @@ int	send_message(aClient *to, char *msg, int len)
 # ifdef HUB
 		if (CBurst(to))
 		{
-			aConfItem	*aconf;
-
-			if (IsServer(to))
-				aconf = to->serv->nline;
-			else
-				aconf = to->confs->value.aconf;
-
-			poolsize -= MaxSendq(aconf->class) >> 1;
-			IncSendq(aconf->class);
-			poolsize += MaxSendq(aconf->class) >> 1;
+			/* Allow bursting clients (servers or services) to
+			 * exceed their maxsendq. --B. */
 			sendto_flag(SCH_NOTICE,
-				    "New poolsize %d. (sendq adjusted)",
-				    poolsize);
-			istat.is_dbufmore++;
+				"Max SendQ limit exceeded for %s: %d > %d",
+				get_client_name(to, FALSE),
+				DBufLength(&to->sendQ), get_sendq(to));
 		}
 		else
 # endif
@@ -188,37 +180,43 @@ int	send_message(aClient *to, char *msg, int len)
 	if (to->flags & FLAGS_ZIP)
 		msg = zip_buffer(to, msg, &len, 0);
 
+# endif	/* ZIP_LINKS */
 tryagain:
 	if (len && (i = dbuf_put(&to->sendQ, msg, len)) < 0)
-# else 	/* ZIP_LINKS */
-tryagain:
-	if ((i = dbuf_put(&to->sendQ, msg, len)) < 0)
-# endif	/* ZIP_LINKS */
 	{
-		if (i == -2 && CBurst(to))
-		    {	/* poolsize was exceeded while connect burst */
-			aConfItem	*aconf;
-
-			if (IsServer(to))
-				aconf = to->serv->nline;
-			else
-				aconf = to->confs->value.aconf;
-
-			poolsize -= MaxSendq(aconf->class) >> 1;
-			IncSendq(aconf->class);
-			poolsize += MaxSendq(aconf->class) >> 1;
+		if (i == -2	/* Poolsize was exceeded. */
+#ifdef POOLSIZE_LIMITED
+			/*
+			** Defining this retains old ircd behaviour (will
+			** allow client quit with buffer allocation error
+			** as a result of poolsize starvation). As it may
+			** happen to all clients on a big channel without
+			** their fault, I think this is not right.
+			** In the long run it should not matter (poolsize
+			** or memory usage-wise), because if client lacks
+			** the poolsize, the poolsize is too small anyway
+			** and next netburst would probably make it grow.
+			** IMO increasing poolsize with no limits is good
+			** for clients -- hence this is not defined. --B.
+			*/
+			&& CBurst(to)
+#endif
+			)
+		{
+			/* Anyway, 10% increase. */
+			poolsize *= 1.1;
 			sendto_flag(SCH_NOTICE,
 				    "New poolsize %d. (reached)",
 				    poolsize);
 			istat.is_dbufmore++;
 			goto tryagain;
-		    }
+		}
 		else
-		    {
+		{
 			to->exitc = EXITC_MBUF;
 			return dead_link(to,
 				"Buffer allocation error for %s");
-		    }
+		}
 	}
 	/*
 	** Update statistics. The following is slightly incorrect
@@ -395,58 +393,27 @@ static	int	vsendprep(char *pattern, va_list va)
  */
 static	int	vsendpreprep(aClient *to, aClient *from, char *pattern, va_list va)
 {
-	Reg	anUser	*user;
 	int	flag = 0, len;
 
 	Debug((DEBUG_L10, "sendpreprep(%#x(%s),%#x(%s),%s)",
 		to, to->name, from, from->name, pattern));
 	if (to && from && MyClient(to) && IsPerson(from) &&
 	    !strncmp(pattern, ":%s", 3))
-	    {
+	{
 		char	*par = va_arg(va, char *);
-		if (from == &anon || !mycmp(par, from->name))
-		    {
-			user = from->user;
-			(void)strcpy(psendbuf, ":");
-			(void)strcat(psendbuf, from->name);
-			if (user)
-			    {
-				if (*user->username)
-				    {
-					(void)strcat(psendbuf, "!");
-					(void)strcat(psendbuf, user->username);
-				    }
-				if (*user->host && !MyConnect(from))
-				    {
-					(void)strcat(psendbuf, "@");
-					(void)strcat(psendbuf, user->host);
-					flag = 1;
-				    }
-			    }
-			/*
-			** flag is used instead of index(newpat, '@') for speed and
-			** also since username/nick may have had a '@' in them. -avalon
-			*/
-			if (!flag && MyConnect(from) && *user->host)
-			    {
-				(void)strcat(psendbuf, "@");
-#ifdef UNIXPORT
-				if (IsUnixSocket(from))
-				    (void)strcat(psendbuf, user->host);
-				else
-#endif
-				    (void)strcat(psendbuf, from->sockhost);
-			    }
-		    }
-		else
-		    {
-			(void)strcpy(psendbuf, ":");
-			(void)strcat(psendbuf, par);
-		    }
 
-		len = strlen(psendbuf);
+		if (from == &anon || !mycmp(par, from->name))
+		{
+			len = sprintf(psendbuf, ":%s!%s@%s", from->name,
+				from->user->username, from->user->host);
+		}
+		else
+		{
+			len = sprintf(psendbuf, ":%s", par);
+		}
+
 		len += vsprintf(psendbuf+len, pattern+3, va);
-	    }
+	}
 	else
 		len = vsprintf(psendbuf, pattern, va);
 

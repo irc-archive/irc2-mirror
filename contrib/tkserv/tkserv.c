@@ -866,9 +866,9 @@ void squery_tkline(char **args)
 
     while (args[i] && *args[i])
     {
-        if (strchr(args[i], IRCDONF_DELIMITER))
+        if (strchr(args[i], IRCDCONF_DELIMITER))
         {
-            sendto_user("The '" IRCDCONF_DELIMITER "' chars are only allowed in the password.");
+            sendto_user("The '%c' chars are only allowed in the password.", IRCDCONF_DELIMITER);
             return;
         }
 

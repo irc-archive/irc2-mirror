@@ -674,7 +674,7 @@ static	int	proc_answer(ResRQ *rptr, HEADER *hptr, char *buf, char *eob)
 		/* Check that it's a possible reply to the request we send. */
 		if (rptr->type != type && type != T_CNAME)
 		{
-			sendto_flag(SCH_ERROR, "Wrong reply type looking up %s."
+			sendto_flag(SCH_ERROR, "Wrong reply type looking up %s. "
 				"Got: %d, expected %d.", hostbuf,
 				type, rptr->type);
 			cp += dlen;

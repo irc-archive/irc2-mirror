@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.150 2004/11/03 17:40:00 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.152 2004/11/14 14:45:02 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -512,8 +512,7 @@ static	time_t	check_pings(time_t currenttime)
 			kflag = find_kill(cptr, 1, &reason);
 		}
 #endif
-		ping = IsRegistered(cptr) ? get_client_ping(cptr) :
-					    ACCEPTTIMEOUT;
+		ping = IsRegistered(cptr) ? cptr->ping : ACCEPTTIMEOUT;
 		Debug((DEBUG_DEBUG, "c(%s) %d p %d k %d a %d",
 			cptr->name, cptr->status, ping, kflag,
 			currenttime - cptr->lasttime));
@@ -659,8 +658,8 @@ ping_timeout:
 #endif
 	if (!oldest || oldest < currenttime)
 		oldest = currenttime + PINGFREQUENCY;
-	if (oldest < currenttime + 2)
-		oldest += 2;
+	if (oldest < currenttime + 30)
+		oldest += 30;
 	Debug((DEBUG_NOTICE,"Next check_ping() call at: %s, %d %d %d",
 		myctime(oldest), ping, oldest, currenttime));
 	return (oldest);

@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_bsd.c,v 1.167 2004/10/30 14:40:07 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_bsd.c,v 1.169 2004/11/10 15:39:15 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1820,16 +1820,13 @@ static	aClient	*add_unixconnection(aClient *cptr, int fd)
 ** read_listener
 **
 ** Accept incoming connections, extracted from read_message() 98/12 -kalt
-** Up to 10 connections will be accepted, unless SLOW_ACCEPT is defined.
+** Up to LISTENER_MAXACCEPT connections will be accepted in one run.
 */
 static	void	read_listener(aClient *cptr)
 {
-	int fdnew, max = 10;
+	int fdnew, max = LISTENER_MAXACCEPT;
 	aClient	*acptr;
 
-#if defined(SLOW_ACCEPT)
-	max = 1;
-#endif
 	while (max--)
 	    {
 		/*
@@ -2171,13 +2168,16 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 			if (fd > highfd)
 				highfd = fd;
 #endif
-			/*
-			** Checking for new connections is only done up to
-			** once per second.
-			*/
 			if (IsListener(cptr))
 			    {
-				if (timeofday > cptr->lasttime + 1 && ro == 0)
+				if (
+#ifdef LISTENER_DELAY
+					/* Checking for new connections is only
+					** done up to once per LD seconds. */
+					timeofday >= cptr->lasttime + 
+						LISTENER_DELAY && 
+#endif
+					ro == 0)
 				    {
 					SET_READ_EVENT( fd );
 				    }
@@ -2404,7 +2404,11 @@ deadsocket:
 				}
 				else
 				{
-					cptr->exitc = EXITC_ERROR;
+					/* Keep (primary) error or it will not
+					 * be possible to discriminate socket
+					 * error from mbuf error. --B. */
+					if (cptr->exitc == EXITC_REG)
+						cptr->exitc = EXITC_ERROR;
 					(void)exit_client(cptr, cptr, &me,
 						strerror(get_sockerr(cptr)));
 				}
