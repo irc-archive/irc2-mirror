@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.22 1998/02/18 18:42:21 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.40 1998/09/18 22:02:27 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -50,7 +50,7 @@ static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.22 1998/02/18 18:42:21 kalt Exp $";
 
 aClient	*local[MAXCONNECTIONS];
 FdAry	fdas, fdaa, fdall;
-int	highest_fd = 0, readcalls = 0, udpfd = -1, resfd = -1;
+int	highest_fd = 0, readcalls = 0, udpfd = -1, resfd = -1, adfd = -1;
 time_t	timeofday;
 static	struct	sockaddr_in	mysk;
 static	void	polludp();
@@ -75,21 +75,19 @@ static	char	readbuf[READBUF_SIZE];
  * Try and find the correct name to use with getrlimit() for setting the max.
  * number of files allowed to be open by this process.
  */
-#if ! USE_POLL
-# ifdef RLIMIT_FDMAX
-#  define RLIMIT_FD_MAX   RLIMIT_FDMAX
+#ifdef RLIMIT_FDMAX
+# define RLIMIT_FD_MAX   RLIMIT_FDMAX
+#else
+# ifdef RLIMIT_NOFILE
+#  define RLIMIT_FD_MAX RLIMIT_NOFILE
 # else
-#  ifdef RLIMIT_NOFILE
-#   define RLIMIT_FD_MAX RLIMIT_NOFILE
+#  ifdef RLIMIT_OPEN_MAX
+#   define RLIMIT_FD_MAX RLIMIT_OPEN_MAX
 #  else
-#   ifdef RLIMIT_OPEN_MAX
-#    define RLIMIT_FD_MAX RLIMIT_OPEN_MAX
-#   else
-#    undef RLIMIT_FD_MAX
-#   endif
+#   undef RLIMIT_FD_MAX
 #  endif
 # endif
-#endif /* USE_POLL */
+#endif
 
 /*
 ** add_local_domain()
@@ -416,35 +414,114 @@ void	close_listeners()
 	    }
 }
 
+void
+start_iauth()
+{
+#if defined(USE_IAUTH)
+	static time_t last = 0;
+	static char first = 1;
+	int sp[2], fd;
+
+	if ((bootopt & BOOT_NOIAUTH) != 0)
+		return;
+	if (adfd >= 0)
+	    {
+		sendto_flag(SCH_AUTH,
+			    "iauth is already running, restart aborted");
+		return;
+	    }
+	read_iauth(); /* to reset olen */
+	if ((time(NULL) - last) > 300)
+	    {
+		sendto_flag(SCH_AUTH, "Starting iauth...");
+		last = time(NULL);
+	    }
+	else
+	    {
+		sendto_flag(SCH_AUTH, "Not restarting iauth.");
+		return;
+	    }
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sp) < 0)
+	    {
+		sendto_flag(SCH_ERROR, "socketpair() failed!");
+		sendto_flag(SCH_AUTH, "Failed to restart iauth!");
+	    }
+	adfd = sp[0];
+	set_non_blocking(sp[0], NULL);
+	set_non_blocking(sp[1], NULL); /* less to worry about in iauth */
+	switch (vfork())
+	    {
+	case -1:
+		sendto_flag(SCH_ERROR, "vfork() failed!");
+		sendto_flag(SCH_AUTH, "Failed to restart iauth!");
+		close(sp[0]); close(sp[1]);
+		adfd = -1;
+		return;
+	case 0:
+		for (fd = 0; fd < MAXCONNECTIONS; fd++)
+			if (fd != sp[1])
+				(void)close(fd);
+		if (sp[1] != 0)
+		    {
+			(void)dup2(sp[1], 0);
+			close(sp[1]);
+		    }
+		if (execl(APATH, APATH, NULL) < 0)
+			_exit(-1); /* should really not happen.. */
+	default:
+		close(sp[1]);
+	    }
+
+	if (first)
+		first = 0;
+	else
+	    {
+		int i;
+		aClient *cptr;
+
+		for (i = 0; i <= highest_fd; i++)
+		    {   
+			if (!(cptr = local[i]))
+				continue;
+			if (IsServer(cptr) || IsService(cptr))
+				continue;
+			sendto_iauth("%d O", i);
+		    }
+	    }
+#endif
+}
+
 /*
  * init_sys
  */
 void	init_sys()
 {
 	Reg	int	fd;
-#if ! USE_POLL
-# ifdef RLIMIT_FD_MAX
+
+#ifdef RLIMIT_FD_MAX
 	struct rlimit limit;
 
 	if (!getrlimit(RLIMIT_FD_MAX, &limit))
 	    {
 		if (limit.rlim_max < MAXCONNECTIONS)
 		    {
-			(void)fprintf(stderr,"ircd fd table too big\n");
-			(void)fprintf(stderr,"Hard Limit: %d IRC max: %d\n",
-				(int) limit.rlim_max, MAXCONNECTIONS);
-			(void)fprintf(stderr,"Fix MAXCONNECTIONS\n");
+			(void)fprintf(stderr, "ircd fd table is too big\n");
+			(void)fprintf(stderr, "Hard Limit: %d IRC max: %d\n",
+				      (int) limit.rlim_max, MAXCONNECTIONS);
+			(void)fprintf(stderr,
+				      "Recompile and fix MAXCONNECTIONS\n");
 			exit(-1);
 		    }
 		limit.rlim_cur = limit.rlim_max; /* make soft limit the max */
 		if (setrlimit(RLIMIT_FD_MAX, &limit) == -1)
 		    {
-			(void)fprintf(stderr,"error setting max fd's to %d\n",
-					(int) limit.rlim_cur);
+			(void)fprintf(stderr, "error setting max fd's to %d\n",
+				      (int) limit.rlim_cur);
 			exit(-1);
 		    }
 	    }
-# endif
+#endif
+#if ! USE_POLL
 # ifdef sequent
 #  ifndef	DYNIXPTX
 	int	fd_limit;
@@ -498,7 +575,7 @@ void	init_sys()
 	if (((bootopt & BOOT_CONSOLE) || isatty(0)) &&
 	    !(bootopt & (BOOT_INETD|BOOT_OPER)))
 	    {
-#ifndef _WIN32
+#ifndef __CYGWIN32__
 		if (fork())
 			exit(0);
 #endif
@@ -521,7 +598,7 @@ void	init_sys()
 init_dgram:
 	resfd = init_resolver(0x1f);
 
-	return;
+	start_iauth();
 }
 
 void	write_pidfile()
@@ -904,11 +981,13 @@ aClient	*cptr;
 	    }
 	if (!BadPtr(aconf->passwd))
 #ifndef	ZIP_LINKS
-		sendto_one(cptr, "PASS %s %s %s", aconf->passwd, pass_version,
-			   serveropts);
-#else
-		sendto_one(cptr, "PASS %s %s %s %s", aconf->passwd,
+		sendto_one(cptr, "PASS %s %s IRC|%s %s", aconf->passwd,
 			   pass_version, serveropts,
+			   (bootopt & BOOT_STRICTPROT) ? "P" : "");
+#else
+		sendto_one(cptr, "PASS %s %s IRC|%s %s%s", aconf->passwd,
+			   pass_version, serveropts,
+			   (bootopt & BOOT_STRICTPROT) ? "P" : "",
 			   (aconf->status == CONF_ZCONNECT_SERVER) ? "Z" : "");
 #endif
 
@@ -1021,6 +1100,11 @@ aClient *cptr;
 {
 	Reg	aConfItem *aconf;
 	Reg	int	i,j;
+#ifdef SO_LINGER
+	struct 	linger	sockling;
+
+	sockling.l_onoff = 0;
+#endif
 
 	if (IsServer(cptr))
 	    {
@@ -1088,10 +1172,22 @@ aClient *cptr;
 	    }
 
 	if (cptr->authfd >= 0)
+	    {
+#ifdef	SO_LINGER
+		if (cptr->exitc == EXITC_PING)
+			if (SETSOCKOPT(cptr->authfd, SOL_SOCKET, SO_LINGER,
+				       &sockling, sockling))
+				report_error("setsockopt(SO_LINGER) %s:%s",
+					     cptr);
+#endif
 		(void)close(cptr->authfd);
+	    }
 
 	if ((i = cptr->fd) >= 0)
 	    {
+#if defined(USE_IAUTH)
+		sendto_iauth("%d D", cptr->fd);
+#endif
 		flush_connections(i);
 		if (IsServer(cptr) || IsListening(cptr))
 		    {
@@ -1105,7 +1201,16 @@ aClient *cptr;
 #endif
 		    }
 		else if (IsClient(cptr))
+		    {
+#ifdef	SO_LINGER
+			if (cptr->exitc == EXITC_PING)
+				if (SETSOCKOPT(i, SOL_SOCKET, SO_LINGER,
+					       &sockling, sockling))
+					report_error("setsockopt(SO_LINGER) %s:%s",
+						     cptr);
+#endif
 			del_fd(i, &fdaa);
+		    }
 		del_fd(i, &fdall);
 		local[i] = NULL;
 		(void)close(i);
@@ -1141,6 +1246,9 @@ aClient *cptr;
 					add_fd(i, &fdaa);
 				while (!local[highest_fd])
 					highest_fd--;
+#if defined(USE_IAUTH)
+				sendto_iauth("%d R %d", j, i);
+#endif
 			    }
 		    }
 		cptr->fd = -2;
@@ -1375,7 +1483,11 @@ int	fd;
 
 		if (getpeername(fd, (SAP)&addr, &len) == -1)
 		    {
-			report_error("Failed in connecting to %s :%s", cptr);
+#if defined(linux)
+			if (errno != ENOTCONN)
+#endif
+				report_error("Failed in connecting to %s :%s",
+					     cptr);
 add_con_refuse:
 			ircstp->is_ref++;
 			acptr->fd = -2;
@@ -1430,6 +1542,18 @@ add_con_refuse:
 	acptr->acpt = cptr;
 	add_client_to_list(acptr);
 	start_auth(acptr);
+#if defined(USE_IAUTH)
+	if (!isatty(fd) && !DoingDNS(acptr))
+	    {
+		int i = 0;
+		
+		while (acptr->hostp->h_aliases[i])
+			sendto_iauth("%d A %s", acptr->fd,
+				     acptr->hostp->h_aliases[i++]);
+		if (acptr->hostp->h_name)
+			sendto_iauth("%d N %s",acptr->fd,acptr->hostp->h_name);
+	    }
+#endif
 	return acptr;
 }
 
@@ -1496,20 +1620,20 @@ Reg	aClient *cptr;
 		/*
 		** If it has become registered as a Service or Server
 		** then skip the per-message parsing below.
+		*/
 		if (IsService(cptr) || IsServer(cptr))
 		    {
 			dolen = dbuf_get(&cptr->recvQ, readbuf,
 					 sizeof(readbuf));
 			if (dolen <= 0)
 				break;
-			done = dopacket(cptr, readbuf, dolen);
-			if (done == 2 && cptr->since == cptr->lasttime)
+			dolen = dopacket(cptr, readbuf, dolen);
+			if (dolen == 2 && cptr->since == cptr->lasttime)
 				cptr->since += 5;
-			if (done)
-				return done;
+			if (dolen)
+				return dolen;
 			break;
 		    }
-clientsonly..			*/
 		dolen = dbuf_getmsg(&cptr->recvQ, readbuf,
 				    sizeof(readbuf));
 		/*
@@ -1565,7 +1689,7 @@ int	msg_ready;
 #if defined(DEBUGMODE) && defined(DEBUG_READ)
 		if (length > 0)
 			Debug((DEBUG_READ,
-				"recv = %d bytes to %d[%s]:[%*.*s]\n",
+				"recv = %d bytes from %d[%s]:[%*.*s]\n",
 				length, cptr->fd, cptr->name, length, length,
 				readbuf));
 #endif
@@ -1675,6 +1799,7 @@ FdAry	*fdp;
 	struct pollfd * pfd     = poll_fdarray;
 	struct pollfd * res_pfd = NULL;
 	struct pollfd * udp_pfd = NULL;
+	struct pollfd * ad_pfd = NULL;
 	aClient	 * authclnts[MAXCONNECTIONS];	/* mapping of auth fds to client ptrs */
 	int	   nbr_pfds = 0;
 #endif
@@ -1699,6 +1824,7 @@ FdAry	*fdp;
 		pfd->fd  = -1;
 		res_pfd  = NULL;
 		udp_pfd  = NULL;
+		ad_pfd = NULL;
 #endif	/* USE_POLL */
 		auth = 0;
 
@@ -1729,7 +1855,8 @@ FdAry	*fdp;
 					highfd = cptr->authfd;
 #endif
 			    }
-			if (DoingDNS(cptr) || DoingAuth(cptr))
+			if (DoingDNS(cptr) || DoingAuth(cptr) ||
+			    DoingXAuth(cptr))
 				continue;
 #if ! USE_POLL
 			if (fd > highfd)
@@ -1792,7 +1919,20 @@ FdAry	*fdp;
 			res_pfd = pfd;
 #endif			
 		    }
-		Debug((DEBUG_L11, "udpfd %d resfd %d", udpfd, resfd));
+#if defined(USE_IAUTH)
+		if (adfd >= 0)
+		    {
+			SET_READ_EVENT(adfd);
+# if ! USE_POLL
+			if (adfd > highfd)
+				highfd = adfd;
+# else
+			ad_pfd = pfd;
+# endif			
+		    }
+#endif
+		Debug((DEBUG_L11, "udpfd %d resfd %d adfd %s", udpfd, resfd,
+		       adfd));
 #if ! USE_POLL
 		Debug((DEBUG_L11, "highfd %d", highfd));
 #endif
@@ -1846,6 +1986,20 @@ FdAry	*fdp;
 		nfds--;
 		CLR_READ_EVENT(udpfd);
 	    }
+#if defined(USE_IAUTH)
+	if (nfds > 0 &&
+# if ! USE_POLL
+	    adfd >= 0 &&
+# else
+	    (pfd = ad_pfd) &&
+# endif
+	    TST_READ_EVENT(adfd))
+	    {
+		read_iauth();
+		nfds--;
+		CLR_READ_EVENT(adfd);
+	    }
+#endif
 
 #if ! USE_POLL
 	for (i = fdp->highest; i >= 0; i--)
@@ -2816,6 +2970,20 @@ static	void	do_dns_async()
 				if (!DoingAuth(cptr))
 					SetAccess(cptr);
 				cptr->hostp = hp;
+#if defined(USE_IAUTH)
+				if (hp)
+				    {
+					int i = 0;
+
+					while (hp->h_aliases[i])
+						sendto_iauth("%d A %s",
+							     cptr->fd,
+							hp->h_aliases[i++]);
+					if (hp->h_name)
+						sendto_iauth("%d N %s",
+							cptr->fd, hp->h_name);
+				    }
+#endif
 			    }
 			break;
 		case ASYNC_CONNECT :

@@ -4,9 +4,9 @@
 
 <title>Installing IRC - The Internet Relay Chat Program
 <author>SGML version by Christophe Kalt
-<date>$Id: INSTALL.sgml,v 1.23 1998/02/18 21:47:54 kalt Exp $
+<date>$Id: INSTALL.sgml,v 1.30 1998/09/24 17:45:17 kalt Exp $
 <abstract>
-This document describes how to install, and configure IRC 2.9.5.
+This document describes how to install, and configure IRC 2.10.
 </abstract>
 
 <sect>Installing IRC.
@@ -24,8 +24,13 @@ change the default behaviour:
 <tag/--prefix=DIR/ changes the default directory into which
 ircd will install using ``make install''.  This defaults
 to /usr/local
+<tag/--sbindir=DIR/ changes the default directory where the
+system admin executable files will go. It is important to
+set this properly. (default is prefix/sbin)
 <tag/--libdir=DIR/ changes the default directory where most
 irc files will go. (default is prefix/lib/ircd)
+<tag/--logdir=DIR/ changes the default directory where the
+irc log files will go. (default is prefix/lib/ircd)
 <tag/--resconf=FILE/ defines the file to be used by ircd to
 initialize its resolver.  (default is /etc/resolv.conf)
 <tag/--zlib-include=DIR/ specifies in which directory the
@@ -92,18 +97,14 @@ diagnostics whilst running.
 <bf>This should only be defined for test purposes, and never
 used on a production server.</bf>
 
-<sect1>SPATH, CPATH, MPATH, LPATH, PPATH, TPATH
-<p>
-Define SPATH to be the directory path to ircd.  This is
-usually /usr/local/sbin/ircd, unless you don't have
-installation permission there.
+<sect1>CPATH, MPATH, LPATH, PPATH, TPATH, QPATH, OPATH
 <p>
 Define CPATH to be the directory path to the ``ircd.conf''
 file. This path is usually /usr/local/lib/ircd/ircd.conf. The
 format of this file will be discussed later.
 <p>
 The LPATH &num;define should be set to ``/dev/null'' unless
-you plan to debug the program.  Note that the logfile grows
+you plan to debug the ircd program.  Note that the logfile grows
 very quickly.
 <p>
 Define MPATH to be the path to the ``motd'' (message of the
@@ -116,9 +117,13 @@ file which either doesn't exist (but is creatable) or a
 previously used PPATH file.  It is used for storing the
 server's PID so a ps(1) isn't necessary.
 <p>
-Define TPATH to be the directory path to the ``ircd.tune''
-file. This path is usually /usr/local/lib/ircd/ircd.tune.  This
-file is used by the server to optimize memory use.
+Define QPATH to be the directory path to the ``iauth.conf''
+file. This path is usually /usr/local/lib/ircd/iauth.conf.
+The format of this file is described by a manual page.
+<p>
+The OPATH &num;define should be set to ``/dev/null'' unless
+you plan to debug the iauth program.  Note that the logfile grows
+very quickly.
 
 <sect1>CACHED_MOTD
 <p>
@@ -177,7 +182,7 @@ used.  Values above 5 will noticeably increase the CPU used
 by the server.
 <p>
 The zlib package may be found at <url
-url="http://quest.jpl.nasa.gov/zlib/">. The data format used
+url="http://www.cdrom.com/pub/infozip/zlib/">. The data format used
 by the zlib library is described by RFCs (Request for
 Comments) 1950 to 1952 in the files <url
 url="ftp://ds.internic.net/rfc/rfc1950.txt"> (zlib format),
@@ -219,7 +224,7 @@ generate the correct Makefile.  However you need to edit it
 to specify specific information, such as ``prefix'',
 ``irc_mode'', ``ircd_mode'' and ``ircd_dir''.
 <p>
-Now to build the package, type ``make''.  If everything
+Now to build the package, type ``make all''.  If everything
 goes will, you can then install it by typing ``make install''.
 <p>
 If you have trouble compiling ircd, copy Makefile.in to
@@ -801,7 +806,7 @@ This disallows all users from hosts with enddomain
 ``oulu.fi'' access to your server between 8 and 12am, 2 and
 7pm. Users get kicked off if they're already signed on when
 the line becomes active (they'll get a warning 5 minutes
-ago).
+before).
 <p>
 K:192.11.35.*::*:0:
 <p>
@@ -1137,34 +1142,42 @@ server.
 connecting to you based on their version and on compile time
 options.
 <tag/Format/<verb>V:&lt;Version Mask&gt;:&lt;Flags&gt;:&lt;Server Mask&gt;::</verb>
-<tag/Version Mask/ The matching version strings will be rejected.
-<tag/Flags/ This field should contained flags as defined in
-ircd/s_debug.c
-<p>
-These flags show up in RPL_VERSION.
-<p>
-If any of the flags present in this field are found in the
-RPL_VERSION of a server, this server will be denied
-connection.  This must be used with care.
+<tag/Version Mask/ The matching version number strings will be rejected.
+<tag/Flags/ The matching version flags strings will be rejected.
 <tag/Server Mask/ This field is used to match server names.
 The V line will be used for servers matching the mask given
 in this field.
-<tag/Examples/V:020901*::*::
+<tag/Server Type/ Both the <bf>Version Mask</bf> and the
+<bf>Flags</bf> should be prefixed with the server type
+identification.  This implementation uses the id
+``<bf>IRC</bf>'' (starting with version 2.10).
+<tag/Examples/V:IRC/021001*::*::
 <p>
-Disallows any server which version is 2.9.1* to connect.
+Disallows any ``IRC'' server which version is 2.10.1* to connect.
 <p>
-V:020901*:D:*::
+V:IRC/021001*:IRC/*D*:*::
 <p>
-Disallows any server which version is 2.9.1* or which has
-been compiled with DEBUGMODE defined to connect.
+Disallows any ``IRC'' server which version is 2.10.1* or
+which has been compiled with DEBUGMODE defined to connect.
+<p>
+V:*/0209*::*::
+<p>
+Disallows any server using the 2.9 protocol to connect.
 <tag/Note/  It is possible to have and use multiple V-lines
 for the one server mask.
 <p>
-V:020901:*:*::
+V:IRC/021001*:*:*::
 <p>
-V:020902:*:*::
+V:IRC/021002*:*:*::
 <p>
 is allowed.
+<tag/Protocol Version/ Only the 4 first digit of the
+<bf>Version Number</bf> are standard: they define the
+protocol version.  The remaining of the string is
+implementation dependant; matches on this part should be
+used with particular identification.
+<tag/Flags/ are not standard.  Therefore, this field
+<bf>should always</bf> contain a specific identification.
 </descrip>
 
 <sect1>Excluded machines
@@ -1298,12 +1311,57 @@ ircd-users</bf>'' in the body.
 <p>
 If you just have a question and don't want to subscribe to
 the list, mail to <htmlurl url="mailto:ircd-users@stealth.net"
-name="ircd-users@stealth.net">
+name="ircd-users@stealth.net">.  Be sure to indicate which
+version you are using.
+<tag/Development/ Technical discussions and development are
+carried on ircd-dev@stealth.net.  People interested in very
+early testing, and/or working on the source code are
+welcome.  This is done by sending an email to <htmlurl
+url="mailto:majordomo@stealth.net"
+name="majordomo@stealth.net">, with ``<bf>subscribe
+ircd-dev</bf>'' in the body.
 <tag/FAQ/ It can be found on the WWW, at <url
 url="http://www.stealth.net/~kalt/irc/faq.html">.
 <tag/WWW 2.9/ Vesa Ruokonen has also put serveral pages
 related to the 2.9 servers on the WWW: <url
 url="http://www.irc.org/~irc/server/">.
 </descrip>
+
+<sect>Reporting a bug
+<p>
+If you encounter a bug in the software, here is how and
+where to report it.
+
+<sect1>How to report a bug
+<p>
+To save everyone time, make sure that your e-mail contains
+all the information related to your problem.  In particular,
+we need to know:
+<descrip>
+<tag/Package version/
+The IRC software version you are using: please include the
+output obtained by running ``irc -v'' for the client, and/or
+``ircd -v'' for the server.
+<p>
+Also, let us know if you have applied any patch to the
+package or if it is the vanilla version.
+<tag/OS/
+Please, indicate which OS version you are running.
+<tag/Configuration/
+If it is related to a configuration problem with the server,
+include the relevant parts of the configuration file.
+<tag/Backtrace/
+If the bug results in a crash, please include the
+backtrace.  (This can be done, for example, by running
+``gdb'' on the core file, and typing ``where'').
+<tag/Fix/
+If you have a fix, don't forget to include it.
+</descrip>
+
+<sect1>Where to send a bug report
+<p>
+Reports should be sent to <htmlurl url="mailto:ircd-bugs@stealth.net"
+name="ircd-bugs@stealth.net">.  Your report will be reviewed
+and forwarded to the appropriate mailing list.
 
 </article>

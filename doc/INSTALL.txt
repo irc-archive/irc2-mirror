@@ -1,8 +1,8 @@
   Installing IRC - The Internet Relay Chat Program
   SGML version by Christophe Kalt
-  $Id: INSTALL.txt,v 1.23 1998/02/18 21:47:54 kalt Exp $
+  $Id: INSTALL.txt,v 1.30 1998/09/24 17:45:17 kalt Exp $
 
-  This document describes how to install, and configure IRC 2.9.5.
+  This document describes how to install, and configure IRC 2.10.
 
   11..  IInnssttaalllliinngg IIRRCC..
 
@@ -21,8 +21,17 @@
         changes the default directory into which ircd will install using
         ``make install''.  This defaults to /usr/local
 
+     ----ssbbiinnddiirr==DDIIRR
+        changes the default directory where the system admin executable
+        files will go. It is important to set this properly. (default is
+        prefix/sbin)
+
      ----lliibbddiirr==DDIIRR
         changes the default directory where most irc files will go.
+        (default is prefix/lib/ircd)
+
+     ----llooggddiirr==DDIIRR
+        changes the default directory where the irc log files will go.
         (default is prefix/lib/ircd)
 
      ----rreessccoonnff==FFIILLEE
@@ -52,6 +61,9 @@
         will keep you from using server link compression.
 
 
+
+
+
   11..22..  NNootteess ffoorr CCyyggwwiinn3322 uusseerrss
 
   The 2.9.5 release compiles properly on W32 systems which have the GNU-
@@ -64,6 +76,7 @@
   carefully followed the Cygwin32 installation notes.  In particular,
   you will need to make sure that the following files exist:
   //bbiinn//ccpp..eexxee, //bbiinn//mmvv..eexxee, //bbiinn//rrmm..eexxee and //bbiinn//sshh..eexxee.
+
   Also, the IRC server needs a rreessoollvv..ccoonnff file in order to initialize
   the resolver.  This file can be anywhere (see configure options), and
   is typically in //eettcc on UNIX systems.
@@ -96,18 +109,14 @@
   pprroodduuccttiioonn sseerrvveerr..
 
 
-  22..33..  SSPPAATTHH,, CCPPAATTHH,, MMPPAATTHH,, LLPPAATTHH,, PPPPAATTHH,, TTPPAATTHH
-
-  Define SPATH to be the directory path to ircd.  This is usually
-  /usr/local/sbin/ircd, unless you don't have installation permission
-  there.
+  22..33..  CCPPAATTHH,, MMPPAATTHH,, LLPPAATTHH,, PPPPAATTHH,, TTPPAATTHH,, QQPPAATTHH,, OOPPAATTHH
 
   Define CPATH to be the directory path to the ``ircd.conf'' file. This
   path is usually /usr/local/lib/ircd/ircd.conf. The format of this file
   will be discussed later.
 
   The LPATH #define should be set to ``/dev/null'' unless you plan to
-  debug the program.  Note that the logfile grows very quickly.
+  debug the ircd program.  Note that the logfile grows very quickly.
 
   Define MPATH to be the path to the ``motd'' (message of the day) file
   for the server.  Keep in mind this is automatically displayed whenever
@@ -118,9 +127,11 @@
   file.  It is used for storing the server's PID so a ps(1) isn't
   necessary.
 
-  Define TPATH to be the directory path to the ``ircd.tune'' file. This
-  path is usually /usr/local/lib/ircd/ircd.tune.  This file is used by
-  the server to optimize memory use.
+  Define QPATH to be the directory path to the ``iauth.conf'' file. This
+  path is usually /usr/local/lib/ircd/iauth.conf.  The format of this
+  file is described by a manual page.
+  The OPATH #define should be set to ``/dev/null'' unless you plan to
+  debug the iauth program.  Note that the logfile grows very quickly.
 
 
   22..44..  CCAACCHHEEDD__MMOOTTDD
@@ -128,7 +139,6 @@
   The server sends the ``motd'' to every client connecting.  Every time,
   it reads it from the disk.  This is quite intensive and can be
   undesirable for busy servers.
-
 
   Defining CACHED_MOTD will make the server store the ``motd'' in
   memory, and only read it again from the disk when rehashing if the
@@ -181,12 +191,12 @@
   you to control the compression level that will be used.  Values above
   5 will noticeably increase the CPU used by the server.
 
-  The zlib package may be found at  <http://quest.jpl.nasa.gov/zlib/>.
-  The data format used by the zlib library is described by RFCs (Request
-  for Comments) 1950 to 1952 in the files
-  <ftp://ds.internic.net/rfc/rfc1950.txt> (zlib format), rfc1951.txt
-  (deflate format) and rfc1952.txt (gzip format). These documents are
-  also available in other formats from
+  The zlib package may be found at
+  <http://www.cdrom.com/pub/infozip/zlib/>. The data format used by the
+  zlib library is described by RFCs (Request for Comments) 1950 to 1952
+  in the files  <ftp://ds.internic.net/rfc/rfc1950.txt> (zlib format),
+  rfc1951.txt (deflate format) and rfc1952.txt (gzip format). These
+  documents are also available in other formats from
   <ftp://ftp.uu.net/graphics/png/documents/zlib/zdoc-index.html>
 
 
@@ -223,8 +233,8 @@
   information, such as ``prefix'', ``irc_mode'', ``ircd_mode'' and
   ``ircd_dir''.
 
-  Now to build the package, type ``make''.  If everything goes will, you
-  can then install it by typing ``make install''.
+  Now to build the package, type ``make all''.  If everything goes will,
+  you can then install it by typing ``make install''.
 
   If you have trouble compiling ircd, copy Makefile.in to Makefile and
   edit Makefile as appropriate.
@@ -394,6 +404,7 @@
         A:Jeff Trim -  Denver Colorado, USA:INET jtrim@orion.cair.du.edu
         UUCP {hao,isis}!udenva!jtrim:Terve! Heippa!  Have you said hello
         in Finnish today?;)::
+
         Would look like this when printed out with the /admin command:
 
         Jeff Trim -  Denver Colorado, USA INET jtrim@orion.cair.du.edu
@@ -449,7 +460,6 @@
      is decoded and compared segment by segment. Thus
 
      P:::128.2*.1.2:6664:
-
      will not match 128.20.1.2.
 
      PPoorrtt
@@ -592,6 +602,7 @@
         the servers that is ``behind'' it, the server will disconnect
         the lower class one and schedule a ``new'' connection for the
         higher class server.
+
         Y:1:60:0:50:20000:2:5: (client class)
 
         In case of a client class, the fields are interpreted a bit
@@ -647,7 +658,6 @@
         ident server be the same as the one given before the ``@''.
         Wildcards are permitted unless using a bitmask (e.g.
         1.2.3.0/24).
-
      PPaasssswwoorrdd
         The password that must be given by the client to be allowed on
         the server.
@@ -658,6 +668,7 @@
         server will require that the remote username returned by the
         ident server be the same as the one given before the ``@''.
         Wildcards are permitted.
+
         This field can be empty, it then has a special meaning.  See
         Below.
 
@@ -724,6 +735,7 @@
         port 6667.
 
         I:135.11.35.*::*.net::1
+
         Allows clients from machines which host name matches ``*.net''
         or which IP address matches ``135.11.35.*'' to connect to the
         server.  If the host name does not match ``*.net'' then the IP
@@ -843,6 +855,7 @@
         ``orion.cair.du.edu'' then you would want to enter
         ``orion.cair.du.edu''.
 
+
      PPrrooggrraamm
         This is the external program to run to know if the user is
         allowed on your server.
@@ -922,6 +935,7 @@
      PPoorrtt
         The port on which the Kill line will be effective. 0 means all
         ports.
+
      EExxaammpplleess
         K:orion.cair.du.edu::jtrim:0:
 
@@ -951,7 +965,7 @@
         This disallows all users from hosts with enddomain ``oulu.fi''
         access to your server between 8 and 12am, 2 and 7pm. Users get
         kicked off if they're already signed on when the line becomes
-        active (they'll get a warning 5 minutes ago).
+        active (they'll get a warning 5 minutes before).
 
         K:192.11.35.*::*:0:
 
@@ -1040,7 +1054,6 @@
         it.  If you were connecting to nic.funet.fi you would receive
         ``nic.funet.fi'' and that is what you should place in this
         field.
-
      TTAARRGGEETT PPOORRTT
         The INTERNET Port that you want to connect to on the TARGET
         machine. Most of the time this will be set to ``6667''.  If this
@@ -1120,6 +1133,7 @@
      This line says: expect a connection from host ``garfield.mit.edu'',
      and expect a login password of ``golden'', and expect the host to
      identify itself as ``garfield.mit.edu''.
+
      N:18.72.0.252::garfield.mit.edu::
 
      This line says: expect a Connection from host ``18.72.0.252'', and
@@ -1186,6 +1200,9 @@
         I advice you to not to use wildcard servers before you know for
         sure how they are used, they are mostly beneficial for backbones
         of countries and other large areas with common domain.
+
+
+
   44..1100..  DDeennyy aauuttoo--ccoonnnneeccttiioonnss
 
 
@@ -1230,6 +1247,9 @@
         Do now auto-connect to ``eff.org'', or any server in class ``3''
         if a server defined to be in class ``2'' is currently present on
         the network.
+
+
+
 
 
   44..1111..  HHuubb ccoonnnneeccttiioonnss
@@ -1317,7 +1337,6 @@
         is empty, it acts the same as if it were a single * (ie matches
         everything).
 
-
      SSeerrvveerr NNaammee
         The name of the server connected to you that for which you want
         to enforce leaf-like attributes upon.
@@ -1348,40 +1367,54 @@
 
 
      VVeerrssiioonn MMaasskk
-        The matching version strings will be rejected.
+        The matching version number strings will be rejected.
 
      FFllaaggss
-        This field should contained flags as defined in ircd/s_debug.c
-
-        These flags show up in RPL_VERSION.
-
-        If any of the flags present in this field are found in the
-        RPL_VERSION of a server, this server will be denied connection.
-        This must be used with care.
+        The matching version flags strings will be rejected.
 
      SSeerrvveerr MMaasskk
         This field is used to match server names.  The V line will be
         used for servers matching the mask given in this field.
 
+     SSeerrvveerr TTyyppee
+        Both the VVeerrssiioonn MMaasskk and the FFllaaggss should be prefixed with the
+        server type identification.  This implementation uses the id
+        ``IIRRCC'' (starting with version 2.10).
+
      EExxaammpplleess
-        V:020901*::*::
+        V:IRC/021001*::*::
 
-        Disallows any server which version is 2.9.1* to connect.
+        Disallows any ``IRC'' server which version is 2.10.1* to
+        connect.
 
-        V:020901*:D:*::
+        V:IRC/021001*:IRC/*D*:*::
 
-        Disallows any server which version is 2.9.1* or which has been
-        compiled with DEBUGMODE defined to connect.
+        Disallows any ``IRC'' server which version is 2.10.1* or which
+        has been compiled with DEBUGMODE defined to connect.
+
+        V:*/0209*::*::
+
+        Disallows any server using the 2.9 protocol to connect.
 
      NNoottee
         It is possible to have and use multiple V-lines for the one
         server mask.
 
-        V:020901:*:*::
+        V:IRC/021001*:*:*::
 
-        V:020902:*:*::
+        V:IRC/021002*:*:*::
 
         is allowed.
+
+     PPrroottooccooll VVeerrssiioonn
+        Only the 4 first digit of the VVeerrssiioonn NNuummbbeerr are standard: they
+        define the protocol version.  The remaining of the string is
+        implementation dependant; matches on this part should be used
+        with particular identification.
+
+     FFllaaggss
+        are not standard.  Therefore, this field sshhoouulldd aallwwaayyss contain a
+        specific identification.
 
 
   44..1144..  EExxcclluuddeedd mmaacchhiinneess
@@ -1449,7 +1482,6 @@
      CCllaassss
         The class field should refer to an existing class.
 
-
      NNootteess
         A service is not a very useful sort of client, it cannot join
         channels or issue certain commands although most are available
@@ -1514,8 +1546,6 @@
         secondary server.
 
 
-
-
   44..1177..  DDeeffaauulltt llooccaall sseerrvveerr ((ffoorr llooccaall cclliieennttss)) **OOBBSSOOLLEETTEEDD**
 
 
@@ -1552,7 +1582,15 @@
         ``ssuubbssccrriibbee iirrccdd--uusseerrss'' in the body.
 
         If you just have a question and don't want to subscribe to the
-        list, mail to ircd-users@stealth.net
+        list, mail to ircd-users@stealth.net.  Be sure to indicate which
+        version you are using.
+
+     DDeevveellooppmmeenntt
+        Technical discussions and development are carried on ircd-
+        dev@stealth.net.  People interested in very early testing,
+        and/or working on the source code are welcome.  This is done by
+        sending an email to majordomo@stealth.net, with ``ssuubbssccrriibbee
+        iirrccdd--ddeevv'' in the body.
 
      FFAAQQ
         It can be found on the WWW, at
@@ -1563,16 +1601,44 @@
         servers on the WWW:  <http://www.irc.org/~irc/server/>.
 
 
+  66..  RReeppoorrttiinngg aa bbuugg
+
+  If you encounter a bug in the software, here is how and where to
+  report it.
 
 
+  66..11..  HHooww ttoo rreeppoorrtt aa bbuugg
+
+  To save everyone time, make sure that your e-mail contains all the
+  information related to your problem.  In particular, we need to know:
+
+     PPaacckkaaggee vveerrssiioonn
+        The IRC software version you are using: please include the
+        output obtained by running ``irc -v'' for the client, and/or
+        ``ircd -v'' for the server.
+
+        Also, let us know if you have applied any patch to the package
+        or if it is the vanilla version.
+
+     OOSS Please, indicate which OS version you are running.
+
+     CCoonnffiigguurraattiioonn
+        If it is related to a configuration problem with the server,
+        include the relevant parts of the configuration file.
+
+     BBaacckkttrraaccee
+        If the bug results in a crash, please include the backtrace.
+        (This can be done, for example, by running ``gdb'' on the core
+        file, and typing ``where'').
+
+     FFiixx
+        If you have a fix, don't forget to include it.
 
 
+  66..22..  WWhheerree ttoo sseenndd aa bbuugg rreeppoorrtt
 
-
-
-
-
-
+  Reports should be sent to ircd-bugs@stealth.net.  Your report will be
+  reviewed and forwarded to the appropriate mailing list.
 
 
 

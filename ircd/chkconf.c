@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: chkconf.c,v 1.5 1997/11/13 02:02:07 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: chkconf.c,v 1.9 1998/09/23 13:09:22 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -28,6 +28,7 @@ static  char rcsid[] = "@(#)$Id: chkconf.c,v 1.5 1997/11/13 02:02:07 kalt Exp $"
 #undef CHKCONF_C
 
 #define MyMalloc(x)     malloc(x)
+#define MyFree(x)       free(x)
 
 static	void	new_class();
 static	char	*getfield(), confchar ();
@@ -466,6 +467,16 @@ int	opt;
 					toupper(confchar(aconf->status)));
 			else
 				flags |= aconf->status;
+		    }
+
+		if (aconf->status & CONF_VER)
+		    {
+			if (*aconf->host && !index(aconf->host, '/'))
+				(void)fprintf(stderr,
+					      "\tWARNING: No / in V line.");
+			else if (*aconf->passwd && !index(aconf->passwd, '/'))
+				(void)fprintf(stderr,
+					      "\tWARNING: No / in V line.");
 		    }
 print_confline:
 		if (debugflag > 8)

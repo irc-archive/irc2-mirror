@@ -24,7 +24,7 @@
 #undef RES_C
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: res.c,v 1.12 1997/10/13 17:37:11 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: res.c,v 1.16 1998/09/09 22:36:18 kalt Exp $";
 #endif
 
 #undef	DEBUG	/* because there is a lot of debug code in here :-) */
@@ -233,9 +233,12 @@ time_t	now;
 				switch (rptr->cinfo.flags)
 				    {
 				case ASYNC_CLIENT :
+#if defined(USE_IAUTH)
+					sendto_iauth("%d d", cptr->fd);
+#endif
 					ClearDNS(cptr);
-					if (!DoingAuth(cptr))
-						SetAccess(cptr);
+					if (!DoingAuth(cptr))	/* XAuth? */
+						SetAccess(cptr); /* unused */
 					break;
 				case ASYNC_CONNECT :
 					sendto_flag(SCH_ERROR,
@@ -374,7 +377,7 @@ Reg	ResRQ	*rptr;
 	char	hname[HOSTLEN+1];
 	int	len;
 
-	(void)strncpy(hname, name, sizeof(hname) - 1);
+	strncpyzt(hname, name, sizeof(hname));
 	len = strlen(hname);
 
 	if (rptr && !index(hname, '.') && ircd_res.options & RES_DEFNAMES)

@@ -407,6 +407,9 @@ if test $irc_cv_select_poll = poll; then
   AC_DEFINE(USE_POLL)
 else
   AC_MSG_RESULT(select)
+  if test $ac_cv_func_poll = yes; then
+    AC_MSG_WARN([poll() seems to exist on your system, edit setup.h to use it.])
+  fi
 fi
 ])
 
@@ -645,24 +648,16 @@ fi
 AC_DEFUN(IRC_PATH_RESCONF,
 [AC_MSG_CHECKING([for resolver configuration file])
 AC_CACHE_VAL(irc_cv_path_resconf,
-[no_resconf=yes
-for irc_file in `test -z "$irc_resconf" || echo "$irc_resconf"` \
-                /etc/resolv.conf; \
-  do
-    if test -r "$irc_file"; then
-      no_resconf=
-      irc_cv_path_resconf="$irc_file"
-      break
-    fi
-  done
+[if test -z "$irc_resconf"; then
+   irc_cv_path_resconf="/etc/resolv.conf";
+ else
+   irc_cv_path_resconf="$irc_resconf";
+ fi
 ])
-if test "$no_resconf" = yes; then
-  AC_MSG_RESULT(not found... falling back on default (/etc/resolv.conf))
-  AC_MSG_WARN([without resolver configuration file, the server won't work.])
-  AC_DEFINE(IRC_RESCONF, "/etc/resolv.conf")
-else
-  AC_MSG_RESULT($irc_cv_path_resconf)
-  AC_DEFINE_UNQUOTED(IRC_RESCONF, "$irc_cv_path_resconf")
+AC_MSG_RESULT($irc_cv_path_resconf)
+AC_DEFINE_UNQUOTED(IRC_RESCONF, "$irc_cv_path_resconf")
+if test ! -r "$irc_cv_path_resconf"; then
+  AC_MSG_WARN([Unable to read \"$irc_cv_path_resconf\"! Without resolver configuration file, the server won't work.])
 fi
 ])
 
@@ -757,6 +752,7 @@ includedir='${prefix}/include'
 oldincludedir='/usr/include'
 infodir='${prefix}/info'
 mandir='${prefix}/man'
+logdir=''
 
 # Initialize some other variables.
 subdirs=
@@ -878,6 +874,7 @@ Directory and file names:
   --libdir=DIR            object code libraries in DIR [EPREFIX/lib]
   --includedir=DIR        C header files in DIR [PREFIX/include]
   --oldincludedir=DIR     C header files for non-gcc in DIR [/usr/include]
+  --logdir=DIR            log files in DIR [PREFIX/logs]
   --infodir=DIR           info documentation in DIR [PREFIX/info]
   --mandir=DIR            man documentation in DIR [PREFIX/man]
   --srcdir=DIR            find the sources in DIR [configure dir or ..]
@@ -944,6 +941,11 @@ EOF
   | --localstate=* | --localstat=* | --localsta=* | --localst=* \
   | --locals=* | --local=* | --loca=* | --loc=* | --lo=*)
     localstatedir="$ac_optarg" ;;
+
+  -logdir | --logdir | --logdi | --logd)
+    ac_prev=logdir ;;
+  -logdir=* | --logdir=* | --logdi=* | --logd=*)
+    logdir="$ac_optarg/" ;;
 
   -mandir | --mandir | --mandi | --mand | --man | --ma | --m)
     ac_prev=mandir ;;
@@ -1132,6 +1134,8 @@ done
 if test -n "$ac_prev"; then
   AC_MSG_ERROR(missing argument to --`echo $ac_prev | sed 's/_/-/g'`)
 fi
+
+AC_SUBST(logdir)
 ])
 
 
@@ -1313,7 +1317,7 @@ dnl ----
 dnl main
 dnl ----
 
-AC_REVISION([$Id: configure.in,v 1.19 1998/02/17 20:27:47 kalt Exp $])
+AC_REVISION([$Id: configure.in,v 1.25 1998/09/24 17:34:48 kalt Exp $])
 AC_PREREQ(1.12)
 IRC_INIT(../ircd/ircd.c)
 AC_CONFIG_HEADER(setup.h:../support/setup.h.in)
@@ -1374,7 +1378,7 @@ IRC_CURSES_TERMCAP
 AC_FUNC_SETPGRP
 AC_FUNC_SETVBUF_REVERSED
 AC_FUNC_VFORK
-AC_CHECK_FUNCS(setpgrp strchr strrchr memcmp memset memmove memcpy index rindex bcmp bcopy bzero select inet_ntoa inet_aton inet_addr inet_netof getrusage times strerror strtoken strtok sigaction sigset truncate)
+AC_CHECK_FUNCS(setpgrp strchr strrchr memcmp memset memmove memcpy index rindex bcmp bcopy bzero select inet_ntoa inet_aton inet_addr inet_netof getrusage times strerror strtoken strtok sigaction sigset truncate poll)
 dnl ---
 dnl Note: additional tests should be performed and used inside the source code
 dnl       for the following functions:
@@ -1389,5 +1393,5 @@ IRC_STDARG
 IRC_PATH_RESCONF
 IRC_ALPHA_BETA
 
-AC_OUTPUT(Makefile:../support/Makefile.in version.c.SH:../ircd/version.c.SH.in sums:../ircd/crypt/sums.in)
+AC_OUTPUT(Makefile:../support/Makefile.in version.c.SH:../ircd/version.c.SH.in sums:../support/sums.in config.h:../support/config.h.dist tkconf.h:../support/tkconf.h.dist)
 AC_OUTPUT_COMMANDS(chmod a+x version.c.SH)

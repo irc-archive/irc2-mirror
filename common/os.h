@@ -212,7 +212,8 @@
 # include <netinfo/ni.h>
 #endif
 
-#if USE_ZLIB && !defined(CLIENT_COMPILE) && !defined(CHKCONF_COMPILE)
+#if USE_ZLIB && !defined(CLIENT_COMPILE) && !defined(CHKCONF_COMPILE) && \
+	!defined(CONTRIB_COMPILE)
 # include <zlib.h>
 #endif
 
@@ -489,18 +490,10 @@ extern char *inet_ntoa __P((struct in_addr in));
 # undef IP_OPTIONS  /* Defined in /usr/include/netinet/in.h but doesn't work */
 #endif
 
-/*  h_errno portability problems.
- */
-
-#ifdef _WIN32
-extern int w32_h_errno;  /* The "normal" h_errno is read only */
-#define h_errno w32_h_errno
-#endif
-
 /*  setlinebuf portability problems.
  */
 
-#if defined(HPUX) && !defined(SYSV) && !defined(SVR4) || defined(_WIN32)
+#if defined(HPUX) && !defined(SYSV) && !defined(SVR4) || defined(__CYGWIN32__)
 # define setlinebuf(x) (setvbuf((x), NULL, _IOLBF, BUFSIZ))
 #endif
 
@@ -549,6 +542,12 @@ extern struct hostent *_switch_gethostbyname_r __P((const char *name,
 # define getrusage(a,b) (syscall(SYS_GETRUSAGE, (a), (b)))
 # define HAVE_GETRUSAGE 1
 #endif
+
+/* linux 2.0.x has poll(), compiling works, but things don't run well
+#if defined(HAVE_POLL)
+# define USE_POLL 1
+#endif
+*/
 
 /*  select portability problems - some systems do not define FD_... macros; on
  *  some systems (for example HPUX), select uses an int * instead of an

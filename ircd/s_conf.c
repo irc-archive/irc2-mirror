@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.27 1998/02/10 23:19:01 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.35 1998/09/22 11:26:57 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -89,13 +89,16 @@ aClient *cptr;
 {
         int i1, i2, i3, i4, m;
         u_long lmask, baseip;
+	char *at;
  
+	if (at = index(mask, '@'))
+		mask = at + 1;
         if (sscanf(mask, "%d.%d.%d.%d/%d", &i1, &i2, &i3, &i4, &m) != 5 ||
            m < 1 || m > 31) {
                sendto_flag(SCH_LOCAL, "Ignoring bad mask: %s", mask);
                 return -1;
         }
-        lmask = htonl(0xfffffffful << (32 - m)); /* /24 -> 0xffffff00ul */
+        lmask = htonl((u_long)0xffffffffL << (32 - m)); /* /24->0xffffff00ul */
         baseip = htonl(i1 * 0x1000000 + i2 * 0x10000 + i3 * 0x100 + i4);
         return ((cptr->ip.s_addr & lmask) == baseip) ? 0 : 1;
 }
@@ -127,8 +130,8 @@ char	*sockhost;
 			for (i = 0, hname = hp->h_name; hname;
 			     hname = hp->h_aliases[i++])
 			    {
-				(void)strncpy(fullname, hname,
-					sizeof(fullname)-1);
+				strncpyzt(fullname, hname,
+					sizeof(fullname));
 				add_local_domain(fullname,
 						 HOSTLEN - strlen(fullname));
 				Debug((DEBUG_DNS, "a_il: %s->%s",
@@ -166,8 +169,6 @@ char	*sockhost;
 			add_local_domain(uhost, sizeof(uhost) - strlen(uhost));
 		    }
 attach_iline:
-		if (index(uhost, '@'))
-			cptr->flags |= FLAGS_DOID;
 		if (aconf->status & CONF_RCLIENT)
 			SetRestricted(cptr);
 		get_sockhost(cptr, uhost);
@@ -808,7 +809,7 @@ int	opt;
 	Debug((DEBUG_DEBUG, "initconf(): ircd.conf = %s", configfile));
 	if ((fd = openconf()) == -1)
 	    {
-#ifdef	M4_PREPROC
+#if defined(M4_PREPROC) && !defined(USE_IAUTH)
 		(void)wait(0);
 #endif
 		return -1;
@@ -1125,7 +1126,10 @@ int	opt;
 		*/
 		if (aconf->status == CONF_ME)
 		    {
-			strncpyzt(me.info, aconf->name, sizeof(me.info));
+			if (me.info != DefInfo)
+				MyFree(me.info);
+			me.info = MyMalloc(REALLEN+1);
+			strncpyzt(me.info, aconf->name, REALLEN+1);
 			if (ME[0] == '\0' && aconf->host[0])
 				strncpyzt(ME, aconf->host,
 					  sizeof(ME));
@@ -1148,7 +1152,7 @@ int	opt;
 		free_conf(aconf);
 	(void)dgets(-1, NULL, 0); /* make sure buffer is at empty pos */
 	(void)close(fd);
-#ifdef	M4_PREPROC
+#if defined(M4_PREPROC) && !defined(USE_IAUTH)
 	(void)wait(0);
 #endif
 	check_class();
@@ -1296,6 +1300,8 @@ char	**comment;
 
 	if (tmp && !BadPtr(tmp->passwd))
 		*comment = tmp->passwd;
+	else
+		*comment = NULL;
 
  	return (tmp ? -1 : 0);
 }
@@ -1332,7 +1338,7 @@ int	stat;
 	for (tmp = conf; tmp; tmp = tmp->next)
  		if ((tmp->status == stat) && tmp->passwd && tmp->name &&
  		    (match(tmp->name, name) == 0) &&
-		    strpbrk(key, tmp->passwd))
+		    (match(tmp->passwd, key) == 0))
 			break;
  	return (tmp ? -1 : 0);
 }
@@ -1424,7 +1430,9 @@ aClient	*cptr;
 		(void)dgets(-1, NULL, 0); /* make sure buffer marked empty */
 		(void)close(pi[0]);
 		(void)kill(rc, SIGKILL); /* cleanup time */
+#if !defined(USE_IAUTH)
 		(void)wait(0);
+#endif
 
 		rc = 0;
 		while (*rplhold == ' ')
