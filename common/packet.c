@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: packet.c,v 1.8 1999/04/19 22:26:22 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: packet.c,v 1.8.2.2 2001/07/04 21:45:25 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -170,11 +170,13 @@ Reg	int	length;
 			** Socket is dead so exit (which always returns with
 			** FLUSH_BUFFER here).  - avalon
 			*/
-			if (cptr->flags & FLAGS_DEADSOCKET)
+			if (IsDead(cptr))
 			    {
 				if (cptr->exitc == EXITC_REG)
 					cptr->exitc = EXITC_DEAD;
 				return exit_client(cptr, cptr, &me,
+						   (cptr->exitc == EXITC_SENDQ) ?
+						   "Max SendQ exceeded" :
 						   "Dead Socket");
 			    }
 			/*

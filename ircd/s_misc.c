@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_misc.c,v 1.30.2.1 2000/01/01 18:10:25 q Exp $";
+static  char rcsid[] = "@(#)$Id: s_misc.c,v 1.30.2.4 2001/05/05 23:05:10 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -321,6 +321,10 @@ char	*name;
 			acptr->flags |= FLAGS_HIDDEN;
 			j++;
 		}
+		else
+		{
+			acptr->flags &= ~FLAGS_HIDDEN;
+		}
 	}
 	return j;
 }
@@ -359,10 +363,6 @@ char	*comment;	/* Reason for the exit */
 	Reg	aClient	*acptr;
 	Reg	aClient	*next;
 	Reg	aServer *asptr;
-	Reg	aService *asvptr;
-#if defined(FNAME_USERLOG) || defined(USE_SYSLOG) || defined(USE_SERVICES)
-	time_t	on_for;
-#endif
 	char	comment1[HOSTLEN + HOSTLEN + 2];
 	int	flags = 0;
 
@@ -381,34 +381,17 @@ char	*comment;	/* Reason for the exit */
     || (defined(USE_SYSLOG) && (defined(SYSLOG_USERS) || defined(SYSLOG_CONN)))
 		if (IsPerson(sptr))
 		    {
-			/* It's ugly, it's simple, it's not so important */
-			on_for = timeofday - sptr->firsttime + 1;
-# if defined(USE_SYSLOG) && defined(SYSLOG_USERS)
-			syslog(LOG_NOTICE,
-			       "%s (%3d:%02d:%02d): %s@%s [%s] %c\n",
-			       myctime(sptr->firsttime),
-			       on_for / 3600, (on_for % 3600)/60,
-			       on_for % 60,
-			       sptr->user->username, sptr->user->host,
-			       sptr->auth, sptr->exitc);
-# endif
-# if defined(FNAME_USERLOG) || defined(USE_SERVICES)
-			sendto_flog(sptr, NULL, on_for, sptr->user->username,
+# if defined(FNAME_USERLOG) || defined(USE_SERVICES) || \
+	(defined(USE_SYSLOG) && defined(SYSLOG_USERS))
+			sendto_flog(sptr, NULL, sptr->user->username,
 				    sptr->user->host);
 # endif
 		    }
 		else if (sptr->exitc != EXITC_REF && sptr->exitc != EXITC_AREF)
 		    {
-# if defined(USE_SYSLOG) && defined(SYSLOG_CONN)
-			syslog(LOG_NOTICE, 
-			       "%s ( Unknown ): <none>@%s [%s] %c\n",
-			       myctime(sptr->firsttime),
-			       (IsUnixSocket(sptr)) ? me.sockhost :
-			       ((sptr->hostp) ? sptr->hostp->h_name :
-				sptr->sockhost), sptr->auth, sptr->exitc);
-# endif
-# if defined(FNAME_CONNLOG) || defined(USE_SERVICES)
-			sendto_flog(sptr, " Unknown ", 0, "<none>", 
+# if defined(FNAME_CONNLOG) || defined(USE_SERVICES) || \
+	(defined(USE_SYSLOG) && defined(SYSLOG_CONN))
+			sendto_flog(sptr, " Unknown ", "<none>", 
 				    (IsUnixSocket(sptr)) ? me.sockhost :
 				    ((sptr->hostp) ? sptr->hostp->h_name :
 				     sptr->sockhost));
@@ -436,7 +419,7 @@ char	*comment;	/* Reason for the exit */
 
 		      if (sptr->auth != sptr->username)
 			  {
-			    istat.is_authmem -= sizeof(sptr->auth);
+			    istat.is_authmem -= strlen(sptr->auth) + 1;
 			    istat.is_auth -= 1;
 			    MyFree(sptr->auth);
 			    sptr->auth = sptr->username;
@@ -489,15 +472,14 @@ char	*comment;	/* Reason for the exit */
 				     && asptr->bcptr != sptr))
 					continue;
 				/*
-			        ** This version doesn't need QUITs to be
+				** This version doesn't need QUITs to be
 				** propagaged unless the remote server is
 				** hidden (by a hostmask)
 				*/
+				flags = FLAGS_SPLIT;
 				if (mark_blind_servers(NULL,
 						       asptr->bcptr->name))
-					flags |= FLAGS_SPLIT | FLAGS_HIDDEN;
-				else
-					flags |= FLAGS_SPLIT;
+					flags |= FLAGS_HIDDEN;
 				while (GotDependantClient(asptr->bcptr))
 				    {
 					acptr = asptr->bcptr->prev;
@@ -530,10 +512,9 @@ char	*comment;	/* Reason for the exit */
 		** generate QUITs locally when receiving a SQUIT
 		** check for hostmasking.
  		*/
+ 		flags = FLAGS_SPLIT;
  		if (mark_blind_servers(cptr, sptr->name))
- 			flags = FLAGS_SPLIT | FLAGS_HIDDEN;
- 		else
- 			flags = FLAGS_SPLIT;
+ 			flags |= FLAGS_HIDDEN;
 
 		if (IsServer(from))
 			/* this is a guess */

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_debug.c,v 1.28 1999/07/11 22:11:17 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_debug.c,v 1.28.2.3 2001/06/29 19:00:25 q Exp $";
 #endif
 
 #include "os.h"
@@ -179,7 +179,7 @@ void	debug(int level, char *form, ...)
 		va_start(va, form);
 		vsprintf(debugbuf, form, va);
 		va_end(va);
-		syslog(LOG_ERR, debugbuf);
+		syslog(LOG_ERR, "%s", debugbuf);
 # endif
 #endif
 	    }
@@ -200,8 +200,7 @@ void	debug(int level, char *form, ...)
 			local[2]->sendM++;
 			local[2]->sendB += strlen(debugbuf);
 		    }
-		(void)fprintf(stderr, "%s", debugbuf);
-		(void)fputc('\n', stderr);
+		(void)fprintf(stderr, "%s\n", debugbuf);
 	    }
 	errno = err;
 }
@@ -237,7 +236,7 @@ char	*nick;
 	if (getrusage(RUSAGE_SELF, &rus) == -1)
 	    {
 		sendto_one(cptr,":%s NOTICE %s :Getruseage error: %s.",
-			   me.name, nick, sys_errlist[errno]);
+			   me.name, nick, strerror(errno));
 		return;
 	    }
 	secs = rus.ru_utime.tv_sec + rus.ru_stime.tv_sec;
@@ -336,7 +335,7 @@ char	*nick;
 		   ME, RPL_STATSDEFINE, nick, LISTENQUEUE, MAXCONNECTIONS,
 		   TIMESEC, HANGONRETRYDELAY, HANGONGOODLINK, WRITEWAITDELAY,
 		   ACCEPTTIMEOUT);
-    	sendto_one(cptr, ":%s %d %s :KCTL:%d DCTL:%d LDCTL: %d CF:%d MCPU:%d",
+    	sendto_one(cptr, ":%s %d %s :KCTL:%d DCTL:%d LDCTL:%d CF:%d MCPU:%d",
 		   ME, RPL_STATSDEFINE, nick, KILLCHASETIMELIMIT,
 		   DELAYCHASETIMELIMIT, LDELAYCHASETIMELIMIT,
 		   CLIENT_FLOOD, MAXCHANNELSPERUSER);
