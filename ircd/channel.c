@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.101 1999/07/05 16:25:33 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.106 1999/07/21 22:57:39 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -809,9 +809,9 @@ aChannel *chptr;
 			    {
 				if (lp->flags & CHFL_CHANOP)
 					buf[len++] = '@';
-				else if (lp->flags & CHFL_VOICE)
-					buf[len++] = '+';
 			    }
+			if (lp->flags & CHFL_VOICE)
+				buf[len++] = '+';
 			buf[len] = '\0';
 		    }
 		(void)strcpy(buf + len, c2ptr->name);
@@ -1001,29 +1001,49 @@ char	*parv[], *mbuf, *pbuf;
 			whatt = MODE_DEL;
 			break;
 		case 'O':
-			if (*chptr->chname == '!' && parc > 0 &&
-			    IsMember(sptr, chptr))
+			if (parc > 0)
 			    {
-				*penalty += 1;
-				parc--;
-				/* Feature: no other modes after this query */
-                                *(curr+1) = '\0';
-				for (lp = chptr->members; lp; lp = lp->next)
-					if (lp->flags & CHFL_UNIQOP)
-					    {
+			if (*chptr->chname == '!')
+			    {
+			    if (IsMember(sptr, chptr))
+			        {
+					*penalty += 1;
+					parc--;
+					/* Feature: no other modes after this query */
+     	                           *(curr+1) = '\0';
+					for (lp = chptr->members; lp; lp = lp->next)
+						if (lp->flags & CHFL_UNIQOP)
+						    {
+							sendto_one(sptr,
+							   rpl_str(RPL_UNIQOPIS,
+								   sptr->name),
+								   chptr->chname,
+							   lp->value.cptr->name);
+							break;
+						    }
+					if (!lp)
 						sendto_one(sptr,
-						   rpl_str(RPL_UNIQOPIS,
-							   sptr->name),
-							   chptr->chname,
-						   lp->value.cptr->name);
+							   err_str(ERR_NOSUCHNICK,
+								   sptr->name),
+							   chptr->chname);
+					break;
+				    }
+				else /* not IsMember() */
+				    {
+					if (!IsServer(sptr))
+					    {
+						sendto_one(sptr, err_str(ERR_NOTONCHANNEL, sptr->name),
+							    chptr->chname);
+						*(curr+1) = '\0';
 						break;
 					    }
-				if (!lp)
-					sendto_one(sptr,
-						   err_str(ERR_NOSUCHNICK,
-							   sptr->name),
-						   chptr->chname);
-				break;
+				    }
+			    }
+			else /* *chptr->chname != '!' */
+				sendto_one(cptr, err_str(ERR_UNKNOWNMODE,
+					sptr->name), *curr, chptr->chname);
+					*(curr+1) = '\0';
+					break;
 			    }
 			/*
 			 * is this really ever used ?
@@ -1049,6 +1069,13 @@ char	*parv[], *mbuf, *pbuf;
 			    if (MyClient(sptr) || opcnt >= MAXMODEPARAMS + 1)
 #endif
 				break;
+			if (!IsServer(sptr) && !IsMember(sptr, chptr))
+			    {
+				sendto_one(sptr, err_str(ERR_NOTONCHANNEL,
+								 sptr->name),
+					    chptr->chname);
+				break;
+			    }
 			/*
 			 * Check for nickname changes and try to follow these
 			 * to make sure the right client is affected by the
@@ -1356,7 +1383,7 @@ char	*parv[], *mbuf, *pbuf;
 				    whatt == MODE_DEL && *chptr->chname == '!')
 					sendto_one(sptr,
 					   err_str(ERR_UNIQOPRIVSNEEDED,
-						   parv[0]), chptr->chname);
+						   sptr->name), chptr->chname);
 				else if (((*ip == MODE_ANONYMOUS &&
 					   whatt == MODE_ADD &&
 					   *chptr->chname == '#') ||
@@ -1365,7 +1392,7 @@ char	*parv[], *mbuf, *pbuf;
 					 !IsServer(sptr))
 					sendto_one(cptr,
 						   err_str(ERR_UNKNOWNMODE,
-						   parv[0]), *curr,
+						   sptr->name), *curr,
 						   chptr->chname);
 				else if ((*ip == MODE_REOP ||
 					  *ip == MODE_ANONYMOUS) &&
@@ -1375,7 +1402,7 @@ char	*parv[], *mbuf, *pbuf;
 					/* 2 modes restricted to UNIQOP */
 					sendto_one(sptr,
 					   err_str(ERR_UNIQOPRIVSNEEDED,
-						   parv[0]), chptr->chname);
+						   sptr->name), chptr->chname);
 				else
 				    {
 					/*
@@ -1442,7 +1469,14 @@ char	*parv[], *mbuf, *pbuf;
 				whatt = 1;
 			    }
 			if (ischop)
+			  {
 				mode->mode |= *ip;
+				if (*ip == MODE_ANONYMOUS && MyPerson(sptr))
+				  {
+				      sendto_channel_butone(NULL, &me, chptr, ":%s NOTICE %s :The anonymous flag is being set on channel %s.", ME, chptr->chname, chptr->chname);
+				      sendto_channel_butone(NULL, &me, chptr, ":%s NOTICE %s :Be aware that anonymity on IRC is NOT securely enforced!", ME, chptr->chname);
+				  }
+			  }
 			*mbuf++ = *(ip+1);
 		    }
 
@@ -2211,6 +2245,11 @@ char	*parv[];
 					   name, chptr->topic);
 			parv[1] = name;
 			(void)m_names(cptr, sptr, 2, parv);
+			if (IsAnonymous(chptr) && !IsQuiet(chptr))
+			    {
+				sendto_one(sptr, ":%s NOTICE %s :Channel %s has the anonymous flag set.", ME, chptr->chname, chptr->chname);
+				sendto_one(sptr, ":%s NOTICE %s :Be aware that anonymity on IRC is NOT securely enforced!", ME, chptr->chname);
+			    }
 		    }
 		/*
 	        ** notify other servers
@@ -2267,14 +2306,14 @@ char	*parv[];
 				/* actually never sends in a JOIN ^G */
 				if (*(target+2) == '+')
 				    {
-					strcpy(mbuf, "\007O");
+					strcpy(mbuf, "\007Ov");
 					chop = CHFL_UNIQOP|CHFL_CHANOP| \
 					  CHFL_VOICE;
 					name = target + 3;
 				    }
 				else
 				    {
-					strcpy(mbuf, "\007Ov");
+					strcpy(mbuf, "\007O");
 					chop = CHFL_UNIQOP|CHFL_CHANOP;
 					name = target + 2;
 				    }
@@ -2532,8 +2571,12 @@ char	*parv[];
 			continue;
 		if (!IsServer(sptr) && !is_chan_op(sptr, chptr))
 		    {
-			sendto_one(sptr, err_str(ERR_CHANOPRIVSNEEDED,
-				   parv[0]), chptr->chname);
+			if (!IsMember(sptr, chptr))
+				sendto_one(sptr, err_str(ERR_NOTONCHANNEL,
+					    parv[0]), chptr->chname);
+			else
+				sendto_one(sptr, err_str(ERR_CHANOPRIVSNEEDED,
+					    parv[0]), chptr->chname);
 			continue;
 		    }
 		if (len + mlen + strlen(name) < (size_t) BUFSIZE / 2)
@@ -2711,7 +2754,7 @@ int	m_invite(cptr, sptr, parc, parv)
 aClient *cptr, *sptr;
 int	parc;
 char	*parv[];
-    {
+{
 	aClient *acptr;
 	aChannel *chptr;
 
@@ -2732,15 +2775,25 @@ char	*parv[];
 		return 1;
 	if (*parv[2] == '&' && !MyClient(acptr))
 		return 1;
-	if (!(chptr = find_channel(parv[2], NullChn)))
-	    {
+	chptr = find_channel(parv[2], NullChn);
 
+	if (!chptr)
+	    {
 		sendto_prefix_one(acptr, sptr, ":%s INVITE %s :%s",
 				  parv[0], parv[1], parv[2]);
+		if (MyConnect(sptr))
+		    {
+        	        sendto_one(sptr, rpl_str(RPL_INVITING, parv[0]),
+	                           acptr->name, parv[2]);
+			if (acptr->user->flags & FLAGS_AWAY)
+				sendto_one(sptr, rpl_str(RPL_AWAY, parv[0]),
+					   acptr->name, (acptr->user->away) ? 
+					   acptr->user->away : "Gone");
+		    }
 		return 3;
 	    }
 
-	if (chptr && !IsMember(sptr, chptr))
+	if (!IsMember(sptr, chptr))
 	    {
 		sendto_one(sptr, err_str(ERR_NOTONCHANNEL, parv[0]), parv[2]);
 		return 1;
@@ -2752,21 +2805,12 @@ char	*parv[];
 			   parv[1], parv[2]);
 		return 1;
 	    }
-	if (chptr && (chptr->mode.mode & MODE_INVITEONLY))
+
+	if ((chptr->mode.mode & MODE_INVITEONLY) &&  !is_chan_op(sptr, chptr))
 	    {
-		if (!is_chan_op(sptr, chptr))
-		    {
-			sendto_one(sptr, err_str(ERR_CHANOPRIVSNEEDED,
-				   parv[0]), chptr->chname);
-			return 1;
-		    }
-		else if (!IsMember(sptr, chptr))
-		    {
-			sendto_one(sptr, err_str(ERR_CHANOPRIVSNEEDED,
-				   parv[0]),
-				   ((chptr) ? (chptr->chname) : parv[2]));
-			return 1;
-		    }
+		sendto_one(sptr, err_str(ERR_CHANOPRIVSNEEDED,
+			   parv[0]), chptr->chname);
+		return 1;
 	    }
 
 	if (MyConnect(sptr))
@@ -2779,14 +2823,16 @@ char	*parv[];
 				   (acptr->user->away) ? acptr->user->away :
 				   "Gone");
 	    }
+
 	if (MyConnect(acptr))
 		if (chptr && /* (chptr->mode.mode & MODE_INVITEONLY) && */
 		    sptr->user && is_chan_op(sptr, chptr))
 			add_invite(acptr, chptr);
+
 	sendto_prefix_one(acptr, sptr, ":%s INVITE %s :%s",parv[0],
 			  acptr->name, ((chptr) ? (chptr->chname) : parv[2]));
 	return 2;
-    }
+}
 
 
 /*
