@@ -1,3 +1,62 @@
+2.11.0b16
+
+2004-11-03  Piotr Kucharski
+
+	* hash.c/bigger_hash_table(): fix serverTable grow bug.
+	* channel.c/send_mode_list(), send_channel_modes(): use sid, not ME,
+	  where appropriate.
+	* ircd.c/setup_me(): set ourself SV_UID.
+
+2004-11-02  Piotr Kucharski
+
+	* s_conf.c/m_tkline(), config.h.dist: TKLINE_MAXTIME define.
+	* s_serv.c/m_stats(), config.h.dist: DISABLE_STATSTKLINE define.
+	* s_conf.c/m_tkline(): show tkline reason in notice.
+	* send.c/svchans[], struct_def.h, channel.c/setup_server_channels():
+	  added &OPER server channel.
+	* s_serv.c/can_join(): make &OPER server channel oper only.
+	* s_conf.c/do_tkline(): send TKLINE notices to &OPER.
+	* res.c/get_res(): do not show nameserver IP in error message.
+	* s_user.c, s_user_ext.h: new function send_away() (idea from fiction).
+	* channel.c/m_invite(), s_user.c/m_message(): use send_away().
+	* config.h.dist: AWAY_MOREINFO define.
+	* hash.c: add guardians for possible loops in hashes.
+	* s_conf.c/wdhms2sec(): !input there should be.
+	* a_conf.c/conf_read(): fix negation for ip masks.
+
+2004-11-01  Piotr Kucharski
+
+	* Makefile.in: config file define for tkserv (not always ircd.conf).
+	* tkconf.h.dist: use ".bak" suffix for config file backup.
+	* s_conf.c/do_tkline(): show notice only if there were more than four
+	  hits for a tkline.
+	* Makefile.in: introduce IRCDCONF_DIR for chkconf and s_conf.o pointing
+	  to dir where ircd.conf is located.
+	* chkconf.c/showconf(), config_read.c/config_read(),config_error(): use
+	  IRCDCONF_DIR instead of extracting it from IRCDCONF_PATH.
+	* tkserv.c: use IRCDCONF_DELIMITER (from fiction).
+	* tkserv.c/main(): updated registration for ircd 2.11.
+	* s_conf.c: new function wdhms2sec() allowing to use 1w2d3h4m5s format
+	  in tkline commands. Default (only number) is minutes.
+
+2004-10-30  Piotr Kucharski
+
+	* s_bsd.c/check_client(): nullify cptr->hostp when IP mismatch, so
+	  "Unauthorized" shows IP, not an incorrect hostname (from fiction).
+	* channel.c/m_topic(): simplified a bit.
+
+2004-10-29  Piotr Kucharski
+
+	* res.c/proc_answer(): allow any char in CNAME to allow RFC2317 reverse
+	  delegation.
+
+2004-10-27  Piotr Kucharski
+
+	* match.c/match(): return NOMATCH for null masks too.
+	* chkconf.c/initconf(): updated I-line flags, added O-line flags.
+	* s_serv.c: change name of dump_sid_map to dump_map_sid.
+	* s_serv.c/dump_map*(): add "mask" parameter to limit output.
+
 2.11.0b15
 
 2004-10-26  Piotr Kucharski

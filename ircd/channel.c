@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.233 2004/10/06 20:15:06 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.237 2004/11/03 14:07:45 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -698,6 +698,10 @@ void	setup_server_channels(aClient *mp)
 	add_user_to_channel(chptr, mp, CHFL_CHANOP);
 	chptr->mode.mode = smode|MODE_SECRET|MODE_INVITEONLY;
 #endif
+	chptr = get_channel(mp, "&OPER", CREATE);
+	strcpy(chptr->topic, "SERVER MESSAGES: for your trusted eyes only");
+	add_user_to_channel(chptr, mp, CHFL_CHANOP);
+	chptr->mode.mode = smode|MODE_SECRET|MODE_INVITEONLY;
 
 	setup_svchans();
 }
@@ -804,7 +808,8 @@ static	void	send_mode_list(aClient *cptr, char *chname, Link *top,
 			** or long enough that they filled up parabuf
 			*/
 			sendto_one(cptr, ":%s MODE %s %s %s",
-				   ME, chname, modebuf, parabuf);
+				ST_UID(cptr) ? me.serv->sid : ME,
+				chname, modebuf, parabuf);
 			send = 0;
 			*parabuf = '\0';
 			cp = modebuf;
@@ -835,6 +840,7 @@ static	void	send_mode_list(aClient *cptr, char *chname, Link *top,
  */
 void	send_channel_modes(aClient *cptr, aChannel *chptr)
 {
+	char	*me2 = ST_UID(cptr) ? me.serv->sid : ME;
 
 	if (check_channelmask(&me, cptr, chptr->chname))
 		return;
@@ -845,7 +851,7 @@ void	send_channel_modes(aClient *cptr, aChannel *chptr)
 	if (modebuf[1] || *parabuf)
 	{
 		sendto_one(cptr, ":%s MODE %s %s %s",
-			ME, chptr->chname, modebuf, parabuf);
+			me2, chptr->chname, modebuf, parabuf);
 	}
 
 	*parabuf = '\0';
@@ -864,7 +870,7 @@ void	send_channel_modes(aClient *cptr, aChannel *chptr)
 			** clearing these buffers before using them
 			** for R lists, so new/old modes don't mix */
 			sendto_one(cptr, ":%s MODE %s %s %s",
-				ME, chptr->chname, modebuf, parabuf);
+				me2, chptr->chname, modebuf, parabuf);
 			*parabuf = '\0';
 			*modebuf = '+';
 			modebuf[1] = '\0';
@@ -876,7 +882,7 @@ void	send_channel_modes(aClient *cptr, aChannel *chptr)
 	{
 		/* complete sending, if anything left in buffers */
 		sendto_one(cptr, ":%s MODE %s %s %s",
-			ME, chptr->chname, modebuf, parabuf);
+			me2, chptr->chname, modebuf, parabuf);
 	}
 }
 
@@ -1884,6 +1890,9 @@ static	int	can_join(aClient *sptr, aChannel *chptr, char *key)
 		&& is_allowed(sptr, ACL_CLIENTS))
 		return 0;
 #endif
+	if (*chptr->chname == '&' && !strcmp(chptr->chname, "&OPER")
+		&& IsAnOper(sptr))
+		return 0;
 
 	for (lp = sptr->user->invited; lp; lp = lp->next)
 		if (lp->chptr == chptr)
@@ -3132,45 +3141,52 @@ int	m_topic(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	parv[1] = canonize(parv[1]);
 
 	for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
-	    {
-		if (!UseModes(name))
-		    {
-			sendto_one(sptr, replies[ERR_NOCHANMODES], ME, BadTo(parv[0]),
-				   name);
+	{
+		if (!IsChannelName(name))
+		{
+			sendto_one(sptr, replies[ERR_NOTONCHANNEL], ME,
+				parv[0], name);
 			continue;
-		    }
+		}
+		if (!UseModes(name))
+		{
+			sendto_one(sptr, replies[ERR_NOCHANMODES], ME, 
+				parv[0], name);
+			continue;
+		}
 		convert_scandinavian(name, cptr);
-		if (parc > 1 && IsChannelName(name))
-		    {
-			chptr = find_channel(name, NullChn);
-			if (!chptr || !IsMember(sptr, chptr))
-			    {
-				sendto_one(sptr, replies[ERR_NOTONCHANNEL],
-					   ME, BadTo(parv[0]), name);
-				continue;
-			    }
-			if (parc > 2)
-				topic = parv[2];
-		    }
-
+		chptr = find_channel(name, NullChn);
 		if (!chptr)
-		    {
-			sendto_one(sptr, replies[RPL_NOTOPIC], ME, BadTo(parv[0]), name);
+		{
+			sendto_one(sptr, replies[ERR_NOSUCHCHANNEL], ME,
+				parv[0], name);
 			return penalty;
-		    }
+		}
+		if (!IsMember(sptr, chptr))
+		{
+			sendto_one(sptr, replies[ERR_NOTONCHANNEL], ME,
+				parv[0], name);
+			continue;
+		}
 
+		/* should never be true at this point --B. */
 		if (check_channelmask(sptr, cptr, name))
 			continue;
 	
+		if (parc > 2)
+			topic = parv[2];
+
 		if (!topic)  /* only asking  for topic  */
-		    {
+		{
 			if (chptr->topic[0] == '\0')
-				sendto_one(sptr, replies[RPL_NOTOPIC], ME, BadTo(parv[0]),
-					   chptr->chname);
+			{
+				sendto_one(sptr, replies[RPL_NOTOPIC], ME,
+					parv[0], chptr->chname);
+			}
 			else
 			{
-				sendto_one(sptr, replies[RPL_TOPIC], ME, BadTo(parv[0]),
-					   chptr->chname, chptr->topic);
+				sendto_one(sptr, replies[RPL_TOPIC], ME,
+					parv[0], chptr->chname, chptr->topic);
 #ifdef TOPIC_WHO_TIME
 				if (chptr->topic_t > 0)
 				sendto_one(sptr, replies[RPL_TOPIC_WHO_TIME],
@@ -3180,10 +3196,10 @@ int	m_topic(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					chptr->topic_nuh, chptr->topic_t);
 #endif
 			}
-		    } 
+		}
 		else if ((chptr->mode.mode & MODE_TOPICLIMIT) == 0 ||
 			 is_chan_op(sptr, chptr))
-		    {	/* setting a topic */
+		{	/* setting a topic */
 			strncpyzt(chptr->topic, topic, sizeof(chptr->topic));
 #ifdef TOPIC_WHO_TIME
 			sprintf(chptr->topic_nuh, "%s!%s@%s", sptr->name,
@@ -3203,11 +3219,11 @@ int	m_topic(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					      chptr->topic);
 #endif
 			penalty += 2;
-		    }
+		}
 		else
 		      sendto_one(sptr, replies[ERR_CHANOPRIVSNEEDED], ME, BadTo(parv[0]),
 				 chptr->chname);
-	    }
+	}
 	return penalty;
 }
 
@@ -3249,9 +3265,7 @@ int	m_invite(aClient *cptr, aClient *sptr, int parc, char *parv[])
         	        sendto_one(sptr, replies[RPL_INVITING], ME, BadTo(parv[0]),
 	                           acptr->name, parv[2]);
 			if (acptr->user->flags & FLAGS_AWAY)
-				sendto_one(sptr, replies[RPL_AWAY], ME, BadTo(parv[0]),
-					   acptr->name, (acptr->user->away) ? 
-					   acptr->user->away : "Gone");
+					send_away(sptr, acptr);
 		    }
 		return 3;
 	    }
@@ -3281,10 +3295,7 @@ int	m_invite(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		sendto_one(sptr, replies[RPL_INVITING], ME, BadTo(parv[0]),
 			   acptr->name, ((chptr) ? (chptr->chname) : parv[2]));
 		if (acptr->user->flags & FLAGS_AWAY)
-			sendto_one(sptr, replies[RPL_AWAY], ME, BadTo(parv[0]),
-				   acptr->name,
-				   (acptr->user->away) ? acptr->user->away :
-				   "Gone");
+			send_away(sptr, acptr);
 	    }
 
 	if (MyConnect(acptr))

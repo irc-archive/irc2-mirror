@@ -24,7 +24,7 @@
 #undef RES_C
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: res.c,v 1.40 2004/10/01 20:22:14 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: res.c,v 1.42 2004/11/02 16:32:01 chopin Exp $";
 #endif
 
 /* because there is a lot of debug code in here :-) */
@@ -795,8 +795,13 @@ static	int	proc_answer(ResRQ *rptr, HEADER *hptr, char *buf, char *eob)
 				return -1;
 			    }
 			Debug((DEBUG_INFO,"got cname %s",hostbuf));
+#if 0
+			/* This is overcautious (we do not use CNAME in any
+			   other way than follow it to get the PTR) and breaks
+			   RFC2317 (we do not allow '/' in PTRs). */
 			if (bad_hostname(hostbuf, len))
 				return -1; /* a break would be enough here */
+#endif
 			if (alias >= &(hp->h_aliases[MAXALIASES-1]))
 				break;
 			/* if we already have this alias as hostname,
@@ -932,17 +937,14 @@ struct	hostent	*get_res(char *lp)
 	    }
 	a = proc_answer(rptr, hptr, buf, buf+rc);
 	if (a == -1) {
+		sprintf(buffer, "Bad hostname returned for %s",
 #ifdef	INET6
-		sprintf(buffer, "Bad hostname returned from %s for %s",
-			inetntop(AF_INET6, &sin.sin6_addr, mydummy2, 
-				MYDUMMY_SIZE),
 			inetntop(AF_INET6, rptr->he.h_addr.s6_addr,
-				mydummy, MYDUMMY_SIZE));
+				mydummy, MYDUMMY_SIZE)
 #else
-		sprintf(buffer, "Bad hostname returned from %s for ", 
-			inetntoa((char *)&sin.sin_addr));
-		strcat(buffer, inetntoa((char *)&rptr->he.h_addr));
+			inetntoa((char *)&rptr->he.h_addr)
 #endif
+		);
 		sendto_flag(SCH_ERROR, "%s", buffer);
 		Debug((DEBUG_DNS, "%s", buffer));
 	}

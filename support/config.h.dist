@@ -108,6 +108,9 @@
  */
 #define TKLINE
 
+/* If you want tklines to be limited in time, define this (seconds). */
+/* #define TKLINE_MAXTIME 86400 */
+
 /* 
  * Operator rights can be precisely defined in O:line flags. However
  * if you undefine any of the following, it will make given function
@@ -415,9 +418,11 @@
 
 /*
 ** Bitmask defining type of information sent to &CLIENTS, combine from
-** CCL_CONN, CCL_CONNINFO, CCL_QUIT, CCL_QUITINFO, CCL_NICK
+** CCL_CONN (client uid, nick, username, host and IP), CCL_CONNINFO
+** (also user info), CCL_QUIT (client uid, nick, username, host and IP),
+** CCL_QUITINFO (also quit reason), CCL_NICK (all nick changes).
 */
-#define CLIENTS_CHANNEL_LEVEL (CCL_CONN|CCL_QUIT)
+/* #define CLIENTS_CHANNEL_LEVEL (CCL_CONN|CCL_QUIT) */
 
 /*
 ** This adds ability to ban users with specified realnames from
@@ -444,7 +449,13 @@
 ** do not want to show it at all), define this.
 ** Note that operators will get list of K anyway.
 */
-/* #undef TXT_NOSTATSK "Please use http://example.org/klines instead" */
+/* #define TXT_NOSTATSK "Please use http://example.org/klines instead" */
+
+/*
+** If you don't want non-oper clients to see tkline list (like when you run
+** some service which automatically tklines open proxies), define this.
+*/
+/* #undef DISABLE_STATSTKLINE */
 
 /*
 ** If you have problems with two servers autoconnecting to each other
@@ -537,6 +548,12 @@
 ** required by some European countries laws.
 */
 #undef MOTD_UNREG
+
+/*
+** For standard "Gone" away reply for remote clients, undefine this.
+** Leave defined for more helpful message.
+*/
+#define AWAY_MOREINFO
 
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /* You shouldn't change anything below this line, unless absolutely needed. */
@@ -783,4 +800,8 @@
 
 #if !defined(HELLO_MSG)
 #error HELLO_MSG must be defined
+#endif
+
+#if defined(TKLINE_MAXTIME) && (TKLINE_MAXTIME + 0) == 0
+#undef TKLINE_MAXTIME
 #endif

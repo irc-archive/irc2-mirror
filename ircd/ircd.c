@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.148 2004/10/26 19:17:08 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.150 2004/11/03 17:40:00 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -699,6 +699,7 @@ static	void	setup_me(aClient *mp)
 	mp->user->flags |= FLAGS_OPER;
 	mp->serv->up = mp;
 	mp->serv->maskedby = mp;
+	mp->serv->version |= SV_UID;
 	mp->user->server = find_server_string(mp->serv->snum);
 	strncpyzt(mp->user->username, (p) ? p->pw_name : "unknown",
 		  sizeof(mp->user->username));
@@ -1113,6 +1114,7 @@ int	main(int argc, char *argv[])
 	timeofday = time(NULL);
 	mysrand(timeofday);
 	
+	/* daemonize() closes 0,1,2 -- make sure you don't have any fd open */
 	daemonize();	
 	logfiles_open();
 	write_pidfile();

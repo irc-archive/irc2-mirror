@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.141 2004/10/07 13:25:31 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.148 2004/11/03 01:58:12 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -2282,23 +2282,71 @@ aConfItem	*find_denied(char *name, int class)
 }
 
 #ifdef TKLINE
+/*
+ * Parses 0w1d2h3m4s timeformat, filling in output variable in seconds.
+ * Returns 0 if everything went ok.
+ */
+int	wdhms2sec(char *input, int *output)
+{
+#define DEFAULT_MULTI 60
+	int multi;
+	int tmp = 0;
+	char *s;
+
+	*output = 0;
+
+	if (!input) return 0;
+
+	s = input;
+	while (*s)
+	{
+		switch(*s)
+		{
+		case 'w':
+			multi = 604800; break;
+		case 'd':
+			multi = 86400; break;
+		case 'h':
+			multi = 3600; break;
+		case 'm':
+			multi = 60; break;
+		case 's':
+			multi = 1; break;
+		default:
+			if (isdigit(*s))
+			{
+				tmp = atoi(s);
+				while (isdigit(*s))
+					s++;
+				if (!*s)
+				{
+					*output += DEFAULT_MULTI * tmp;
+				}
+				continue;
+			}
+			else
+				return -1;
+		}
+		*output += multi * tmp;
+		s++;
+	}
+	return 0;
+}
+
 int	m_tkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 {
 	int	time, status = CONF_TKILL;
-	char	*user, *host, *reason, *s;
+	char	*user, *host, *reason;
+	int	i;
 
 	if (!is_allowed(sptr, ACL_TKLINE))
 		return m_nopriv(cptr, sptr, parc, parv);
 
 	/* sanity checks */
-	for (s = parv[1]; *s; s++)
-	{
-		if (!isdigit(*s))
-			break;
-	}
+	i = wdhms2sec(parv[1], &time);
 	user = parv[2];
 	host = strchr(user, '@');
-	if (*s || !host)
+	if (i || !host)
 	{
 		/* error */
 		if (!IsPerson(sptr))
@@ -2315,7 +2363,10 @@ int	m_tkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 	}
 
 	/* All seems fine. */
-	time = atoi(parv[1]);
+#ifdef TKLINE_MAXTIME
+	if (time > TKLINE_MAXTIME)
+		time = TKLINE_MAXTIME;
+#endif
 	if (*user == '=')
 	{
 		status = CONF_TOTHERKILL;
@@ -2381,8 +2432,8 @@ void do_tkline(char *who, int time, char *user, char *host, char *reason, int st
 		}
 		tkconf = aconf;
 	}
-	sendto_flag(SCH_NOTICE, "TKLINE %s@%s (%d) by %s",
-		aconf->name, aconf->host, time, who);
+	sendto_flag(SCH_OPER, "TKLINE %s@%s (%d) by %s :%s",
+		aconf->name, aconf->host, time, who, reason);
 
 	/* get rid of tklined clients */
 	for (i = highest_fd; i >= 0; i--)
@@ -2460,7 +2511,7 @@ void do_tkline(char *who, int time, char *user, char *host, char *reason, int st
 			(void) exit_client(acptr, acptr, &me, buff);
 		}
 	}
-	if (count)
+	if (count > 4)
 	{
 		sendto_flag(SCH_NOTICE, "TKill reaped %d souls", count);
 	}
@@ -2523,7 +2574,7 @@ int	m_untkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 
 	if (deleted)
 	{
-		sendto_flag(SCH_NOTICE, "UNTKLINE %s@%s by %s",
+		sendto_flag(SCH_OPER, "UNTKLINE %s@%s by %s",
 			user, host, parv[0]);
 	}
 	return 1;

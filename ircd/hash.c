@@ -17,7 +17,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: hash.c,v 1.42 2004/10/03 17:13:42 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: hash.c,v 1.47 2004/11/03 13:57:49 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -456,6 +456,7 @@ static	void	bigger_hash_table(int *size, aHashEntry *table, int new)
 		svsize = 0;
 		serverTable = table;
 		for (sptr = svrtop; sptr; sptr = sptr->nexts)
+			if (ST_NOTUID(sptr->bcptr))
 			(void)add_to_server_hash_table(sptr, sptr->bcptr);
 		MyFree(otab);
 	    }
@@ -847,6 +848,7 @@ aClient	*hash_find_client(char *name, aClient *cptr)
 	Reg	aClient	*prv = NULL;
 	Reg	aHashEntry	*tmp3;
 	u_int	hashv, hv;
+	int	count = 0;
 
 	hashv = hash_nick_name(name, &hv);
 	tmp3 = &clientTable[hashv];
@@ -855,6 +857,7 @@ aClient	*hash_find_client(char *name, aClient *cptr)
 	 * Got the bucket, now search the chain.
 	 */
 	for (tmp = (aClient *)tmp3->list; tmp; prv = tmp, tmp = tmp->hnext)
+	{
 		if (hv == tmp->hashv && mycmp(name, tmp->name) == 0)
 		    {
 			clhits++;
@@ -880,6 +883,12 @@ aClient	*hash_find_client(char *name, aClient *cptr)
 			*/
 			return (tmp);
 		    }
+		if (count++ > 21142)
+		{
+			sendto_flag(SCH_ERROR, "hash_find_client possible loop");
+			break;
+		}
+	}
 	clmiss++;
 	return (cptr);
 }
@@ -893,6 +902,7 @@ aClient	*hash_find_uid(char *uid, aClient *cptr)
 	Reg	aClient	*prv = NULL;
 	Reg	aHashEntry	*tmp3;
 	u_int	hashv, hv;
+	int	count = 0;
 
 	hashv = hash_uid(uid, &hv);
 	tmp3 = &uidTable[hashv];
@@ -902,6 +912,7 @@ aClient	*hash_find_uid(char *uid, aClient *cptr)
 	 */
 	for (tmp = (aClient *)tmp3->list; tmp;
 	     prv = tmp, tmp = tmp->user->uhnext)
+	{
 		if (hv == tmp->user->hashv && mycmp(uid, tmp->user->uid) == 0)
 		    {
 			uidhits++;
@@ -927,6 +938,12 @@ aClient	*hash_find_uid(char *uid, aClient *cptr)
 #endif
 			return (tmp);
 		    }
+		if (count++ > 21142)
+		{
+			sendto_flag(SCH_ERROR, "hash_find_uid possible loop");
+			break;
+		}
+	}
 	uidmiss++;
 	return (cptr);
 }
@@ -941,6 +958,7 @@ aClient	*hash_find_server(char *server, aClient *cptr)
 	Reg	char	ch;
 	aHashEntry	*tmp3;
 	u_int	hashv, hv;
+	int	count = 0;
 
 	hashv = hash_nick_name(server, &hv);
 	tmp3 = &clientTable[hashv];
@@ -965,6 +983,11 @@ aClient	*hash_find_server(char *server, aClient *cptr)
 			*/
 			return (tmp);
 		    }
+		if (count++ > 21142)
+		{
+			sendto_flag(SCH_ERROR, "hash_find_server possible loop");
+			break;
+		}
 	    }
 	t = ((char *)server + strlen(server)) - 1;
 	/*
@@ -1007,11 +1030,13 @@ aChannel	*hash_find_channel(char *name, aChannel *chptr)
 	Reg	aChannel	*tmp, *prv = NULL;
 	Reg	aHashEntry	*tmp3;
 	u_int	hashv, hv;
+	int	count = 0;
 
 	hashv = hash_channel_name(name, &hv, 0);
 	tmp3 = &channelTable[hashv];
 
 	for (tmp = (aChannel *)tmp3->list; tmp; prv = tmp, tmp = tmp->hnextch)
+	{
 		if (hv == tmp->hashv && mycmp(name, tmp->chname) == 0)
 		    {
 			chhits++;
@@ -1028,6 +1053,12 @@ aChannel	*hash_find_channel(char *name, aChannel *chptr)
 			*/
 			return (tmp);
 		    }
+		if (count++ > 21142)
+		{
+			sendto_flag(SCH_ERROR, "hash_find_channel possible loop");
+			break;
+		}
+	}
 	chmiss++;
 	return chptr;
 }
@@ -1077,12 +1108,14 @@ aServer	*hash_find_stoken(int tok, aClient *cptr, void *mydummy)
 	Reg	aServer	*tmp, *prv = NULL;
 	Reg	aHashEntry	*tmp3;
 	u_int	hashv, hv;
+	int	count = 0;
 
 	hv = hashv = tok * 15053;
 	hashv %= _SERVERSIZE;
 	tmp3 = &serverTable[hashv];
 
 	for (tmp = (aServer *)tmp3->list; tmp; prv = tmp, tmp = tmp->shnext)
+	{
 		if (tmp->stok == tok && tmp->bcptr->from == cptr)
 		    {
 			if (prv)
@@ -1096,6 +1129,12 @@ aServer	*hash_find_stoken(int tok, aClient *cptr, void *mydummy)
 			    }
 			return (tmp);
 		    }
+		if (count++ > 21142)
+		{
+			sendto_flag(SCH_ERROR, "hash_find_stoken possible loop");
+			break;
+		}
+	}
 	return (aServer *)mydummy;
 }
 
@@ -1108,6 +1147,7 @@ aClient	*hash_find_sid(char *sid, aClient *cptr)
 	Reg     aServer *prv = NULL;
 	Reg     aHashEntry      *tmp3;
 	u_int   hashv, hv;
+	int	count = 0;
 
 	hashv = hash_sid(sid, &hv);
 	tmp3 = &sidTable[hashv];
@@ -1118,6 +1158,11 @@ aClient	*hash_find_sid(char *sid, aClient *cptr)
 		{
 			sidhits++;
 			return (tmp->bcptr);
+		}
+		if (count++ > 21142)
+		{
+			sendto_flag(SCH_ERROR, "hash_find_sid possible loop");
+			break;
 		}
 	}
 	sidmiss++;
@@ -1132,16 +1177,24 @@ anUser	*hash_find_hostname(char *hostname, anUser *user)
 	Reg	anUser	*tmp, *prv = NULL;
 	Reg	aHashEntry	*tmp3;
 	u_int	hashv, hv;
+	int	count = 0;
 
 	hashv = hash_host_name(hostname, &hv);
 	tmp3 = &hostnameTable[hashv];
 
 	for (tmp = (anUser *)tmp3->list; tmp; prv = tmp, tmp = tmp->hhnext)
+	{
 		if (hv == tmp->hhashv && !mycmp(hostname, tmp->host))
 		    {
 			cnhits++;
 			return (tmp);
 		    }
+		if (count++ > 21142)
+		{
+			sendto_flag(SCH_ERROR, "hash_find_hostname possible loop");
+			break;
+		}
+	}
 	cnmiss++;
 	return user;
 }

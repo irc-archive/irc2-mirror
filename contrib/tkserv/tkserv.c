@@ -48,10 +48,11 @@
 #define TKS_MAXARGS 250
 
 /* The version information */
-#define TKS_VERSION "Hello, i'm TkServ v1.3.6."
+#define TKS_VERSION "Hello, I'm TkServ v1.3.6+ircd211"
 
 static char *nuh;
 int fd = -1, tklined = 0;
+static char delimiter[2] = { IRCDCONF_DELIMITER, '\0' };
 
 /*
 ** Returns the current time in a formated way.
@@ -568,20 +569,20 @@ int add_tkline(char *host, char *user, char *reason, int lifetime)
 
         now = time(NULL);
 
-#ifdef INET6
-        fprintf(iconf, "K%%%s%%%s%%%s%%0 # %d %u tkserv\n", host, reason, user, lifetime, now);
-#else
-        fprintf(iconf, "K:%s:%s:%s:0 # %d %u tkserv\n", host, reason, user, lifetime, now);
-#endif
+        fprintf(iconf, "K%c%s%c%s%c%s%c0%c # %d %u tkserv\n",
+		IRCDCONF_DELIMITER, host,
+		IRCDCONF_DELIMITER, reason,
+		IRCDCONF_DELIMITER, user,
+		IRCDCONF_DELIMITER, IRCDCONF_DELIMITER,
+		lifetime, now);
         fclose(iconf);
         rehash(1);
-#ifdef INET6
-        tks_log("K%%%s%%%s%%%s%%0 added for %d hour(s) by %s.",
-#else
-        tks_log("K:%s:%s:%s:0 added for %d hour(s) by %s.",
-#endif
-            host, reason, user, lifetime, nuh);
-
+        tks_log("K%c%s%c%s%c%s%c0%c added for %d hour(s) by %s.",
+		IRCDCONF_DELIMITER, host,
+		IRCDCONF_DELIMITER, reason,
+		IRCDCONF_DELIMITER, user,
+		IRCDCONF_DELIMITER, IRCDCONF_DELIMITER,
+		lifetime, nuh);
         return(1);
     }
     else
@@ -632,23 +633,13 @@ int check_tklines(char *host, char *user, int lifetime)
 
                     strcpy(buf, buffer);
 
-#ifdef INET6
-                    token = (char *) strtok(buf, "%");
-                    token = (char *) strtok(NULL, "%");
-#else
-                    token = (char *) strtok(buf, ":");
-                    token = (char *) strtok(NULL, ":");
-#endif
+                    token = (char *) strtok(buf, delimiter);
+                    token = (char *) strtok(NULL, delimiter);
                     
                     if (!strcasecmp(token, host))
                     {
-#ifdef INET6
-                        token = (char *) strtok(NULL, "%");
-                        token = (char *) strtok(NULL, "%");
-#else
-                        token = (char *) strtok(NULL, ":");
-                        token = (char *) strtok(NULL, ":");
-#endif
+                        token = (char *) strtok(NULL, delimiter);
+                        token = (char *) strtok(NULL, delimiter);
                         
                         if (!strcasecmp(token, user))
                         {
@@ -737,7 +728,7 @@ void service_pong(void)
 */
 void service_notice(char **args)
 {
-    if ((!strcmp(args[4], "reloading") && (!strcmp(args[5], TKSERV_IRCD_CONF))) ||
+    if ((!strcmp(args[4], "reloading") && (!strcmp(args[5], "ircd.conf"))) ||
         (!strcmp(args[3], "rehashing") && (!strcmp(args[4], "Server"))))
     {
         if (tklined)
@@ -875,17 +866,9 @@ void squery_tkline(char **args)
 
     while (args[i] && *args[i])
     {
-#ifdef INET6
-        if (strchr(args[i], '%'))
-#else
-        if (strchr(args[i], ':'))
-#endif
+        if (strchr(args[i], IRCDONF_DELIMITER))
         {
-#ifdef INET6
-            sendto_user("Percent signs are only allowed in the password.");
-#else
-            sendto_user("Colons are only allowed in the password.");
-#endif
+            sendto_user("The '" IRCDCONF_DELIMITER "' chars are only allowed in the password.");
             return;
         }
 
@@ -1162,7 +1145,7 @@ int main(int argc, char *argv[])
     }
     /* register the service with SERVICE_WANT_NOTICE */
     sendto_server("PASS %s\n", TKSERV_PASSWORD);
-    sendto_server("SERVICE %s localhost %s 33554432 0 :%s\n", TKSERV_NAME, TKSERV_DIST, TKSERV_DESC);
+    sendto_server("SERVICE %s %s 33554432 :%s\n", TKSERV_NAME, TKSERV_DIST, TKSERV_DESC);
     sendto_server("SERVSET 33619968\n");
 
     timeout.tv_usec = 1000;
