@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_user.c,v 1.234 2004/10/07 00:16:47 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_user.c,v 1.236 2004/10/27 00:06:45 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -2717,8 +2717,26 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	}
 #if defined(USE_SYSLOG) && defined(SYSLOG_KILL)
 	if (IsOper(sptr))
-		syslog(LOG_DEBUG,"KILL From %s For %s Path %s!%s",
-			parv[0], acptr->name, inpath, path);
+	{
+		if (IsService(acptr))
+		{
+			syslog(LOG_DEBUG, "KILL From %s For %s[%s] Path %s!%s",
+				parv[0], acptr->name, 
+				isdigit(acptr->service->servp->sid[0]) ?
+				acptr->service->servp->sid : "2.10",
+				inpath, path);
+		}
+		else
+		{
+			syslog(LOG_DEBUG, "KILL From %s For %s!%s@%s[%s/%s] "
+				"Path %s!%s", parv[0], acptr->name, 
+				acptr->user->username, acptr->user->host,
+				acptr->user->servp->bcptr->name, 
+				isdigit(acptr->user->servp->sid[0]) ?
+				acptr->user->servp->sid : "2.10",
+				inpath, path);
+		}
+	}
 #endif
 	/*
 	** And pass on the message to other servers. Note, that if KILL
@@ -2877,15 +2895,21 @@ int	m_away(aClient *cptr, aClient *sptr, int parc, char *parv[])
 int	m_ping(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	aClient *acptr;
-	char	*destination;
+	char	*origin, *destination;
 
+	origin = parv[1];
 	destination = parv[2]; /* Will get NULL or pointer (parc >= 2!!) */
 
+	acptr = find_client(origin, NULL);
+	if (!acptr)
+		acptr = find_server(origin, NULL);
+	if (!acptr || acptr != sptr)
+		origin = cptr->name;
 	if (!BadPtr(destination) && match(destination, ME) != 0)
 	{
 		if ((acptr = find_server(destination, NULL)))
 			sendto_one(acptr, ":%s PING %s :%s", parv[0],
-				cptr->name, destination);
+				origin, destination);
 	    	else
 		{
 			sendto_one(sptr, replies[ERR_NOSUCHSERVER],

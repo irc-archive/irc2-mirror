@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.146 2004/10/02 01:20:44 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.148 2004/10/26 19:17:08 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -325,6 +325,11 @@ static	time_t	try_connections(time_t currenttime)
 					*pconf = aconf->next;
 			(*pconf = con_conf)->next = 0;
 		}
+
+		/* "Penalty" for being the best, so in next call of
+		 * try_connections() other servers have chance. --B. */
+		con_conf->hold += get_con_freq(Class(con_conf));
+
 		if (!iconf.aconnect)
 		{
 			sendto_flag(SCH_NOTICE,
@@ -979,7 +984,6 @@ int	main(int argc, char *argv[])
 	open_debugfile();
 	timeofday = time(NULL);
 	(void)init_sys();
-	logfiles_open();
 
 #ifdef USE_SYSLOG
 	openlog(mybasename(myargv[0]), LOG_PID|LOG_NDELAY, LOG_FACILITY);
@@ -1110,6 +1114,7 @@ int	main(int argc, char *argv[])
 	mysrand(timeofday);
 	
 	daemonize();	
+	logfiles_open();
 	write_pidfile();
 	dbuf_init();
 	

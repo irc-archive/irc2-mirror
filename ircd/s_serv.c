@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.246 2004/10/06 20:11:55 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.252 2004/10/26 23:23:02 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -2188,11 +2188,26 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		break;
 	case 'M' : case 'm' : /* commands use/stats */
 		for (mptr = msgtab; mptr->cmd; mptr++)
-			if (mptr->count)
+		{
+#define _mh(n) (mptr->handlers[n])
+			if (_mh(0).count + _mh(1).count + _mh(2).count
+				+ _mh(3).count + _mh(4).count > 0)
+			{
 				sendto_one(cptr, replies[RPL_STATSCOMMANDS],
-					   ME, BadTo(parv[0]), mptr->cmd,
-					   mptr->count, mptr->bytes,
-					   mptr->rcount);
+					ME, BadTo(parv[0]), mptr->cmd,
+					_mh(0).count, _mh(0).bytes,
+					_mh(0).rcount, _mh(0).rbytes,
+					_mh(1).count, _mh(1).bytes,
+					_mh(1).rcount, _mh(1).rbytes,
+					_mh(2).count, _mh(2).bytes,
+					_mh(2).rcount, _mh(2).rbytes,
+					_mh(3).count, _mh(3).bytes,
+					_mh(3).rcount, _mh(3).rbytes,
+					_mh(4).count, _mh(4).bytes,
+					_mh(4).rcount, _mh(4).rbytes);
+			}
+#undef _mh
+		}
 		break;
 	case 'o' : case 'O' : /* O (and o) lines */
 		report_configured_links(cptr, parv[0], CONF_OPS);
@@ -2965,6 +2980,8 @@ int	m_motd(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	register aMotd *temp;
 	struct tm *tm;
 
+	if (!IsUnknown(sptr))
+	{
 	if (check_link(sptr))
 	    {
 		sendto_one(sptr, replies[RPL_TRYAGAIN], ME, BadTo(parv[0]), "MOTD");
@@ -2972,6 +2989,7 @@ int	m_motd(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	    }
 	if (hunt_server(cptr, sptr, ":%s MOTD :%s", 1,parc,parv)!=HUNTED_ISME)
 		return 5;
+	}
 	tm = localtime(&motd_mtime);
 	if (motd == NULL)
 	    {
@@ -2980,13 +2998,13 @@ int	m_motd(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	    }
 	sendto_one(sptr, replies[RPL_MOTDSTART], ME, BadTo(parv[0]), ME);
 	sendto_one(sptr, ":%s %d %s :- %d/%d/%d %d:%02d", ME, RPL_MOTD,
-		   parv[0], tm->tm_mday, tm->tm_mon + 1, 1900 + tm->tm_year,
+		   BadTo(parv[0]), tm->tm_mday, tm->tm_mon + 1, 1900 + tm->tm_year,
 		   tm->tm_hour, tm->tm_min);
 	temp = motd;
 	for(temp=motd;temp != NULL;temp = temp->next)
 		sendto_one(sptr, replies[RPL_MOTD], ME, BadTo(parv[0]), temp->line);
 	sendto_one(sptr, replies[RPL_ENDOFMOTD], ME, BadTo(parv[0]));
-	return 2;
+	return IsUnknown(sptr) ? 5 : 2;
 }
 
 /*
@@ -3249,6 +3267,7 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		{ TSET_POOLSIZE, "POOLSIZE" },
 		{ TSET_ACONNECT, "ACONNECT" },
 		{ TSET_CACCEPT, "CACCEPT" },
+		{ TSET_SPLIT, "SPLIT" },
 		{ 0, NULL }
 	};
 	int i, acmd = 0;
@@ -3354,6 +3373,39 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				sendto_flag(SCH_NOTICE, "%s changed value of "
 					"CACCEPT to %s", sptr->name, parv[2]);
 				break;
+			case TSET_SPLIT:
+			{
+				int tmp;
+
+				tmp = atoi(parv[2]);
+				if (tmp < SPLIT_SERVERS)
+					tmp = SPLIT_SERVERS;
+				if (tmp != iconf.split_minservers)
+				{
+					sendto_flag(SCH_NOTICE, "%s changed"
+						" value of SPLIT_SERVERS"
+						" from %d to %d", sptr->name,
+						iconf.split_minservers, tmp);
+					iconf.split_minservers = tmp;
+				}
+				if (parc > 3)
+				{
+					tmp = atoi(parv[3]);
+					if (tmp < SPLIT_USERS)
+						tmp = SPLIT_USERS;
+				}
+				else
+					tmp = iconf.split_minusers;
+				if (tmp != iconf.split_minusers)
+				{
+					sendto_flag(SCH_NOTICE, "%s changed"
+						" value of SPLIT_USERS"
+						" from %d to %d", sptr->name,
+						iconf.split_minusers, tmp);
+					iconf.split_minusers = tmp;
+				}
+				break;
+			}
 		} /* switch(acmd) */
 	} /* parc > 2 */
 
@@ -3374,6 +3426,12 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			sendto_one(sptr, ":%s NOTICE %s :CACCEPT = %s", ME,
 				parv[0], iconf.caccept == 2 ? "SPLIT" :
 				iconf.caccept == 1 ? "ON" : "OFF");
+		}
+		if (acmd & TSET_SPLIT)
+		{
+			sendto_one(sptr, ":%s NOTICE %s :SPLIT = SS %d SU %d",
+				ME, parv[0], iconf.split_minservers,
+				iconf.split_minusers);
 		}
 	}
 	return 1;
@@ -3650,19 +3708,19 @@ static	void	dump_sid_map(aClient *sptr, aClient *root, char *pbuf, int size)
         *pbuf= '\0';
 	if (IsBursting(root))
 	{
-		snprintf(pbuf, size, "%s %s %d %s bursting %ds",
+		snprintf(pbuf, size, "%s %d %s %s bursting %ds",
 			IsMasked(root) ? root->serv->maskedby->name : root->name,
-			root->serv->sid,
 			root->serv->usercnt[0] + root->serv->usercnt[1],
+			root->serv->sid,
 			BadTo(root->serv->verstr),
 			MyConnect(root) ? (int) (timeofday - root->firsttime) : -1);
 	}
 	else
 	{
-		snprintf(pbuf, size, "%s %s %d %s",
+		snprintf(pbuf, size, "%s %d %s %s",
 			IsMasked(root) ? root->serv->maskedby->name : root->name,
-			root->serv->sid,
 			root->serv->usercnt[0] + root->serv->usercnt[1],
+			root->serv->sid,
 			BadTo(root->serv->verstr));
 	}
 	sendto_one(sptr, replies[RPL_MAP], ME, BadTo(sptr->name), buf);
@@ -3719,8 +3777,8 @@ static	void	dump_map(aClient *sptr, aClient *root, aClient **prevserver,
 	/* Display itself if not masked */
 	if (!IsMasked(root))
 	{
-        	*pbuf= '\0';
-	        strcat(pbuf, root->name);
+		*pbuf= '\0';
+		strcat(pbuf, root->name);
 		sendto_one(sptr, replies[RPL_MAP], ME, BadTo(sptr->name), buf);
 	}
 	
@@ -3793,7 +3851,7 @@ int	m_map(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	{
 		/* print full dump of the network */
 		sendto_one(sptr, replies[RPL_MAPSTART], ME, BadTo(sptr->name),
-				"Server SID users version");
+				"Server users SID version");
 		dump_sid_map(sptr, &me, buf, sizeof(buf) - 
 			strlen(BadTo(sptr->name)) - strlen(ME) - 8);
 		sendto_one(sptr, replies[RPL_MAPEND], ME, BadTo(sptr->name));
@@ -3844,9 +3902,45 @@ static void report_listeners(aClient *sptr, char *to)
 	}
 }
 
-/* allows ENCAPsulation of commands */
+/*
+** allows ENCAPsulation of commands
+** parv[0] is ignored (though it's source)
+** parv[1] is target mask
+** parv[2] is command
+** the rest is optional and is used by command as its own params
+*/
+
 int	m_encap(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
+	char buf[BUFSIZE];
+	int i, len;
+
+	/* Prepare ENCAP buffer... */
+	len = sprintf(buf, ":%s ENCAP", sptr->serv->sid);
+	for (i = 1; i < parc; i++)
+	{
+		if (len + strlen(parv[i]) >= BUFSIZE-2)
+		{
+			/* This can get cut. */
+			sendto_flag(SCH_ERROR, "ENCAP too long (%s)", buf);
+			/* Sending incomplete ENCAP means data corruption.
+			** Should we squit the link that fed us this? --B. */
+			return 1;
+		}
+		if (i >= 3 && i == parc - 1)
+			len += sprintf(buf+len, " :%s", parv[i]);
+		else
+			len += sprintf(buf+len, " %s", parv[i]);
+	}
+	/* ...and broadcast it. */
+	sendto_serv_v(cptr, SV_UID, "%s", buf);
+
+	/* FIXME: in 2.11.1 */
+	/* Do we match parv[1]? */
+	/* Copying things from parse() */
+	/* STAT_ENCAP handler for parv[2] */
+	/* Call handler function with parc-2, parv+2 */
+
 	return 0;
 }
 
