@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: ircd.c,v 1.58 1999/07/18 01:26:02 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: ircd.c,v 1.60 1999/07/23 17:04:56 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -131,10 +131,10 @@ char	*mesg;
 {
 #ifdef	USE_SYSLOG
 	(void)syslog(LOG_WARNING, "Restarting Server because: %s (%u)", mesg,
-		     (u_int)sbrk((size_t)0)-(u_int)sbrk0);
+		     (u_int)((char *)sbrk((size_t)0)-sbrk0));
 #endif
 	sendto_flag(SCH_NOTICE, "Restarting server because: %s (%u)", mesg,
-		    (u_int)sbrk((size_t)0)-(u_int)sbrk0);
+		    (u_int)((char *)sbrk((size_t)0)-sbrk0));
 	server_reboot();
 }
 
@@ -160,7 +160,7 @@ void	server_reboot()
 	Reg	int	i;
 
 	sendto_flag(SCH_NOTICE, "Aieeeee!!!  Restarting server... (%u)",
-		    (u_int)sbrk((size_t)0)-(u_int)sbrk0);
+		    (u_int)((char *)sbrk((size_t)0)-sbrk0));
 
 	Debug((DEBUG_NOTICE,"Restarting server..."));
 	flush_connections(me.fd);
@@ -552,13 +552,12 @@ aClient	*mp;
 				IN6ADDRSZ;
 #else
 				sizeof(long);
-#endif                          
+#endif
 	mp->hostp->h_addr_list = (char **)MyMalloc(2*sizeof(char *));
-	mp->hostp->h_addr_list[0] = MyMalloc(mp->hostp->h_length);
 #ifdef	INET6
-	bcopy(IN6ADDR_LOOPBACK_INIT, mp->hostp->h_addr_list[0], 
-					mp->hostp->h_length);
+	mp->hostp->h_addr_list[0] = (char *)&in6addr_loopback;
 #else
+	mp->hostp->h_addr_list[0] = (void *)MyMalloc(mp->hostp->h_length);
 	*(long *)(mp->hostp->h_addr_list[0]) = IN_LOOPBACKNET;
 #endif
 	mp->hostp->h_addr_list[1] = NULL ;
