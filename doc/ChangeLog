@@ -1,3 +1,40 @@
+2004-05-13  Piotr Kucharski
+
+	* channel.c/m_njoin(): bug causing small desynch of big channels
+	  (sometimes giving NJOIN protocol errors).
+
+2004-05-12  Piotr Kucharski
+
+	* s_user.c/m_kill(): show target user@host[server/sid].
+	* class.c/report_classes(): show usage count in Y:lines.
+	* s_err.c: add param for RPL_STATSYLINE, removed RPL_TRACECLASS.
+	* s_serv.c: removed report_class_usage().
+	* s_serv.c/m_stats(): change 'C' (removed) to 'Y'.
+
+2004-05-09  Piotr Kucharski
+
+	* configure, configure.in: more fixes.
+	* config.h.dist: check for empty TIMEDKLINES define.
+
+2004-05-07  Piotr Kucharski
+
+	* configure, configure.in: update to work with autoconf 2.57.
+	* configure, configure.in, setup.h.in, os.h: check for mmap().
+	* s_conf.c, Makefile.in: new function config_read() parsing #include
+	  directive in ircd.conf file without calling m4.
+	* config.h.dist: new define CONFIG_DIRECTIVE_INCLUDE.
+	* s_conf.c/initconf(): use config_read() if defined.
+
+2004-04-18  Jakub Vlasek
+
+	* s_bsd.c/read_message(): Do not check cptrs of delayed listeners.
+	* list.c/free_client(): hopcount=1 of directly connected servers.
+	* s_misc.c/exit_one_client(): incorrect SQUITs were sent to 2.10 which
+	  resulted in strange remote client quits (looking as if whole net was
+	  breaking apart).
+	* s_misc.c/exit_server(): use from, not &me or else -- otherwise squits
+	  get messed up for 2.10 (after all, that's what from is for, eh?)
+
 2004-04-17  Piotr Kucharski
 
 	* s_conf.c/match_ipmask(): show original mask in error.
@@ -23,6 +60,10 @@
 	* s_misc.c/initstats(): set localc, not remc.
 	* list.c/remove_client_from_list(): negative remote client count bug,
 	  as directly connected servers have hopcount of 1, not 0.
+
+2004-04-10  Jakub Vlasek
+
+	* config.h.dist: Made OPER_SET #define'd by default.
 
 2004-04-10  Piotr Kucharski
 
@@ -215,7 +256,7 @@
 2004-03-05  Piotr Kucharski
 
 	* res.c/proc_answer(), get_res(): fix CNAMEs resolving; now we use the
-	  the name that client IP has "IN PTR" to, not the name that "IN A" 
+	  name that client IP has "IN PTR" to, not the name that "IN A" 
 	  points to client IP (patch from BitKoenig).
 	* list.c/make_conf(): initialize flags to 0L.
 	* struct_def.h, chkconf.c, s_conf.c, s_serv.c: got rid of CONF_RCLIENT

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.186 2004/04/07 17:02:38 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.189 2004/05/14 22:58:13 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1996,7 +1996,7 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		/* Although I have no idea, why only for opers. --B. */
 		case 'o': case 'O':	/* O:lines */
 		case 'c': 		/* C:/N: lines */
-		case 'C': 		/* class usage */
+		case 'y': case 'Y': 	/* Y:lines */
 		case 'h': case 'H':	/* H:/D: lines */
 		case 'a': case 'A':	/* iauth conf */
 		case 'b': case 'B':	/* B:lines */
@@ -2123,9 +2123,6 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #endif
 	case 'B' : case 'b' : /* B conf lines */
 		report_configured_links(cptr, parv[0], CONF_BOUNCE);
-		break;
-	case 'C': /* class usage stats */
-		report_class_usage(cptr, BadTo(parv[0]));
 		break;
 	case 'c': /* C and N conf lines */
 		report_configured_links(cptr, parv[0], CONF_CONNECT_SERVER|
@@ -3020,7 +3017,7 @@ int	m_close(aClient *cptr, aClient *sptr, int parc, char *parv[])
 }
 
 /* End Of Burst command
-** parv[0] - server sending the SQUIT
+** parv[0] - server sending the EOB
 ** parv[1] - optional comma separated list of servers for which this EOB
 **           is also valid.
 */
@@ -3061,6 +3058,11 @@ int	m_eob(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 		SetEOB(sptr);
 		istat.is_eobservers++;
+		if (atoi(sptr->serv->verstr) >= 210990800) /* XXX remove soon */
+		if (sptr->hopcount == 1)
+		{
+			sendto_one(sptr, ":%s EOBACK", me.serv->sid);
+		}
 		
 		if (parc < 2)
 		{
@@ -3184,6 +3186,11 @@ int	m_eob(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	check_split();
 	
 	return 1;
+}
+
+int	m_eoback(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+	return 0;
 }
 
 
@@ -3775,20 +3782,5 @@ static void report_listeners(aClient *sptr, char *to)
 			timeofday - acptr->firsttime,
 			acptr->confs->value.aconf->clients,
 			IsListenerInactive(acptr) ? "inactive" : "active" );
-	}
-}
-
-/* Reports class usage */
-static void report_class_usage(aClient *sptr, char *to)
-{
-	aClass  *tmp;
-
-	for (tmp = FirstClass(); tmp; tmp = NextClass(tmp))
-	{
-		if (Links(tmp) > 0)
-		{
-			sendto_one(sptr, replies[RPL_TRACECLASS],
-				ME, to, Class(tmp), Links(tmp));
-		}
 	}
 }
