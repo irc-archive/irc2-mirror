@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.229 2004/08/13 01:23:04 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.233 2004/08/31 08:35:02 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -128,7 +128,7 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	*comment;
 	static char	comment2[TOPICLEN+1];
 
-	if (is_allowed(sptr, ACL_SQUIT))
+	if (!is_allowed(sptr, ACL_SQUIT))
 		return m_nopriv(cptr, sptr, parc, parv);
 
 	server = parv[1];
@@ -236,7 +236,7 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		sendto_one(sptr, replies[ERR_NOSUCHSERVER], ME, BadTo(parv[0]), server);
 		return 1;
 	    }
-	if (!MyConnect(acptr) && is_allowed(sptr, ACL_SQUITREMOTE))
+	if (!MyConnect(acptr) && !is_allowed(sptr, ACL_SQUITREMOTE))
 	    {
 		return m_nopriv(cptr, sptr, parc, parv);
 	    }
@@ -864,6 +864,10 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		acptr->serv->up = sptr;
 		acptr->serv->snum = find_server_num(acptr->name);
 		acptr->serv->maskedby = acptr;
+		SetServer(acptr);
+		istat.is_serv++;
+		add_client_to_list(acptr);
+		register_server(acptr);
 
 		if (ST_UID(cptr))
 		{
@@ -905,10 +909,6 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				acptr->name);
 		}
 
-		SetServer(acptr);
-		istat.is_serv++;
-		add_client_to_list(acptr);
-		register_server(acptr);
 		add_server_to_tree(acptr);
 		(void)add_to_client_hash_table(acptr->name, acptr);
 		if (ST_NOTUID(acptr))
@@ -1141,23 +1141,6 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 
 	if (IsUnknown(cptr))
 	    {
-		if (bconf->passwd[0])
-#ifndef	ZIP_LINKS
-			sendto_one(cptr, "PASS %s %s IRC|%s %s", bconf->passwd,
-				   pass_version, serveropts,
-				   (bootopt & BOOT_STRICTPROT) ? "P" : "");
-#else
-			sendto_one(cptr, "PASS %s %s IRC|%s %s%s",
-				   bconf->passwd, pass_version, serveropts,
-			   (bconf->status == CONF_ZCONNECT_SERVER) ? "Z" : "",
-				   (bootopt & BOOT_STRICTPROT) ? "P" : "");
-#endif
-		/*
-		** Pass my info to the new server
-		*/
-		sendto_one(cptr, "SERVER %s 1 %s :%s",
-			mlname, me.serv->sid, me.info);
-
 		/*
 		** If we get a connection which has been authorized to be
 		** an already existing connection, remove the already
@@ -1178,6 +1161,24 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 				return exit_client(cptr, cptr, &me,
 						   "Server Exists");
 		    }
+
+		if (bconf->passwd[0])
+#ifndef	ZIP_LINKS
+			sendto_one(cptr, "PASS %s %s IRC|%s %s", bconf->passwd,
+				   pass_version, serveropts,
+				   (bootopt & BOOT_STRICTPROT) ? "P" : "");
+#else
+			sendto_one(cptr, "PASS %s %s IRC|%s %s%s",
+				   bconf->passwd, pass_version, serveropts,
+			   (bconf->status == CONF_ZCONNECT_SERVER) ? "Z" : "",
+				   (bootopt & BOOT_STRICTPROT) ? "P" : "");
+#endif
+		/*
+		** Pass my info to the new server
+		*/
+		sendto_one(cptr, "SERVER %s 1 %s :%s",
+			mlname, me.serv->sid, me.info);
+
 	    }
 	else
 	    {
@@ -2122,7 +2123,7 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				if (!(acptr = local[i]))
 					continue;
 				if (IsPerson(acptr) && (!MyConnect(sptr)
-				    || is_allowed(sptr, ACL_TRACE)) && acptr != sptr)
+				    || !is_allowed(sptr, ACL_TRACE)) && acptr != sptr)
 					continue;
 				if (wilds && match(cm, acptr->name))
 					continue;
@@ -2505,7 +2506,7 @@ int	m_connect(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	aConfItem *aconf;
 	aClient *acptr;
 
-	if (is_allowed(sptr, parc > 3 ? ACL_CONNECTREMOTE : ACL_CONNECTLOCAL))
+	if (!is_allowed(sptr, parc > 3 ? ACL_CONNECTREMOTE : ACL_CONNECTLOCAL))
 	    {
 		return m_nopriv(cptr, sptr, parc, parv);
 	    }
@@ -2682,7 +2683,7 @@ int	m_admin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 */
 int	m_rehash(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
-	if (is_allowed(sptr, ACL_REHASH))
+	if (!is_allowed(sptr, ACL_REHASH))
 		return m_nopriv(cptr, sptr, parc, parv);
 
 	sendto_one(sptr, replies[RPL_REHASHING], ME, BadTo(parv[0]),
@@ -2705,7 +2706,7 @@ int	m_restart(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	int	i;
 	char	killer[HOSTLEN * 2 + USERLEN + 5];
 
-	if (is_allowed(sptr, ACL_RESTART))
+	if (!is_allowed(sptr, ACL_RESTART))
 		return m_nopriv(cptr, sptr, parc, parv);
 
 	strcpy(killer, get_client_name(sptr, TRUE));
@@ -2916,7 +2917,7 @@ int	m_trace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			    && !(a2cptr == sptr)    /* but not user self */
 			    && !(IsAnOper(a2cptr))  /* nor some oper */
 			    && (!MyConnect(sptr) ||
-				is_allowed(sptr, ACL_TRACE))
+				!is_allowed(sptr, ACL_TRACE))
 						    /* nor it is my oper
 						     * doing trace */
 			   )
@@ -2986,7 +2987,7 @@ int	m_close(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	int	i;
 	int	closed = 0;
 
-	if (is_allowed(sptr, ACL_CLOSE))
+	if (!is_allowed(sptr, ACL_CLOSE))
 		return m_nopriv(cptr, sptr, parc, parv);
 
 	for (i = highest_fd; i; i--)
@@ -3197,7 +3198,7 @@ int	m_die(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	int	i;
 	char	killer[HOSTLEN * 2 + USERLEN + 5];
 
-	if (is_allowed(sptr, ACL_DIE))
+	if (!is_allowed(sptr, ACL_DIE))
 		return m_nopriv(cptr, sptr, parc, parv);
 
 	strcpy(killer, get_client_name(sptr, TRUE));
@@ -3240,7 +3241,7 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	};
 	int i, acmd = 0;
 
-	if (is_allowed(sptr, ACL_SET))
+	if (!is_allowed(sptr, ACL_SET))
 		return m_nopriv(cptr, sptr, parc, parv);
 
 	if (parc > 1)

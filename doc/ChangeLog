@@ -1,3 +1,48 @@
+2.11.0b12
+
+2004-08-31  Piotr Kucharski
+
+	* s_serv.c/m_stats(): is_allowed I forgot to negate (caught by Borys).
+	* struct_def.h: increased MAXBANS to 42.
+	* support.c/make_isupport(): add R to MAXLIST.
+	* config.h.dist: moved IRCDCONF_DELIMITER from os.h.
+	* struct_def.h: increased NICKLEN to 15.
+
+2004-08-27  Piotr Kucharski
+
+	* channel.c/reop_channel(): do not abort reop mechanism if restricted
+	  client is channel operator.
+
+2004-08-21  Piotr Kucharski
+
+	* s_serv.c/m_server(): register_server() must be called before
+	  add_to_sid/server_hash_table (in case of growing hash tables).
+	* s_user.c/m_nick(): silently cut longer nicks from clients (instead
+	  of rejecting).
+	* swap return values of is_allowed, 1 for ok, 0 for forbidden now.
+	* s_serv.c/m_server_estab(): moved sending PASS/SERVER after checking
+	  if server exists.
+
+2004-08-18  Piotr Kucharski
+
+	* s_conf.c/initconf(): o:line (local oper) did not revoke remote rights
+	  like it should (noticed by Hans Engren).
+	* channel.c/setup_server_channels(): make &CLIENTS invite-only.
+	* channel.c/can_join(): reverse &CLIENTS join logic: if allowed, let
+	  oper in regardless invite-only status, for all others behave normal.
+
+2004-08-17  Piotr Kucharski
+
+	* channel.c/set_mode(): also allow +R from servers. :)
+
+2.11.0b11
+
+2004-08-13  Piotr Kucharski
+
+	* channel.c/set_mode(): allow +R from opers.
+	* config.h.dist: allow undefining both SLOW_ACCEPT and CLONE_CHECK
+	  (may speed server a bit if admin is aware of consequences).
+
 2004-08-12  Piotr Kucharski
 
 	* ircd.c/try_connections(), config.h.dist: DISABLE_DOUBLE_CONNECTS to
@@ -156,6 +201,8 @@
 	* struct_def.h: new ACL_TRACE (t).
 	* s_serv.c/m_trace(): ACL_TRACE guard.
 
+2.11.0a10
+
 2004-07-02  Piotr Kucharski
 
 	* s_user.c/find_denied(): added reverse D: (disable AC when given server
@@ -245,6 +292,8 @@
 	* s_serv.c/check_link(): free opers from RPL_TRYAGAIN.
 	* s_serv.c/m_stats(): change a little what's subject to RPL_TRYAGAIN
 	  for users (now only stats i c k m t z).
+
+2.11.0a9
 
 2004-06-26  Piotr Kucharski
 
@@ -434,6 +483,8 @@
 	* ircd.c/try_connections(): move send_ping() to calculate_preference.
 	* ircd.c/calculcate_preference(): skip non AC C-lines.
 
+2.11.0a8
+
 2004-05-14  Piotr Kucharski
 
 	* msg_def.h, parse.c, s_serv.c, s_serv_ext.h: new command EOBACK
@@ -476,6 +527,8 @@
 	  breaking apart).
 	* s_misc.c/exit_server(): use from, not &me or else -- otherwise squits
 	  get messed up for 2.10 (after all, that's what from is for, eh?)
+
+2.11.0a7
 
 2004-04-17  Piotr Kucharski
 
@@ -535,6 +588,8 @@
 
 	* s_service.c/m_service(): tiny yet fatal bug messing up hash tables
 	  (introduced 2004-03-19).
+
+2.11.0a6
 
 2004-03-24  Piotr Kucharski
 
@@ -632,6 +687,8 @@
 	  s_serv.c: removed CACHE_MOTD, it's default and not possible to turn
 	  off; also fixed tiny bug of always reloading motd, not when changed.
 
+2.11.0a5
+
 2004-03-10  Piotr Kucharski
 
 	* s_bsd.c, s_bsd_ext.h: added delay_close() function.
@@ -695,6 +752,8 @@
 	* ircd.c, s_bsd.c, s_debug.c, s_err.c, s_serv.c, numeric_def.h,
 	  struct_def.h: removed ancient STAT_LOG (and RPL_TRACELOG).
 
+2.11.0a4
+
 2004-03-05  Piotr Kucharski
 
 	* res.c/proc_answer(), get_res(): fix CNAMEs resolving; now we use the
@@ -754,6 +813,8 @@
 	* parse.c, msg_def.h: add "POST" command being alias for "QUIT"
 	  to cut w3cache abuse (idea from ircu).
 
+2.11.0a3
+
 2004-02-23  Piotr Kucharski
 
 	* s_serv.c/m_squit(): do not send compatibility sids in SQUIT.
@@ -803,6 +864,8 @@
 	  user nick.
 	* channel.c/m_part(): buffer overflow resulting in network desync.
 
+2.11.0a2
+
 2004-02-17  Piotr Kucharski
 
 	* s_user.c/m_nick(): do not add to hash table nick of "0".
@@ -840,6 +903,8 @@
 
 	* s_user.c/m_join(): show nick in error, not UID, when restricted
 	  clients does "NICK 0".
+
+2.11.0a1
 
 2004-02-13  Jakub Vlasek
 

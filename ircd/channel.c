@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.225 2004/08/13 21:36:12 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.229 2004/08/27 19:06:44 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -696,7 +696,7 @@ void	setup_server_channels(aClient *mp)
 	chptr = get_channel(mp, "&CLIENTS", CREATE);
 	strcpy(chptr->topic, "SERVER MESSAGES: clients activity");
 	add_user_to_channel(chptr, mp, CHFL_CHANOP);
-	chptr->mode.mode = smode|MODE_SECRET;
+	chptr->mode.mode = smode|MODE_SECRET|MODE_INVITEONLY;
 #endif
 
 	setup_svchans();
@@ -1752,7 +1752,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 							LDELAYCHASETIMELIMIT;
 					}
 					/* XXX: fix this in 2.11.1 */
-					if (MyConnect(sptr) && !IsAnOper(sptr))
+					if (MyClient(sptr) && !IsAnOper(sptr))
 					{
 						break;
 					}
@@ -1882,7 +1882,7 @@ static	int	can_join(aClient *sptr, aChannel *chptr, char *key)
 #ifdef CLIENTS_CHANNEL
 	if (*chptr->chname == '&' && !strcmp(chptr->chname, "&CLIENTS")
 		&& is_allowed(sptr, ACL_CLIENTS))
-		return (ERR_INVITEONLYCHAN);
+		return 0;
 #endif
 
 	for (lp = sptr->user->invited; lp; lp = lp->next)
@@ -3765,6 +3765,11 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 
 		for (lp = chptr->members; lp; lp = lp->next)
 		{
+			/* not restricted */
+			if (IsRestricted(lp->value.cptr))
+			{
+				continue;
+			}
 			if (lp->flags & CHFL_CHANOP)
 			{
 				chptr->reop = 0;
@@ -3772,11 +3777,6 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 			}
 			/* Our client */
 			if (!MyConnect(lp->value.cptr))
-			{
-				continue;
-			}
-			/* not restricted */
-			if (IsRestricted(lp->value.cptr))
 			{
 				continue;
 			}

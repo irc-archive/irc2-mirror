@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.230 2004/08/04 11:04:11 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.232 2004/08/21 21:36:51 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -254,6 +254,7 @@ int	do_nick_name(char *nick, int server)
 	if (strcasecmp(nick, "anonymous") == 0)
 		return 0;
 
+	/* when no 2.10, allow NICKLEN */
 	for (ch = nick; *ch && (ch - nick) < (server?NICKLEN:ONICKLEN); ch++)
 	{
 		/* Transition period. Until all 2.10 are gone, disable
@@ -969,7 +970,9 @@ badparamcountkills:
 	 * creation) then reject it. If from a server and we reject it,
 	 * we have to KILL it. -avalon 4/4/92
 	 */
-	if (donickname == 0 || strcmp(nick, parv[1]))
+	/* when no 2.10, allow NICKLEN */
+	if (donickname == 0 || strncmp(nick, parv[1], 
+		IsServer(cptr)?NICKLEN:ONICKLEN))
 	    {
 		sendto_one(sptr, replies[ERR_ERRONEOUSNICKNAME], ME, BadTo(parv[0]),
 			   parv[1]);
@@ -2622,7 +2625,7 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	*user, *path, *killer;
 	int	chasing = 0;
 
-	if (is_allowed(sptr, ACL_KILL))
+	if (!is_allowed(sptr, ACL_KILL))
 		return m_nopriv(cptr, sptr, parc, parv);
 
 	user = parv[1];
@@ -2654,7 +2657,7 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			   ME, parv[0], user, acptr->name);
 		chasing = 1;
 	    }
-	if (!MyConnect(acptr) && is_allowed(cptr, ACL_KILLREMOTE))
+	if (!MyConnect(acptr) && !is_allowed(cptr, ACL_KILLREMOTE))
 	    {
 		return m_nopriv(cptr, sptr, parc, parv);
 	    }
@@ -3610,7 +3613,7 @@ int	m_save(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 /*
 ** Given client cptr and function decide access.
-** Return 0 for OK, 1 for forbidden.
+** Return 1 for OK, 0 for forbidden.
 */
 
 int	is_allowed(aClient *cptr, long function)
@@ -3619,15 +3622,15 @@ int	is_allowed(aClient *cptr, long function)
 
 	/* We cannot judge not our clients. Yet. */
 	if (!MyConnect(cptr) || IsServer(cptr))
-		return 0;
+		return 1;
 
 	/* minimal control, but nothing else service can do anyway. */
 	if (IsService(cptr))
 	{
 		if (function == ACL_TKLINE &&
 			(cptr->service->wants & SERVICE_WANT_TKLINE))
-			return 0;
-		return 1;
+			return 1;
+		return 0;
 	}
 
 	for (tmp = cptr->confs; tmp; tmp = tmp->next)
@@ -3638,11 +3641,11 @@ int	is_allowed(aClient *cptr, long function)
 
 	/* no O: conf found */
 	if (!tmp)
-		return 1;
+		return 0;
 
 	/* check access */
 	if ((tmp->value.aconf->flags & function))
-		return 0;
+		return 1;
 
-	return 1;
+	return 0;
 }
