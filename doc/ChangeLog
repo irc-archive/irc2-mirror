@@ -1,3 +1,44 @@
+2.11.0b14
+
+2004-10-06  Piotr Kucharski
+
+	* common/numeric_def.h, config.h.dist, s_err.c, s_serv.c/m_users():
+	  added USERS_RFC1459 define to choose between rfc1459 behaviour of
+	  USERS and a new one.
+	* s_serv.c: add send_users() used in LUSERS and new USERS.
+	* s_serv.c/m_users(): new behaviour of USERS command if USERS_RFC1459
+	  is not defined.
+	* s_serv.c/m_lusers(): send 265 and 266 only if request was for all
+	  clients (either no param or param "*").
+	* channel.c/m_join(): disable '#' and '!' as first +channel name.
+	* s_serv.c/m_stats(): stats k honours TXT_NOSTATSK define.
+	* s_user.c/m_ping(): local PING is answered with PONG containing text
+	  used as argument to PING; removed unnecessary parts of code.
+
+2004-10-05  Piotr Kucharski
+
+	* numeric_def.h, s_err.c, s_serv.c/m_lusers(): revert 251 and 255
+	  numerics changes, readd 266 numeric, change format of 265 and 266
+	  numerics to be alike 251 (but with numbers in front).
+
+2004-10-04  Piotr Kucharski
+
+	* moved support/iauth.conf to doc/iauth.conf.example and
+	  renamed example.conf to ircd.conf.example
+	* Makefile.in: appropriate changes.
+	* struct_def.h: change Zdata->outbuf type to Bytef (as defined
+	  in zlib headers).
+	* s_zip.c: add some casts to get rid of warnings.
+	* a_conf.c: add "exit" keyword.
+	* s_serv.c/m_server_estab(), s_bsd.c/report_error(): find_uid() can
+	  return NULL, better check before MyConnect().
+
+2004-10-03  Piotr Kucharski
+
+	* get rid of more warnings.
+
+2.11.0b13
+
 2004-10-01  Piotr Kucharski
 
 	* struct_def.h, s_debug.c/send_defines(), s_misc.c/initruntimeconf():
@@ -16,7 +57,7 @@
 	* config.h.dist: SIXBONE_HACK default off.
 	* os.h: include first <syslog.h> and then <sys/syslog.h> (for proper
 	  declaration of syslog(), openlog() etc.)
-	* got rid of all warnings.
+	* got rid of most warnings.
 
 2004-09-28  Piotr Kucharski
 

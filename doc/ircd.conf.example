@@ -1,7 +1,7 @@
 # IRC - Internet Relay Chat, doc/example.conf
 # Copyright (C) 1994, Helen Rose
 #
-# $Id: example.conf,v 1.22 2004/08/23 12:49:50 chopin Exp $
+# $Id: ircd.conf.example,v 1.22 2004/08/23 12:49:50 chopin Exp $
 #
 # some changes for 295 and cleaning, delta, Sat Jun 13 01:09:25 MES 1998
 #

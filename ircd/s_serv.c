@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.237 2004/10/02 01:20:44 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.246 2004/10/06 20:11:55 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -42,6 +42,7 @@ const	char	*check_servername_errors[3][2] = {
 	{ "too long", "Bogus servername - too long" },
 	{ "invalid", "Bogus servername - invalid hostname" },
 	{ "bogus", "Bogus servername - no dot"}};
+static	int	send_users(aClient *, aClient *, int, char **);
 
 /*
 ** m_functions execute protocol messages on this server:
@@ -138,15 +139,11 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	** name is expanded if the incoming mask is the same as
 	** the server name for that link to the name of link.
 	*/
-	while ((*server == '*') && IsServer(cptr))
+	if ((*server == '*') && IsServer(cptr)
+		&& (aconf = cptr->serv->nline) != NULL
+		&& !mycmp(server, my_name_for_link(ME, aconf->port)))
 	{
-		aconf = cptr->serv->nline;
-		if (!aconf)
-			break;
-		if (!mycmp(server,
-			   my_name_for_link(ME, aconf->port)))
-			server = cptr->name;
-		break; /* WARNING is normal here */
+		server = cptr->name;
 	}
 	/*
 	** Find server matching (compatibility) SID
@@ -655,7 +652,7 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	int		hop = 0;
 	int		tmperr;
 
-	if (sptr->user) /* in case NICK hasn't been received yet */
+	if (sptr->user) /* in case NICK has been received already */
             {
                 sendto_one(sptr, replies[ERR_ALREADYREGISTRED], ME, BadTo(parv[0]));
                 return 1;
@@ -994,7 +991,7 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 	{
 		bysptr = find_uid(cptr->serv->byuid, NULL);
 		/* we are interrested only in *remote* opers */
-		if (MyConnect(bysptr))
+		if (bysptr && MyConnect(bysptr))
 		{
 			bysptr = NULL;
 		}
@@ -2172,12 +2169,7 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	case 'I' : case 'i' : /* I (and i) conf lines */
 		report_configured_links(cptr, parv[0], CONF_CLIENT);
 		break;
-#ifdef TKLINE
 	case 'k' : /* temporary K lines */
-		report_configured_links(cptr, parv[0],
-				(CONF_TKILL|CONF_TOTHERKILL));
-		break;
-#endif
 	case 'K' : /* K lines */
 #ifdef TXT_NOSTATSK
 		if (!IsAnOper(sptr))
@@ -2189,7 +2181,10 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		else
 #endif
 		report_configured_links(cptr, parv[0],
-					(CONF_KILL|CONF_OTHERKILL));
+#ifdef TKLINE
+			stat == 'k' ? (CONF_TKILL|CONF_TOTHERKILL) :
+#endif
+				(CONF_KILL|CONF_OTHERKILL));
 		break;
 	case 'M' : case 'm' : /* commands use/stats */
 		for (mptr = msgtab; mptr->cmd; mptr++)
@@ -2276,14 +2271,19 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 */
 int	m_users(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
-#ifdef ENABLE_USERS
-	char	namebuf[10],linebuf[10],hostbuf[17];
-	int	fd, flag = 0;
-#endif
+	if (parc > 1 &&
+		hunt_server(cptr, sptr, ":%s USERS :%s", 1, parc, parv)
+		!= HUNTED_ISME)
+	{
+		return 3;
+	}
 
-	if (hunt_server(cptr,sptr,":%s USERS :%s",1,parc,parv) == HUNTED_ISME)
-	    {
+#ifdef USERS_RFC1459
+	{
 #ifdef ENABLE_USERS
+		char	namebuf[10],linebuf[10],hostbuf[17];
+		int	fd, flag = 0;
+
 		if ((fd = utmp_open()) == -1)
 		    {
 			sendto_one(sptr, replies[ERR_FILEERROR], ME, BadTo(parv[0]),
@@ -2307,9 +2307,21 @@ int	m_users(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #else
 		sendto_one(sptr, replies[ERR_USERSDISABLED], ME, BadTo(parv[0]));
 #endif
-	    }
-	else
-		return 3;
+	}
+#else /* USERS_RFC1459 */
+	(void) send_users(cptr, sptr, parc, parv);
+#endif /* USERS_RFC1459 */
+	return 2;
+}
+
+int	send_users(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+        sendto_one(sptr, replies[RPL_LOCALUSERS], ME, BadTo(parv[0]),
+		istat.is_myclnt, istat.is_m_myclnt,
+		istat.is_myclnt, istat.is_m_myclnt);
+        sendto_one(sptr, replies[RPL_GLOBALUSERS], ME, BadTo(parv[0]),
+		istat.is_user[0] + istat.is_user[1], istat.is_m_users,
+		istat.is_user[0] + istat.is_user[1], istat.is_m_users);
 	return 2;
 }
 
@@ -2367,6 +2379,7 @@ int	m_help(aClient *cptr, aClient *sptr, int parc, char *parv[])
  */
 int	 m_lusers(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
+	int		all = 0;	/* showing counts of all clients */
 	int		s_count = 0,	/* server */
 			c_count = 0,	/* client (visible) */
 			u_count = 0,	/* unknown */
@@ -2391,6 +2404,7 @@ int	 m_lusers(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 	if (parc == 1 || (parv[1][0] == '*' && parv[1][1] == '\0'))
 	{
+		all = 1;
 		s_count = istat.is_serv;
 		c_count = istat.is_user[0];
 		i_count = istat.is_user[1];
@@ -2402,9 +2416,9 @@ int	 m_lusers(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		m_services = istat.is_myservice;
 	}
 	else
-	{	
+	{
 		aClient 	*acptr;
-        	aServer 	*asptr;
+		aServer 	*asptr;
 		aService 	*svcp;
 		
 		if ((acptr = find_client(parv[1], NULL)) && IsServer(acptr))
@@ -2464,7 +2478,6 @@ int	 m_lusers(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	}
 	
 	sendto_one(sptr, replies[RPL_LUSERCLIENT], ME, BadTo(parv[0]),
-		   c_count + i_count, v_count, s_count,
 		   c_count + i_count, v_count, s_count);
 	if (o_count)
 	{
@@ -2480,11 +2493,9 @@ int	 m_lusers(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		   istat.is_chan);
 	
 	sendto_one(sptr, replies[RPL_LUSERME], ME, BadTo(parv[0]), m_clients,
-		   m_services, m_servers, m_clients,
 		   m_services, m_servers);
-        sendto_one(sptr, replies[RPL_LUSERMAX], ME, BadTo(parv[0]),
-			istat.is_m_myclnt, istat.is_m_users,
-			istat.is_m_myclnt, istat.is_m_users);
+	if (all)
+		(void) send_users(cptr, sptr, parc, parv);
 	return 2;
 }
 

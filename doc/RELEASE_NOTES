@@ -1,4 +1,4 @@
-# @(#)$Id: RELEASE_NOTES,v 1.60 2004/10/02 01:25:26 chopin Exp $
+# @(#)$Id: RELEASE_NOTES,v 1.64 2004/10/06 15:03:30 chopin Exp $
 
 This is version 2.11.0 of the IRC software.
 ===============================================================================
@@ -50,6 +50,10 @@ New features in 2.11.0:
 	* New keyword "delayed" in iauth configuration (shortening time client
 	  waits for accepting).
 	* Services can request UIDs (or, rather, UNICKs).
+	* "LUSERS" shows local and global usercounts and maximums (new 265/266
+	  numerics).
+	* "USERS" defaults now to non-rfc1459 compatible variant (shows local
+	  and global usercounts and maximums (new 265/266 numerics).
 
 Important changes in 2.11.0 (since 2.10.3):
 	* Nicknames of local clients cannot have [\]{|} chars. (Will be removed
@@ -67,7 +71,6 @@ Important changes in 2.11.0 (since 2.10.3):
 	* Only "STATS K" (upper case K) returns list of klines.
 	* "LIST" (if allowed) does not disconnect if client's sendQ fills.
 	* "WHOIS" now shows the time user signed on.
-	* "LUSERS" shows local and global usercount maximum.
 	* "INVITE" overriding ban shows inviter's n!u@h in channel notice.
 	* Support for text representation of user modes in USER command
 	  during registration.
@@ -80,6 +83,7 @@ Important changes in 2.11.0 (since 2.10.3):
 	* "STATS l" and "STATS L" show counts in Bytes, not KiBytes.
 	* "SERVICE" command has been changed slightly (removed 2nd (stok) and 5th
 	  (hopcount) parameters), please update your services.
+	* Format of log files has changed.
 
 Important configuration changes between 2.10.x and 2.11.0:
 	* ircd.tune must be removed when upgrading from 2.10.x to 2.11.x
