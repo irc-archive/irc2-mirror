@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char sccsid[] = "@(#)s_user.c	2.52 5/5/93 (C) 1988 University of Oulu, \
+static  char sccsid[] = "@(#)s_user.c	2.54 5/26/93 (C) 1988 University of Oulu, \
 Computing Center and Jarkko Oikarinen";
 #endif
 
@@ -887,7 +887,7 @@ int	m_who(cptr, sptr, parc, parv)
 aClient *cptr, *sptr;
 int	parc;
 char	*parv[];
-    {
+{
 	Reg1	aClient *acptr;
 	Reg2	char	*mask = parc > 1 ? parv[1] : NULL;
 	Reg3	Link	*lp;
@@ -959,7 +959,7 @@ char	*parv[];
 	else for (acptr = client; acptr; acptr = acptr->next)
 	    {
 		aChannel *ch2ptr = NULL;
-		int showperson, isinvis;
+		int	showperson, isinvis;
 
 		if (!IsPerson(acptr))
 			continue;
@@ -980,7 +980,7 @@ char	*parv[];
 			member = IsMember(sptr, chptr);
 			if (isinvis && !member)
 				continue;
-			if (!isinvis && ShowChannel(sptr, chptr))
+			if (member || (!isinvis && ShowChannel(sptr, chptr)))
 			    {
 				ch2ptr = chptr;
 				showperson = 1;
@@ -1009,7 +1009,7 @@ char	*parv[];
 	sendto_one(sptr, rpl_str(RPL_ENDOFWHO), me.name, parv[0],
 		   BadPtr(mask) ?  "*" : mask);
 	return 0;
-    }
+}
 
 /*
 ** m_whois
@@ -1653,7 +1653,9 @@ char	*parv[];
 		return 0;
 	    }
 	if (!(aconf = find_conf_exact(name, sptr->username, sptr->sockhost,
-				      CONF_OPERATOR|CONF_LOCOP)))
+				      CONF_OPS)) &&
+	    !(aconf = find_conf_exact(name, sptr->username,
+				      inetntoa((char *)&cptr->ip), CONF_OPS)))
 	    {
 		sendto_one(sptr, err_str(ERR_NOOPERHOST), me.name, parv[0]);
 		return 0;
@@ -1676,7 +1678,7 @@ char	*parv[];
 	encr = password;
 #endif  /* CRYPT_OPER_PASSWORD */
 
-	if ((aconf->status & (CONF_OPERATOR | CONF_LOCOP)) &&
+	if ((aconf->status & CONF_OPS) &&
 	    StrEq(encr, aconf->passwd) && !attach_conf(sptr, aconf))
 	    {
 		int old = (sptr->flags & ALL_UMODES);
@@ -1684,16 +1686,16 @@ char	*parv[];
 
 		s = index(aconf->host, '@');
 		*s++ = '\0';
-		sptr->flags |= (FLAGS_SERVNOTICE|FLAGS_WALLOP);
 		if ((matches(s,me.sockhost) && !IsLocal(sptr)) ||
 		    aconf->status == CONF_LOCOP)
 			SetLocOp(sptr);
 		else
 			SetOper(sptr);
 		*--s =  '@';
-		send_umode_out(cptr, sptr, old);
 		sendto_ops("%s is now operator (%c)", parv[0],
 			   IsOper(sptr) ? 'O' : 'o');
+		sptr->flags |= (FLAGS_SERVNOTICE|FLAGS_WALLOP);
+		send_umode_out(cptr, sptr, old);
  		sendto_one(sptr, rpl_str(RPL_YOUREOPER), me.name, parv[0]);
 #if defined(USE_SYSLOG) && defined(SYSLOG_OPER)
 		syslog(LOG_INFO, "OPER (%s) (%s) by (%s!%s@%s)",
@@ -2036,8 +2038,7 @@ char	*parv[];
 		sptr->flags &= ~FLAGS_LOCOP;
 	if ((setflags & FLAGS_OPER|FLAGS_LOCOP) && !IsAnOper(sptr) &&
 	    MyConnect(sptr))
-		det_confs_butmask(sptr,
-				  CONF_CLIENT & ~(CONF_OPERATOR|CONF_LOCOP));
+		det_confs_butmask(sptr, CONF_CLIENT & ~CONF_OPS);
 #ifdef	USE_SERVICES
 	if (IsOper(sptr) && !(setflags & FLAGS_OPER))
 		check_services_butone(SERVICE_WANT_OPER, sptr,
