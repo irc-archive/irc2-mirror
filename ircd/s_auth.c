@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_auth.c,v 1.19 1998/10/10 12:19:33 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_auth.c,v 1.26 1999/02/01 20:35:50 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -27,9 +27,11 @@ static  char rcsid[] = "@(#)$Id: s_auth.c,v 1.19 1998/10/10 12:19:33 kalt Exp $"
 #include "s_externs.h"
 #undef S_AUTH_C
 
-aExtCf	*iauth_conf = NULL;
-
 #if defined(USE_IAUTH)
+
+aExtCf		*iauth_conf = NULL;
+aExtData	*iauth_stats = NULL;
+
 /*
  * sendto_iauth
  *
@@ -162,19 +164,55 @@ read_iauth()
 			    start = end;
 			    continue;
 			}
+		    if (*start == 's')
+			{
+			    aExtData *ectmp;
+
+			    while (ectmp = iauth_stats)
+				{
+				    iauth_stats = iauth_stats->next;
+				    MyFree(ectmp->line);
+				    MyFree(ectmp);
+				}
+			    iauth_stats = (aExtData *)
+				    MyMalloc(sizeof(aExtData));
+			    iauth_stats->line = MyMalloc(60);
+			    sprintf(iauth_stats->line,
+				    "iauth modules statistics (%s)",
+				    myctime(timeofday));
+			    iauth_stats->next = NULL;
+			    start = end;
+			    continue;
+			}
+		    if (*start == 'S')
+			{
+			    aExtData **ectmp = &iauth_stats;
+
+			    while (*ectmp)
+				    ectmp = &((*ectmp)->next);
+			    *ectmp = (aExtData *) MyMalloc(sizeof(aExtData));
+			    (*ectmp)->line = mystrdup(start+2);
+			    (*ectmp)->next = NULL;
+			    start = end;
+			    continue;
+			}
 		    if (*start != 'U' && *start != 'u' &&
 			*start != 'K' && *start != 'D')
 			{
 			    sendto_flag(SCH_AUTH, "Garbage from iauth [%s]",
 					start);
+			    sendto_iauth("-1 E Garbage [%s]", start);
 			    /*
 			    ** The above should never happen, but i've seen it
 			    ** occasionnally, so let's try to get more info
 			    ** about it! -kalt
 			    */
 			    sendto_flag(SCH_AUTH,
-			"last='%c' start=%x end=%x buf=%x olen=%d i=%d",
+				"last=%u start=%x end=%x buf=%x olen=%d i=%d",
 					last, start, end, buf, olen, i);
+			    sendto_iauth(
+			 "-1 E last=%u start=%x end=%x buf=%x olen=%d i=%d",
+			 		last, start, end, buf, olen, i);
 			    start = end;
 			    continue;
 			}
@@ -294,10 +332,32 @@ char *to;
 {
 	aExtCf *ectmp = iauth_conf;
 
+	if (adfd < 0)
+		return;
 	while (ectmp)
 	    {
 		sendto_one(sptr, ":%s %d %s :%s",
 			   ME, RPL_STATSIAUTH, to, ectmp->line);
+		ectmp = ectmp->next;
+	    }
+}
+
+/*
+ * report_iauth_stats
+ *
+ * called from m_stats(), this is the reply to /stats A
+ */
+void
+report_iauth_stats(sptr, to)
+aClient *sptr;
+char *to;
+{
+	aExtData *ectmp = iauth_stats;
+
+	while (ectmp)
+	    {
+		sendto_one(sptr, ":%s %d %s :%s",
+			   ME, RPL_STATSDEBUG, to, ectmp->line);
 		ectmp = ectmp->next;
 	    }
 }
@@ -316,12 +376,13 @@ void	start_auth(cptr)
 Reg	aClient	*cptr;
 {
 #ifndef	NO_IDENT
-	struct	sockaddr_in	us, them;
+	struct	SOCKADDR_IN	us, them;
+
 	SOCK_LEN_TYPE ulen, tlen;
 
 	Debug((DEBUG_NOTICE,"start_auth(%x) fd %d status %d",
 		cptr, cptr->fd, cptr->status));
-	if ((cptr->authfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+	if ((cptr->authfd = socket(AFINET, SOCK_STREAM, 0)) == -1)
 	    {
 #ifdef	USE_SYSLOG
 		syslog(LOG_ERR, "Unable to create auth socket for %s:%m",
@@ -348,23 +409,31 @@ Reg	aClient	*cptr;
 	/* get remote host peer - so that we get right interface -- jrg */
 	tlen = ulen = sizeof(us);
 	(void)getpeername(cptr->fd, (struct sockaddr *)&them, &tlen);
-	them.sin_family = AF_INET;
+	them.SIN_FAMILY = AFINET;
 
 	/* We must bind the local end to the interface that they connected
 	   to: The local system might have more than one network address,
 	   and RFC931 check only sends port numbers: server takes IP addresses
 	   from query socket -- jrg */
 	(void)getsockname(cptr->fd, (struct sockaddr *)&us, &ulen);
-	us.sin_family = AF_INET;
+	us.SIN_FAMILY = AFINET;
 #if defined(USE_IAUTH)
 	if (adfd >= 0)
 	    {
 		char abuf[BUFSIZ];
-
+#ifdef INET6
 		sprintf(abuf, "%d C %s %u ", cptr->fd,
-			inetntoa((char *)&them.sin_addr),ntohs(them.sin_port));
+			inetntop(AF_INET6, (char *)&them.sin6_addr, mydummy,
+				 MYDUMMY_SIZE), ntohs(them.SIN_PORT));
 		sprintf(abuf+strlen(abuf), "%s %u",
-			inetntoa((char *)&us.sin_addr), ntohs(us.sin_port));
+			inetntop(AF_INET6, (char *)&us.sin6_addr, mydummy,
+				 MYDUMMY_SIZE), ntohs(us.SIN_PORT));
+#else
+		sprintf(abuf, "%d C %s %u ", cptr->fd,
+			inetntoa((char *)&them.sin_addr),ntohs(them.SIN_PORT));
+		sprintf(abuf+strlen(abuf), "%s %u",
+			inetntoa((char *)&us.sin_addr), ntohs(us.SIN_PORT));
+#endif
 		if (sendto_iauth(abuf) == 0)
 		    {
 			close(cptr->authfd);
@@ -374,22 +443,42 @@ Reg	aClient	*cptr;
 		    }
 	    }
 #endif
-	them.sin_port = htons(113);
-	us.sin_port = htons(0);  /* bind assigns us a port */
+#ifdef INET6
+	Debug((DEBUG_NOTICE,"auth(%x) from %s %x %x",
+	       cptr, inet_ntop(AF_INET6, (char *)&us.sin6_addr, mydummy,
+			       MYDUMMY_SIZE), us.sin6_addr.s6_addr[14],
+	       us.sin6_addr.s6_addr[15]));
+#else
 	Debug((DEBUG_NOTICE,"auth(%x) from %s",
 	       cptr, inetntoa((char *)&us.sin_addr)));
-	if (bind(cptr->authfd, (struct sockaddr *)&us, ulen) >= 0)
+#endif
+	them.SIN_PORT = htons(113);
+	us.SIN_PORT = htons(0);  /* bind assigns us a port */
+	if (bind(cptr->authfd, (struct SOCKADDR *)&us, ulen) >= 0)
 	    {
-		(void)getsockname(cptr->fd, (struct sockaddr *)&us, &ulen);
+		(void)getsockname(cptr->fd, (struct SOCKADDR *)&us, &ulen);
+#ifdef INET6
+		Debug((DEBUG_NOTICE,"auth(%x) to %s",
+			cptr, inet_ntop(AF_INET6, (char *)&them.sin6_addr,
+					mydummy, MYDUMMY_SIZE)));
+#else
 		Debug((DEBUG_NOTICE,"auth(%x) to %s",
 			cptr, inetntoa((char *)&them.sin_addr)));
+#endif
 		(void)alarm((unsigned)4);
-		if (connect(cptr->authfd, (struct sockaddr *)&them,
+		if (connect(cptr->authfd, (struct SOCKADDR *)&them,
 			    tlen) == -1 && errno != EINPROGRESS)
 		    {
+#ifdef INET6
+			Debug((DEBUG_ERROR,
+				"auth(%x) connect failed to %s - %d", cptr,
+				inet_ntop(AF_INET6, (char *)&them.sin6_addr,
+					  mydummy, MYDUMMY_SIZE), errno));
+#else
 			Debug((DEBUG_ERROR,
 				"auth(%x) connect failed to %s - %d", cptr,
 				inetntoa((char *)&them.sin_addr), errno));
+#endif
 			ircstp->is_abad++;
 			/*
 			 * No error report from this...
@@ -407,9 +496,16 @@ Reg	aClient	*cptr;
 	    {
 		report_error("binding stream socket for auth request %s:%s",
 			     cptr);
+#ifdef INET6
+		Debug((DEBUG_ERROR,"auth(%x) bind failed on %s port %d - %d",
+		      cptr, inet_ntop(AF_INET6, (char *)&us.sin6_addr,
+		      mydummy, MYDUMMY_SIZE),
+		      ntohs(us.SIN_PORT), errno));
+#else
 		Debug((DEBUG_ERROR,"auth(%x) bind failed on %s port %d - %d",
 		      cptr, inetntoa((char *)&us.sin_addr),
-		      ntohs(us.sin_port), errno));
+		      ntohs(us.SIN_PORT), errno));
+#endif
 	    }
 
 	cptr->flags |= (FLAGS_WRAUTH|FLAGS_AUTH);
@@ -431,15 +527,16 @@ Reg	aClient	*cptr;
 void	send_authports(cptr)
 aClient	*cptr;
 {
-	struct	sockaddr_in	us, them;
+	struct	SOCKADDR_IN	us, them;
+
 	char	authbuf[32];
 	SOCK_LEN_TYPE ulen, tlen;
 
 	Debug((DEBUG_NOTICE,"write_authports(%x) fd %d authfd %d stat %d",
 		cptr, cptr->fd, cptr->authfd, cptr->status));
 	tlen = ulen = sizeof(us);
-	if (getsockname(cptr->fd, (struct sockaddr *)&us, &ulen) ||
-	    getpeername(cptr->fd, (struct sockaddr *)&them, &tlen))
+	if (getsockname(cptr->fd, (struct SOCKADDR *)&us, &ulen) ||
+	    getpeername(cptr->fd, (struct SOCKADDR *)&them, &tlen))
 	    {
 #ifdef	USE_SYSLOG
 		syslog(LOG_ERR, "auth get{sock,peer}name error for %s:%m",
@@ -449,11 +546,17 @@ aClient	*cptr;
 	    }
 
 	SPRINTF(authbuf, "%u , %u\r\n",
-		(unsigned int)ntohs(them.sin_port),
-		(unsigned int)ntohs(us.sin_port));
+		(unsigned int)ntohs(them.SIN_PORT),
+		(unsigned int)ntohs(us.SIN_PORT));
 
+#ifdef INET6
+	Debug((DEBUG_SEND, "sending [%s] to auth port %s.113",
+		authbuf, inet_ntop,(AF_INET6, (char *)&them.sin6_addr,
+				    mydummy, MYDUMMY_SIZE)));
+#else
 	Debug((DEBUG_SEND, "sending [%s] to auth port %s.113",
 		authbuf, inetntoa((char *)&them.sin_addr)));
+#endif
 	if (write(cptr->authfd, authbuf, strlen(authbuf)) != strlen(authbuf))
 	    {
 authsenderr:
@@ -491,7 +594,7 @@ Reg	aClient	*cptr;
 	Debug((DEBUG_NOTICE,"read_authports(%x) fd %d authfd %d stat %d",
 		cptr, cptr->fd, cptr->authfd, cptr->status));
 	/*
-	 * Nasty.  Cant allow any other reads from client fd while we're
+	 * Nasty.  Can't allow any other reads from client fd while we're
 	 * waiting on the authfd to return a full valid string.  Use the
 	 * client's input buffer to buffer the authd reply.
 	 * Oh. this is needed because an authd reply may come back in more

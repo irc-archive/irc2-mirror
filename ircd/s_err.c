@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_err.c,v 1.19 1998/09/18 22:02:51 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_err.c,v 1.21 1999/01/20 01:28:47 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -129,21 +129,22 @@ static	Numeric	numeric_errors[] = {
 		{ 0, (char *)NULL },
 		{ 0, (char *)NULL },
 /* 471 */	{ ERR_CHANNELISFULL, "%s :Cannot join channel (+l)" },
-/* 472 */	{ ERR_UNKNOWNMODE  , "%c :is unknown mode char to me" },
+/* 472 */	{ ERR_UNKNOWNMODE  , "%c :is unknown mode char to me for %s" },
 /* 473 */	{ ERR_INVITEONLYCHAN, "%s :Cannot join channel (+i)" },
 /* 474 */	{ ERR_BANNEDFROMCHAN, "%s :Cannot join channel (+b)" },
 /* 475 */	{ ERR_BADCHANNELKEY, "%s :Cannot join channel (+k)" },
 /* 476 */	{ ERR_BADCHANMASK, "%s :Bad Channel Mask" },
 /* 477 */	{ ERR_NOCHANMODES, "%s :Channel doesn't support modes" },
-		{ 0, (char *)NULL },
+/* 478 */	{ ERR_BANLISTFULL, "%s %s :Channel list is full" },
 		{ 0, (char *)NULL },
 		{ 0, (char *)NULL },
 /* 481 */	{ ERR_NOPRIVILEGES,
 		":Permission Denied- You're not an IRC operator" },
 /* 482 */	{ ERR_CHANOPRIVSNEEDED, "%s :You're not channel operator" },
-/* 483 */	{ ERR_CANTKILLSERVER, "%s :You cant kill a server!" },
+/* 483 */	{ ERR_CANTKILLSERVER, "%s :You can't kill a server!" },
 /* 484 */	{ ERR_RESTRICTED, ":Your connection is restricted!" },
-		{ 0, (char *)NULL },
+/* 485 */	{ ERR_UNIQOPRIVSNEEDED,
+		  ":You're not the original channel operator" },
 		{ 0, (char *)NULL },
 		{ 0, (char *)NULL },
 		{ 0, (char *)NULL },
@@ -160,7 +161,7 @@ static	Numeric	numeric_errors[] = {
 		{ 0, (char *)NULL },
                 { 0, (char *)NULL },
 /* 501 */	{ ERR_UMODEUNKNOWNFLAG, ":Unknown MODE flag" },
-/* 502 */	{ ERR_USERSDONTMATCH, ":Cant change mode for other users" },
+/* 502 */	{ ERR_USERSDONTMATCH, ":Can't change mode for other users" },
 		{ 0, (char *)NULL }
 };
 
@@ -190,7 +191,7 @@ static	Numeric	numeric_replies[] = {
 /* 322 */	{ RPL_LIST, "%s %d :%s" },
 /* 323 */	{ RPL_LISTEND, ":End of /LIST" },
 /* 324 */	{ RPL_CHANNELMODEIS, "%s %s %s" },
-		{ 0, (char *)NULL },
+/* 325 */	{ RPL_UNIQOPIS, "%s %s %s" },
 		{ 0, (char *)NULL },
 		{ 0, (char *)NULL },
 		{ 0, (char *)NULL },

@@ -17,7 +17,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: hash.c,v 1.9 1998/05/25 20:44:20 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: hash.c,v 1.13 1999/01/22 21:04:00 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -571,9 +571,9 @@ aClient *cptr;
 	t = ((char *)server + strlen(server));
 	/*
 	 * Whats happening in this next loop ? Well, it takes a name like
-	 * foo.bar.edu and proceeds to earch for *.edu and then *.bar.edu.
+	 * foo.bar.edu and proceeds to search for *.edu and then *.bar.edu.
 	 * This is for checking full server names against masks although
-	 * it isnt often done this way in lieu of using match().
+	 * it isn't often done this way in lieu of using match().
 	 */
 	for (;;)
 	    {
@@ -586,7 +586,7 @@ aClient *cptr;
 		ch = *t;
 		*t = '*';
 		/*
-	 	 * Dont need to check IsServer() here since nicknames cant
+	 	 * Don't need to check IsServer() here since nicknames can't
 		 * have *'s in them anyway.
 		 */
 		if (((tmp = hash_find_client(t, cptr))) != cptr)
@@ -602,9 +602,6 @@ aClient *cptr;
 
 /*
  * hash_find_channel
- *
- * If the name doesn't begin with #, or & or -, then we're looking for
- * -????name instead of a real match.
  */
 aChannel	*hash_find_channel(name, chptr)
 char	*name;
@@ -612,20 +609,13 @@ aChannel *chptr;
 {
 	Reg	aChannel	*tmp, *prv = NULL;
 	Reg	aHashEntry	*tmp3;
-	u_int	hashv, hv, exact;
+	u_int	hashv, hv;
 
 	hashv = hash_channel_name(name, &hv);
 	tmp3 = &channelTable[hashv];
 
-	if (IsChannelName(name))
-		exact = 1;
-	else
-		exact = 0;
 	for (tmp = (aChannel *)tmp3->list; tmp; prv = tmp, tmp = tmp->hnextch)
-		if (hv == tmp->hashv &&
-		    ((exact == 1 && mycmp(name, tmp->chname) == 0) ||
-		     (exact == 0 && *tmp->chname == '!' &&
-		      mycmp(name, tmp->chname + CHIDLEN + 1) == 0)))
+		if (hv == tmp->hashv && mycmp(name, tmp->chname) == 0)
 		    {
 			chhits++;
 			if (prv)
@@ -641,6 +631,45 @@ aChannel *chptr;
 		    }
 	chmiss++;
 	return chptr;
+}
+
+/*
+ * hash_find_channels
+ *
+ * look up matches for !?????name instead of a real match.
+ */
+aChannel	*hash_find_channels(name, chptr)
+char	*name;
+aChannel *chptr;
+{
+	aChannel	*tmp;
+	u_int	hashv, hv;
+
+	if (chptr == NULL)
+	    {
+		aHashEntry	*tmp3;
+
+		hashv = hash_channel_name(name, &hv);
+		tmp3 = &channelTable[hashv];
+		chptr = (aChannel *) tmp3->list;
+	    }
+	else
+	    {
+		hv = chptr->hashv;
+		chptr = chptr->hnextch;
+	    }
+
+	if (chptr == NULL)
+		return NULL;
+	for (tmp = chptr; tmp; tmp, tmp = tmp->hnextch)
+		if (hv == tmp->hashv && *tmp->chname == '!' &&
+		    mycmp(name, tmp->chname + CHIDLEN + 1) == 0)
+		    {
+			chhits++;
+			return (tmp);
+		    }
+	chmiss++;
+	return NULL;
 }
 
 /*

@@ -29,9 +29,12 @@ typedef	struct	SMode	Mode;
 typedef	struct	fdarray	FdAry;
 typedef	struct	CPing	aCPing;
 typedef	struct	Zdata	aZdata;
-#ifdef CACHED_MOTD
-typedef struct        MotdItem aMotd;
-typedef struct        MotdItem aExtCf;
+#if defined(CACHED_MOTD)
+typedef struct        LineItem aMotd;
+#endif
+#if defined(USE_IAUTH)
+typedef struct        LineItem aExtCf;
+typedef struct        LineItem aExtData;
 #endif
 
 #define	HOSTLEN		63	/* Length of hostname.  Updated to         */
@@ -248,14 +251,14 @@ struct	CPing	{
 	u_long	ping;
 	u_long	seq;		/* # sent still in the "window" */
 	u_long	lseq;		/* sequence # of last sent */
-	u_long	recv;		/* # received still in the "window" */
-	u_long	lrecv;		/* # received */
+	u_long	recvd;		/* # received still in the "window" */
+	u_long	lrecvd;		/* # received */
 };
 
 struct	ConfItem	{
 	u_int	status;		/* If CONF_ILLEGAL, delete when no clients */
 	int	clients;	/* Number of *LOCAL* clients using this */
-	struct	in_addr ipnum;	/* ip number of host field */
+	struct	IN_ADDR ipnum;	/* ip number of host field */
 	char	*host;
 	char	*passwd;
 	char	*name;
@@ -324,20 +327,16 @@ typedef	struct	{
 struct Zdata {
 	z_stream	*in;		/* input zip stream data */
 	z_stream	*out;		/* output zip stream data */
-	char		inbuf[ZIP_MAXIMUM]; /* incoming zipped buffer */
 	char		outbuf[ZIP_MAXIMUM]; /* outgoing (unzipped) buffer */
-	int		incount;	/* size of inbuf content */
 	int		outcount;	/* size of outbuf content */
 };
 #endif
 
-#ifdef CACHED_MOTD
-struct  MotdItem
+struct LineItem
 { 
     char    *line;
-    struct  MotdItem *next;
+    struct  LineItem *next;
 };
-#endif
 
 /*
  * Client structures
@@ -347,7 +346,7 @@ struct	User	{
 	Link	*invited;	/* chain of invite pointer blocks */
 	Link	*uwas;		/* chain of whowas pointer blocks */
 	char	*away;		/* pointer to away message */
-	time_t	last;
+	time_t	last;		/* "idle" time */
 	int	refcnt;		/* Number of times this block is referenced
 				** from aClient (field user), aServer (field
 				** by) and whowas array (field ww_user).
@@ -437,18 +436,15 @@ struct Client	{
 	long	receiveK;	/* Statistics: total k-bytes received */
 	u_short	sendB;		/* counters to count upto 1-k lots of bytes */
 	u_short	receiveB;	/* sent and received. */
-	time_t	lasttime;
+	time_t	lasttime;	/* last time we received data */
 	time_t	firsttime;	/* time client was created */
 	time_t	since;		/* last time we parsed something */
-	u_int	sact;		/* could conceivably grow large...*/
 	aClient	*acpt;		/* listening client which we accepted from */
 	Link	*confs;		/* Configuration record associated */
 	int	authfd;		/* fd for rfc931 authentication */
 	char	*auth;
-	int	priority;	/* priority for selection as active */
-	u_short	ract;		/* no fear about this. */
 	u_short	port;		/* and the remote port# too :-) */
-	struct	in_addr	ip;	/* keep real ip# too */
+	struct	IN_ADDR	ip;	/* keep real ip# too */
 	struct	hostent	*hostp;
 	char	sockhost[HOSTLEN+1]; /* This is the host name from the socket
 				  ** and after which the connection was
@@ -792,7 +788,7 @@ typedef	struct	{
 #define	UTMP		"/etc/utmp"
 #define	COMMA		","
 
-#define	SAP	struct sockaddr *
+#define	SAP	struct SOCKADDR *
 
 /* IRC client structures */
 

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: parse.c,v 1.22 1998/11/09 20:06:00 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: parse.c,v 1.24 1998/12/28 15:44:57 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -567,8 +567,6 @@ char	*buffer, *bufend;
 			 * bursts of up to 5 msgs are allowed
 			 * -SRB
 			 */
-			if (mptr->func != m_ison && mptr->func != m_mode)
-				cptr->ract += (2 + i /120);
 		    }
 #endif
 	    }
@@ -697,7 +695,7 @@ char	*irc_newline;
 		return(NULL);
 
 	field = line;
-	if ((end = (char *)index(line,':')) == NULL)
+	if ((end = (char *)index(line, IRCDCONF_DELIMITER)) == NULL)
 	    {
 		line = NULL;
 		if ((end = (char *)index(field,'\n')) == NULL)

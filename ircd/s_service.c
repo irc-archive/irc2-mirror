@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_service.c,v 1.24 1998/10/10 10:29:33 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_service.c,v 1.26 1999/01/14 01:19:35 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -385,7 +385,7 @@ char	*parv[];
 		metric = 0;
 		server = ME;
 		sp = me.serv;
-		if (!do_nick_name(parv[1]))
+		if (!do_nick_name(parv[1], 0))
 		    {
 			sendto_one(sptr, err_str(ERR_ERRONEUSNICKNAME,
 				   parv[0]));
@@ -573,7 +573,7 @@ char	*parv[];
 	** distribution code is respected.
 	** service type also respected.
 	*/
-	cptr->flags |= FLAGS_CBURST;
+	/* cptr->flags |= FLAGS_CBURST; doesn't work.. */
 	if (burst & SERVICE_WANT_SERVER)
 	    {
 		int	split;
@@ -661,7 +661,7 @@ char	*parv[];
 			    }
 		    }
 	    }
-	cptr->flags ^= FLAGS_CBURST;
+	/* cptr->flags ^= FLAGS_CBURST; */
 	return 0;
 }
 #endif

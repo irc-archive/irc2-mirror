@@ -55,7 +55,7 @@
 
 /*
  *	@(#)resolv.h	8.1 (Berkeley) 6/2/93
- *	$Id: resolv_def.h,v 1.2 1997/09/24 18:40:57 kalt Exp $
+ *	$Id: resolv_def.h,v 1.5 1999/01/20 01:33:08 kalt Exp $
  */
 
 /*
@@ -143,22 +143,27 @@ struct __res_state {
 /*			0x00008000	*/
 
 /* hooks are still experimental as of 4.9.2 */
+#if defined(INET6) && defined(__GNUC__)
+
+#else
+
 typedef enum { res_goahead, res_nextns, res_modified, res_done, res_error }
 	res_sendhookact;
 
-typedef res_sendhookact (*res_send_qhook)__P((struct sockaddr_in * const *ns,
+typedef res_sendhookact (*res_send_qhook)__P((struct SOCKADDR_IN * const *ns,
 					      const u_char **query,
 					      int *querylen,
 					      u_char *ans,
 					      int anssiz,
 					      int *resplen));
 
-typedef res_sendhookact (*res_send_rhook)__P((const struct sockaddr_in *ns,
+typedef res_sendhookact (*res_send_rhook)__P((const struct SOCKADDR_IN *ns,
 					      const u_char *query,
 					      int querylen,
 					      u_char *ans,
 					      int anssiz,
 					      int *resplen));
+#endif
 
 struct res_sym {
 	int	number;		/* Identifying number, like T_MX */
@@ -199,7 +204,6 @@ struct res_sym {
 #define	dn_count_labels	__dn_count_labels
 #define	dn_comp		__dn_comp
 #define	res_randomid	__res_randomid
-#define	res_send	__res_send
 #define	res_isourserver	__res_isourserver
 #define	res_nameinquery	__res_nameinquery
 #define	res_queriesmatch __res_queriesmatch
@@ -212,4 +216,5 @@ struct res_sym {
 #define	res_search	__res_search
 #define	res_querydomain	__res_querydomain
 #define	res_mkquery	__res_mkquery
+#define	res_send	__res_send
 #endif

@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.77 1998/10/29 07:55:13 kalt Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.92 1999/01/23 23:03:06 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -179,7 +179,12 @@ char	*modeid;
 		if (MyClient(cptr))
 		    {
 			if ((len > MAXBANLENGTH) || (++cnt >= MAXBANS))
+			    {
+				sendto_one(cptr, err_str(ERR_BANLISTFULL,
+							 cptr->name),
+					   chptr->chname, modeid);
 				return -1;
+			    }
 			if (type == mode->flags &&
 			    (!match(mode->value.cp, modeid) ||
 			    !match(modeid, mode->value.cp)))
@@ -215,8 +220,8 @@ char	*modeid;
 }
 
 /*
- * del_modeid - delete an id belonging to cptr
- * if modeid is null, delete all ids belonging to cptr.
+ * del_modeid - delete an id belonging to chptr
+ * if modeid is null, delete all ids belonging to chptr.
  */
 static	int	del_modeid(type, chptr, modeid)
 int type;
@@ -226,9 +231,21 @@ char	*modeid;
 	Reg	Link	**mode;
 	Reg	Link	*tmp;
 
-	if (!modeid)
-		return -1;
-	for (mode = &(chptr->mlist); *mode; mode = &((*mode)->next))
+	if (modeid == NULL)
+	    {
+	        for (mode = &(chptr->mlist); *mode; mode = &((*mode)->next))
+		    if (type == (*mode)->flags)
+		        {
+			    tmp = *mode;
+			    *mode = tmp->next;
+			    istat.is_banmem -= (strlen(modeid) + 1);
+			    istat.is_bans--;
+			    MyFree(tmp->value.cp);
+			    free_link(tmp);
+			    break;
+			}
+	    }
+	else for (mode = &(chptr->mlist); *mode; mode = &((*mode)->next))
 		if (type == (*mode)->flags &&
 		    mycmp(modeid, (*mode)->value.cp)==0)
 		    {
@@ -269,7 +286,12 @@ aChannel *chptr;
 		char *ip = NULL;
 
 		if (MyConnect(cptr))
+#ifdef 	INET6
+			ip = (char *) inetntop(AF_INET6, (char *)&cptr->ip,
+					       mydummy, MYDUMMY_SIZE);
+#else
 			ip = (char *) inetntoa((char *)&cptr->ip);
+#endif
 
 		if (ip == NULL || strcmp(ip, cptr->user->host))
 		    {
@@ -478,7 +500,7 @@ aChannel *chptr;
 		return 0;
 	if (chptr)
 		if ((lp = find_user_link(chptr->members, cptr)))
-			chanop = (lp->flags & CHFL_CHANOP);
+			chanop = (lp->flags & (CHFL_CHANOP|CHFL_UNIQOP));
 	if (chanop)
 		chptr->reop = 0;
 	return chanop;
@@ -722,9 +744,14 @@ uncommented may just lead to desynchs..
 	if (cptr->serv->version & SV_NMODE)
 	    {
 		if (modebuf[1] || *parabuf)
+		    {
 			/* only needed to help compatibility */
 			sendto_one(cptr, ":%s MODE %s %s %s",
 				   ME, chptr->chname, modebuf, parabuf);
+			*parabuf = '\0';
+			*modebuf = '+';
+			modebuf[1] = '\0';
+		    }
 		send_mode_list(cptr, chptr->chname, chptr->mlist,
 			       CHFL_EXCEPTION, 'e');
 		send_mode_list(cptr, chptr->chname, chptr->mlist,
@@ -866,8 +893,11 @@ char	*parv[];
 				continue;	/* no valid mode change */
 			if ((mcount < 0) && MyConnect(sptr) && !IsServer(sptr))
 			    {	/* rejected mode change */
-				sendto_one(sptr, err_str(ERR_CHANOPRIVSNEEDED,
-							 parv[0]), name);
+				int num = ERR_CHANOPRIVSNEEDED;
+
+				if (IsClient(sptr) && IsRestricted(sptr))
+					num = ERR_RESTRICTED;
+				sendto_one(sptr, err_str(num, parv[0]), name);
 				continue;
 			    }
 			if (strlen(modebuf) > (size_t)1)
@@ -982,13 +1012,16 @@ char	*parv[], *mbuf, *pbuf;
 					if (lp->flags & CHFL_UNIQOP)
 					    {
 						sendto_one(sptr,
-							   ":%s MODE %s +O %s",
-							   ME, chptr->chname,
+						   rpl_str(RPL_UNIQOPIS,
+							   sptr->name),
+							   chptr->chname,
 						   lp->value.cptr->name);
 						break;
 					    }
 				if (!lp)
-					sendto_one(sptr, ":%s MODE %s -O", ME,
+					sendto_one(sptr,
+						   err_str(ERR_NOSUCHNICK,
+							   sptr->name),
 						   chptr->chname);
 				break;
 			    }
@@ -1322,20 +1355,28 @@ char	*parv[], *mbuf, *pbuf;
 				if (*ip == MODE_ANONYMOUS &&
 				    whatt == MODE_DEL && *chptr->chname == '!')
 					sendto_one(sptr,
-					   err_str(ERR_CHANOPRIVSNEEDED,
+					   err_str(ERR_UNIQOPRIVSNEEDED,
 						   parv[0]), chptr->chname);
+				else if (((*ip == MODE_ANONYMOUS &&
+					   whatt == MODE_ADD &&
+					   *chptr->chname == '#') ||
+					  (*ip == MODE_REOP &&
+					   *chptr->chname != '!')) &&
+					 !IsServer(sptr))
+					sendto_one(cptr,
+						   err_str(ERR_UNKNOWNMODE,
+						   parv[0]), *curr,
+						   chptr->chname);
 				else if ((*ip == MODE_REOP ||
 					  *ip == MODE_ANONYMOUS) &&
 					 !IsServer(sptr) &&
-					 !(is_chan_op(sptr,chptr)&CHFL_UNIQOP))
+					 !(is_chan_op(sptr,chptr) &CHFL_UNIQOP)
+					 && *chptr->chname == '!')
 					/* 2 modes restricted to UNIQOP */
 					sendto_one(sptr,
-					   err_str(ERR_CHANOPRIVSNEEDED,
+					   err_str(ERR_UNIQOPRIVSNEEDED,
 						   parv[0]), chptr->chname);
-				else if (!(*ip == MODE_ANONYMOUS &&
-					   whatt == MODE_ADD &&
-					   !IsServer(sptr) &&
-					   *chptr->chname == '#'))
+				else
 				    {
 					/*
 				        ** If the channel is +s, ignore +p
@@ -1360,14 +1401,10 @@ char	*parv[], *mbuf, *pbuf;
 					count++;
 					*penalty += 2;
 				    }
-				else
-					sendto_one(sptr,
-					   err_str(ERR_CHANOPRIVSNEEDED,
-						   parv[0]), chptr->chname);
 			    }
 			else if (!IsServer(cptr))
 				sendto_one(cptr, err_str(ERR_UNKNOWNMODE,
-					   cptr->name), *curr);
+					   cptr->name), *curr, chptr->chname);
 			break;
 		}
 		curr++;
@@ -1973,7 +2010,26 @@ char	*parv[];
 						    sptr->name);
 					continue;
 				    }
-				if (get_channel(sptr, name+2, 0))
+#if 0
+				/*
+				** Note: creating !!!foo, e.g. !<ID>!foo is
+				** a stupid thing to do because /join !!foo
+				** will not join !<ID>!foo but create !<ID>foo
+				** Some logic here could be reversed, but only
+				** to find that !<ID>foo would be impossible to
+				** create if !<ID>!foo exists.
+				** which is better? it's hard to say -kalt
+				*/
+				if (*(name+3) == '!')
+				    {
+					sendto_one(sptr,
+						   err_str(ERR_NOSUCHCHANNEL,
+							   parv[0]), name);
+					continue;
+				    }
+#endif
+				chptr = hash_find_channels(name+2, NULL);
+				if (chptr)
 				    {
 					sendto_one(sptr,
 						   err_str(ERR_TOOMANYTARGETS,
@@ -1987,7 +2043,7 @@ char	*parv[];
 					/*
 					 * This is a bit wrong: if a channel
 					 * rightfully ceases to exist, it
-					 * can still be *locked* for up to
+ 					 * can still be *locked* for up to
 					 * 2*CHIDNB^3 seconds (~24h)
 					 * Is it a reasonnable price to pay to
 					 * ensure shortname uniqueness? -kalt
@@ -2001,8 +2057,9 @@ char	*parv[];
 					name+2);
 				name = buf;
 			    }
-			else if (!get_channel(sptr, name, 0) &&
-				 !(chptr = get_channel(sptr, name+1, 0)))
+			else if (!find_channel(name, NullChn) &&
+				 !(*name == '!' && *name != 0 &&
+				   (chptr = hash_find_channels(name+1, NULL))))
 			    {
 				if (MyClient(sptr))
 					sendto_one(sptr,
@@ -2013,6 +2070,7 @@ char	*parv[];
 				/* from a server, it is legitimate */
 			    }
 			else if (chptr)
+				/* joining a !channel using the short name */
 				name = chptr->chname;
 		    }
 		if (!IsChannelName(name) ||
@@ -2262,8 +2320,16 @@ char	*parv[];
 			    {
 				sendto_one(sptr, err_str(ERR_NOSUCHCHANNEL,
 							 parv[0]), parv[1]);
-				return;
+				return 0;
 			    }
+		    }
+		/* make sure user isn't already on channel */
+		if (IsMember(acptr, chptr))
+		    {
+			sendto_flag(SCH_ERROR, "NJOIN protocol error from %s",
+				    get_client_name(cptr, TRUE));
+			sendto_one(cptr, "ERROR :NJOIN protocol error");
+			continue;
 		    }
 		/* add user to channel */
 		add_user_to_channel(chptr, acptr, chop);
@@ -2755,6 +2821,26 @@ char	*parv[];
 				if (!MyConnect(sptr) && rlen > CHREPLLEN)
 					break;
 			    }
+			if (*name == '!')
+			    {
+				chptr = NULL;
+				while (chptr=hash_find_channels(name+1, chptr))
+				    {
+					int scr = SecretChannel(chptr) &&
+							!IsMember(sptr, chptr);
+					rlen += sendto_one(sptr,
+							   rpl_str(RPL_LIST,
+								   parv[0]),
+							   chptr->chname,
+							   (scr) ? -1 :
+							   chptr->users,
+							   (scr) ? "" :
+							   chptr->topic);
+					if (!MyConnect(sptr) &&
+					    rlen > CHREPLLEN)
+						break;
+				    }		
+			    }
 		     }
 	}
 	if (!MyConnect(sptr) && rlen > CHREPLLEN)
@@ -2915,7 +3001,7 @@ char	*parv[];
 			break;
 		lp = c2ptr->user->channel;
 		/*
-		 * dont show a client if they are on a secret channel or
+		 * don't show a client if they are on a secret channel or
 		 * they are on a channel sptr is on since they have already
 		 * been show earlier. -avalon
 		 */

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.59 1998/10/28 21:25:03 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.66 1999/01/23 23:05:52 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -229,6 +229,8 @@ int	server, parc;
 **  anything outside the above set will terminate nickname.
 **  In addition, the first character cannot be '-'
 **  or a Digit.
+**  Finally forbid the use of "anonymous" because of possible
+**  abuses related to anonymous channnels. -kalt
 **
 **  Note:
 **	'~'-character should be allowed, but
@@ -236,12 +238,19 @@ int	server, parc;
 **	result if only few servers allowed it...
 */
 
-int	do_nick_name(nick)
+int	do_nick_name(nick, server)
 char	*nick;
+int	server;
 {
 	Reg	char	*ch;
 
-	if (*nick == '-' || isdigit(*nick)) /* first character in [0..9-] */
+	if (*nick == '-') /* first character '-' */
+		return 0;
+
+	if (isdigit(*nick) && !server) /* first character in [0..9] */
+		return 0;
+
+	if (!strcasecmp(nick, "anonymous"))
 		return 0;
 
 	for (ch = nick; *ch && (ch - nick) < NICKLEN; ch++)
@@ -686,7 +695,7 @@ char	*parv[];
 	aClient *acptr;
 	int	delayed = 0;
 	char	nick[NICKLEN+2], *s, *user, *host;
-	Link	*lp;
+	Link	*lp = NULL;
 
 	if (IsService(sptr))
    	    {
@@ -724,7 +733,7 @@ char	*parv[];
 	 * creation) then reject it. If from a server and we reject it,
 	 * and KILL it. -avalon 4/4/92
 	 */
-	if (do_nick_name(nick) == 0 ||
+	if (do_nick_name(nick, IsServer(cptr)) == 0 ||
 	    (IsServer(cptr) && strcmp(nick, parv[1])))
 	    {
 		sendto_one(sptr, err_str(ERR_ERRONEUSNICKNAME, parv[0]),
@@ -1098,7 +1107,7 @@ int	parc, notice;
 		if ((IsPerson(sptr) || IsService(sptr) || IsServer(sptr)) &&
 		    (chptr = find_channel(nick, NullChn)))
 		    {
-			if (can_send(sptr, chptr) == 0)
+			if (can_send(sptr, chptr) == 0 || IsServer(sptr))
 				sendto_channel_butone(cptr, sptr, chptr,
 						      ":%s %s %s :%s",
 						      parv[0], cmd, nick,
@@ -1238,7 +1247,9 @@ int	parc, notice;
 				continue;
 			    }
 		    }
-		sendto_one(sptr, err_str(ERR_NOSUCHNICK, parv[0]), nick);
+		if (!notice)
+			sendto_one(sptr, err_str(ERR_NOSUCHNICK, parv[0]),
+				   nick);
 	    }
     return penalty;
 }
@@ -1646,7 +1657,7 @@ char	*parv[];
 				break;
 			/*
 			 * 'Rules' established for sending a WHOIS reply:
-			 * - if wildcards are being used dont send a reply if
+			 * - if wildcards are being used don't send a reply if
 			 *   the querier isnt any common channels and the
 			 *   client in question is invisible and wildcards are
 			 *   in use (allow exact matches only);
@@ -2301,7 +2312,13 @@ char	*parv[];
 	if (!(aconf = find_conf_exact(name, sptr->username, sptr->sockhost,
 				      CONF_OPS)) &&
 	    !(aconf = find_conf_exact(name, sptr->username,
+#ifdef INET6
+				      (char *)inetntop(AF_INET6,
+						       (char *)&cptr->ip,
+						       mydummy, MYDUMMY_SIZE),
+#else
 				      (char *)inetntoa((char *)&cptr->ip),
+#endif
 				      CONF_OPS)))
 	    {
 		sendto_one(sptr, err_str(ERR_NOOPERHOST, parv[0]));
@@ -2366,7 +2383,11 @@ char	*parv[];
 			name, encr,
 		       parv[0], sptr->user->username, sptr->user->host,
 		       sptr->auth, IsUnixSocket(sptr) ? sptr->sockhost :
+#ifdef INET6
+                       inet_ntop(AF_INET6, (char *)&sptr->ip), mydummy, MYDUMMY_SIZE);
+#else
                        inetntoa((char *)&sptr->ip));
+#endif
 #endif
 #ifdef FNAME_OPERLOG
 	      {
@@ -2389,7 +2410,12 @@ char	*parv[];
 			  myctime(timeofday), name, encr,
 			  parv[0], sptr->user->username, sptr->user->host,
 			  sptr->auth, IsUnixSocket(sptr) ? sptr->sockhost :
+#ifdef INET6
+			  inetntop(AF_INET6, (char *)&sptr->ip, mydummy,
+				   MYDUMMY_SIZE));
+#else
 			  inetntoa((char *)&sptr->ip));
+#endif
 		  (void)alarm(3);
 		  (void)write(logfile, buf, strlen(buf));
 		  (void)alarm(0);
