@@ -389,7 +389,7 @@ aChannel *chptr;
 	    }
 	for (link = chptr->banlist ; link; )
 	    {
-		if (strlen(parabuf) + strlen(acptr->name) + 10 <
+		if (strlen(parabuf) + strlen(link->value.cp) + 10 <
 		    MODEBUFLEN)
 		    {
 			strcat(parabuf, " ");
@@ -483,7 +483,7 @@ char	*parv[];
 		    }
 		if ((IsServer(cptr) && !IsServer(sptr) && !chanop) ||
 		    mcount == -1)
-			sendto_ops("Hack: %s MODE %s %s %s",
+			sendto_ops("Fake: %s MODE %s %s %s",
 				   parv[0], parv[1], modebuf, parabuf);
 		if (MyConnect(sptr) && (!chanop || mcount == -1))
 			sendto_one(sptr, "Hack: %s MODE %s %s %s",

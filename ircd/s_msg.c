@@ -35,6 +35,7 @@ char s_msg_id[] = "s_msg.c v2.0 (c) 1988 University of Oulu, Computing Center\
 #include "msg.h"
 #include "channel.h"
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <utmp.h>
 #ifdef IDENT
@@ -605,14 +606,14 @@ char *parv[];
 		sendto_ops("Nick change collision from %s to %s(%s <- %s)",
 			   sptr->name, acptr->name, acptr->from->name,
 			   get_client_name(cptr, FALSE));
-		sendto_serv_butone(cptr, /* KILL old from outgoing servers */
+		sendto_serv_butone(NULL, /* KILL old from outgoing servers */
 				   ":%s KILL %s :%s (%s(%s) <- %s)",
 				   me.name, sptr->name,
 				   me.name,
 				   acptr->from->name,
 				   acptr->name,
 				   get_client_name(cptr, FALSE));
-		sendto_one(cptr, /* Kill new from incoming link */
+		sendto_serv_butone(NULL, /* Kill new from incoming link */
 			   ":%s KILL %s :%s (%s <- %s(%s))",
 			   me.name, acptr->name,
 			   me.name,
@@ -3203,7 +3204,7 @@ aClient *cptr, *sptr;
 int parc;
 char *parv[];
     {
-	FILE *fptr;
+	int fd;
 	char line[80], *tmp;
 
 	if (check_registered(sptr))
@@ -3221,7 +3222,7 @@ char *parv[];
 	 * 3 seconds. -avalon (curtesy of wumpus)
 	 */
 	alarm(3);
-	if (!(fptr = fopen(MOTD, "r")))
+	if (!(fd = open(MOTD, O_RDONLY)))
 	    {
 		alarm(0);
 		sendto_one(sptr,
@@ -3232,7 +3233,7 @@ char *parv[];
 	alarm(0);
 	sendto_one(sptr, ":%s NOTICE %s :MOTD - %s Message of the Day - ",
 		me.name, parv[0], me.name);
-	while (fgets(line, 80, fptr))
+	while (dgets(fd, line, sizeof(line) - 1))
 	    {
 		if (tmp = (char *)index(line,'\n'))
 			*tmp = '\0';
@@ -3243,7 +3244,7 @@ char *parv[];
 	    }
 	sendto_one(sptr, ":%s NOTICE %s :* End of /MOTD command.",
 		   me.name, parv[0]);
-	fclose(fptr);
+	close(fd);
 #endif
 	return 0;
     }
