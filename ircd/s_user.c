@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.221 2004/06/26 12:57:46 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.229 2004/07/02 15:51:13 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -603,6 +603,14 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 			return exit_client(cptr, sptr, &me, (reason) ? buf :
 					   "K-lined");
 		    }
+#ifdef XLINE
+		if (IsXlined(sptr))
+		{
+			sptr->exitc = EXITC_XLINE;
+			return exit_client(cptr, sptr, &me,
+				XLINE_EXIT_REASON);
+		}
+#endif
 		sp = user->servp;
 	    }
 	else
@@ -682,6 +690,18 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 			(void)strcpy(sptr->name, nick);
 			(void)add_to_client_hash_table(nick, sptr);
 		}
+# if defined(CLIENTS_CHANNEL) && (CLIENTS_CHANNEL_LEVEL & CCL_CONN)
+		sendto_flag(SCH_CLIENT, "%s %s %s %s CONN %s"
+# if (CLIENTS_CHANNEL_LEVEL & CCL_CONNINFO)
+			" :%s"
+# endif
+			, user->uid, nick, user->username,
+			user->host, user->sip
+# if (CLIENTS_CHANNEL_LEVEL & CCL_CONNINFO)
+			, sptr->info
+# endif
+			);
+#endif
 		sprintf(buf, "%s!%s@%s", nick, user->username, user->host);
 		add_to_uid_hash_table(sptr->user->uid, sptr);
 		sptr->exitc = EXITC_REG;
@@ -1244,6 +1264,12 @@ nickkilldone:
 		** on that channel. Propagate notice to other servers.
 		*/
 		sendto_common_channels(sptr, ":%s NICK :%s", parv[0], nick);
+#if defined(CLIENTS_CHANNEL) && (CLIENTS_CHANNEL_LEVEL & CCL_NICK)
+		if (MyConnect(sptr))
+			sendto_flag(SCH_CLIENT, "%s %s %s %s NICK %s",
+				sptr->user->uid, parv[0],
+				sptr->user->username, sptr->user->host, nick);
+#endif
 		if (sptr->user) /* should always be true.. */
 		    {
 			add_history(sptr, sptr);
@@ -2440,6 +2466,29 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #ifndef	NO_DEFAULT_INVISIBLE
 	SetInvisible(sptr);
 #endif
+#ifdef XLINE
+	if (MyConnect(sptr))
+	{
+		aConfItem *tmp;
+
+		for (tmp = conf; tmp; tmp = tmp->next)
+		{
+			if (tmp->status != CONF_XLINE)
+				continue;
+			if (!BadPtr(tmp->source_ip) && match(tmp->source_ip, realname))
+				continue;
+			if (!BadPtr(tmp->host) && match(tmp->host, username))
+				continue;
+			if (!BadPtr(tmp->passwd) && match(tmp->passwd, host))
+				continue;
+			if (!BadPtr(tmp->name) && match(tmp->name, server))
+				continue;
+			SetXlined(sptr);
+			break;
+               }
+       }
+#endif
+
 	/* parse desired user modes sent in USER */
 	/* rfc behaviour - bits */
 	if (isdigit(*host))
@@ -2642,11 +2691,24 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	** Note: "acptr->name" is used instead of "user" because we may
 	**	 have changed the target because of the nickname change.
 	*/
-	sendto_flag(SCH_KILL,
-		    "Received KILL message for %s!%s@%s[%s/%s]. From %s Path: %s!%s",
-		    acptr->name, acptr->user->username, acptr->user->host,
-		acptr->user->servp->bcptr->name, isdigit(acptr->user->servp->sid[0]) ?
-		acptr->user->servp->sid : "2.10", parv[0], inpath, path);
+	if (IsService(acptr))
+	{
+		sendto_flag(SCH_KILL, "Received KILL message for %s[%s]. "
+			"From %s Path: %s!%s", acptr->name, 
+			isdigit(acptr->service->servp->sid[0]) ?
+			acptr->service->servp->sid : "2.10", parv[0], inpath,
+			path);
+	}
+	else
+	{
+		sendto_flag(SCH_KILL, "Received KILL message for "
+			"%s!%s@%s[%s/%s]. From %s Path: %s!%s",
+			acptr->name, acptr->user->username, acptr->user->host,
+			acptr->user->servp->bcptr->name, 
+			isdigit(acptr->user->servp->sid[0]) ?
+			acptr->user->servp->sid : "2.10", parv[0], inpath,
+			path);
+	}
 #if defined(USE_SYSLOG) && defined(SYSLOG_KILL)
 	if (IsOper(sptr))
 		syslog(LOG_DEBUG,"KILL From %s For %s Path %s!%s",
@@ -3488,6 +3550,11 @@ static	void	save_user(aClient *cptr, aClient *sptr, char *path)
 	{
 		sendto_one(sptr, replies[RPL_SAVENICK], cptr ? cptr->name : ME,
 			   sptr->name, sptr->user->uid);
+#if defined(CLIENTS_CHANNEL) && (CLIENTS_CHANNEL_LEVEL & CCL_NICK)
+		sendto_flag(SCH_CLIENT, "%s %s %s %s NICK %s",
+			sptr->user->uid, sptr->name, sptr->user->username,
+			sptr->user->host, sptr->user->uid);
+#endif
 	}
 	
 	sendto_common_channels(sptr, ":%s NICK :%s",
@@ -3547,11 +3614,20 @@ int	is_allowed(aClient *cptr, long function)
 {
 	Link	*tmp;
 
-	/* We cannot judge not our users. Yet. */
-	if (!MyClient(cptr))
+	/* We cannot judge not our clients. Yet. */
+	if (!MyConnect(cptr) || IsServer(cptr))
 		return 0;
 
-	for (tmp = cptr->confs; tmp; tmp->next)
+	/* minimal control, but nothing else service can do anyway. */
+	if (IsService(cptr))
+	{
+		if (function == ACL_TKLINE &&
+			(cptr->service->wants & SERVICE_WANT_TKLINE))
+			return 0;
+		return 1;
+	}
+
+	for (tmp = cptr->confs; tmp; tmp = tmp->next)
 	{
 		if (tmp->value.aconf->status & CONF_OPERATOR)
 			break;

@@ -1,5 +1,5 @@
 This is INSTALL.info, produced by makeinfo version 4.6 from
-/tmp/linuxdoc-dir-4588/sgmltmp.INSTALL.info.2.
+/tmp/linuxdoc-dir-30467/sgmltmp.INSTALL.info.2.
 
    \input texinfo
 
@@ -10,7 +10,7 @@ Installing IRC - The Internet Relay Chat Program
 ************************************************
 
      SGML version by Christophe Kalt, updated by Piotr Kucharski
-     $Id: INSTALL.info,v 1.62 2004/06/24 18:28:02 chopin Exp $
+     $Id: INSTALL.info,v 1.66 2004/07/02 15:22:58 chopin Exp $
 
    This document describes how to install, and configure IRC 2.11.0
 
@@ -325,21 +325,23 @@ configuration options.  The record types are as follows:
 
   7. Excluded accounts     (K,k)
 
-  8. Server connections    (C,c,N)
+  8. X Excluded accounts   (X)
 
-  9. Deny auto-connections (D)
+  9. Server connections    (C,c,N)
 
- 10. Hub connections       (H)
+ 10. Deny auto-connections (D)
 
- 11. Leaf connections      (L)
+ 11. Hub connections       (H)
 
- 12. Version limitations   (V)
+ 12. Leaf connections      (L)
 
- 13. Excluded machines     (Q)
+ 13. Version limitations   (V)
 
- 14. Service connections   (S)
+ 14. Excluded machines     (Q)
 
- 15. Bounce server         (B)
+ 15. Service connections   (S)
+
+ 16. Bounce server         (B)
 
    Except for types "M" and "A", you are allowed to have multiple
 records of the same type.  In some cases, you can have concurrent
@@ -367,6 +369,7 @@ connections).
 * Client connections::
 * Operator priviliges::
 * Excluded accounts::
+* X Excluded accounts::
 * Server connections::
 * Deny auto-connections::
 * Hub connections::
@@ -767,19 +770,21 @@ How to let clients connect to your IRCD.
 `Flags'
      This field contains flags of an I:line; flags are one character in
      size, can be combined and their order does not matter.
+        * D - restricted, when client has no reverse DNS
+
         * E - client is exempted from K: lines
+
+        * e - client is exempted from X: lines
 
         * F - fall-through to next I:line if password did not match
 
-        * R - restricted
-
         * I - restricted, when client has no ident.
-
-        * D - restricted, when client has no reverse DNS
 
         * M - disable resolved host name to be shown
 
         * N - disable resolved host name to be used
+
+        * R - restricted
 
 `Note'
      Restricted I: line means that clients matching such I line will
@@ -949,19 +954,24 @@ How to become the IRC administrator on your site
 
         * T - allows TKLINE
 
+        * & - allows joining &CLIENTS
+
+     "L" flag cannot be overridden by other flags.  If <Flags> field is
+     left empty, no privileges will be granted.
+
 `Example'
-     o:orion.cair.du.edu:pyunxc:Jeff::1
+     O:orion.cair.du.edu:pyunxc:Jeff::1:A
 
      There is an OPERATOR at "orion.cair.du.edu" that can get Operator
      priviliges if he specifies a password of "pyunxc" and uses a
-     NICKNAME of "Jeff".
+     NICKNAME of "Jeff" and is granted all possible privileges.
 
 `Note'
      Host NAME accepts IP bitmasks.
 
 
 
-File: INSTALL.info,  Node: Excluded accounts,  Next: Server connections,  Prev: Operator priviliges,  Up: The ircd-conf file
+File: INSTALL.info,  Node: Excluded accounts,  Next: X Excluded accounts,  Prev: Operator priviliges,  Up: The ircd-conf file
 
 Excluded accounts
 =================
@@ -1066,7 +1076,44 @@ Remove an errant user from IRC on your site.
 
 
 
-File: INSTALL.info,  Node: Server connections,  Next: Deny auto-connections,  Prev: Excluded accounts,  Up: The ircd-conf file
+File: INSTALL.info,  Node: X Excluded accounts,  Next: Server connections,  Prev: Excluded accounts,  Up: The ircd-conf file
+
+X Excluded accounts
+===================
+
+Remove an errant user from IRC on your site.
+`Introduction'
+     Obviously it is hoped that you wouldn't have to use this command.
+     Unfortunately sometimes a virus can become difficult to remove by
+     other means and this is your only recourse - the XKILL USER
+     command.  THIS COMMAND ONLY AFFECTS YOUR SERVER - If this user can
+     connect to another SERVER somewhere else in the IRC-Network then
+     you would have to talk to the administrator on that site to
+     disable his access from that IRCD Server as well.
+
+`Format'
+     X:<USER 1st arg>:<USER 2nd arg>:<USER 3rd arg>:<USER 4th arg>:
+
+`X'
+     "X" tells the IRCD that you are making an XKILL USER command entry.
+
+`USER n-th arg'
+     Given field will be matched against corresponding parameter of
+     client USER command. If left empty it matches any. It may contain
+     wildcards.
+
+`Examples'
+     X:guest:::guest If user registers with the following USER command
+     USER guest anything anything :guest then IMMEDIATELY REMOVE HIM
+     from my IRCD.
+
+`Note'
+     You need to compile server with #define XLINE to get this
+     functionality.
+
+
+
+File: INSTALL.info,  Node: Server connections,  Next: Deny auto-connections,  Prev: X Excluded accounts,  Up: The ircd-conf file
 
 Server connections
 ==================
@@ -1298,14 +1345,14 @@ Deny auto-connections
 
 `Denied Server Mask'
      This field is matched against all servers currently present on the
-     network.
+     network. If it starts with "!", it reverses the meaning of search.
 
 `Denied Class'
      If this field contains a class number, it will match if any server
      in that class is currently present on the network.  Note that this
      can be true for any server, even the ones not directly connected.
 
-`Server Mask'
+`Server Name'
      This field is matched against the server name that the server
      wants to auto connect to.
 
@@ -1318,6 +1365,11 @@ Deny auto-connections
 
      Don't auto-connect to any "*.fi" server if any server present on
      the network matches "*.edu".
+
+     D:!*.edu::*.fi::
+
+     Don't auto-connect to any "*.fi" server if none of the servers
+     present on the network matches "*.edu".
 
      D::2:eff.org:3:
 
@@ -1716,41 +1768,42 @@ reviewed and forwarded to the appropriate mailing list.
 
 
 Tag Table:
-Node: Top127
-Node: Installing IRC-650
-Node: The configure script875
-Node: Notes for Cygwin32 users3161
-Node: Notes concerning IPv6 support3894
-Node: The config-h file4325
-Node: DEBUGMODE4871
-Node: CHROOTDIR5448
-Node: ENABLE_SUMMON ENABLE_USERS5817
-Node: NO_DEFAULT_INVISIBLE6328
-Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY6669
-Node: ZIP_LINKS ZIP_LEVEL7308
-Node: SLOW_ACCEPT8336
-Node: CLONE_CHECK8966
-Node: Other #define's9329
-Node: Editing the Makefile and compiling9651
-Node: The ircd-conf file10636
-Node: Machine information13005
-Node: Administrative info15620
-Node: Port connections17771
-Node: Connection Classes19920
-Node: Client connections25047
-Node: Operator priviliges30781
-Node: Excluded accounts33726
-Node: Server connections37638
-Node: Deny auto-connections46266
-Node: Hub connections47640
-Node: Leaf connections49128
-Node: Version limitations51212
-Node: Excluded machines52970
-Node: Service connections54275
-Node: Bounce server55869
-Node: Related resources57730
-Node: Reporting a bug58769
-Node: How to report a bug59026
-Node: Where to send a bug report60037
+Node: Top128
+Node: Installing IRC-651
+Node: The configure script876
+Node: Notes for Cygwin32 users3162
+Node: Notes concerning IPv6 support3895
+Node: The config-h file4326
+Node: DEBUGMODE4872
+Node: CHROOTDIR5449
+Node: ENABLE_SUMMON ENABLE_USERS5818
+Node: NO_DEFAULT_INVISIBLE6329
+Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY6670
+Node: ZIP_LINKS ZIP_LEVEL7309
+Node: SLOW_ACCEPT8337
+Node: CLONE_CHECK8967
+Node: Other #define's9330
+Node: Editing the Makefile and compiling9652
+Node: The ircd-conf file10637
+Node: Machine information13062
+Node: Administrative info15677
+Node: Port connections17828
+Node: Connection Classes19977
+Node: Client connections25104
+Node: Operator priviliges30886
+Node: Excluded accounts34032
+Node: X Excluded accounts37945
+Node: Server connections39235
+Node: Deny auto-connections47865
+Node: Hub connections49434
+Node: Leaf connections50922
+Node: Version limitations53006
+Node: Excluded machines54764
+Node: Service connections56069
+Node: Bounce server57663
+Node: Related resources59524
+Node: Reporting a bug60563
+Node: How to report a bug60820
+Node: Where to send a bug report61831
 
 End Tag Table

@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.118 2004/06/25 01:42:05 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.125 2004/07/02 10:07:17 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -106,6 +106,12 @@ long	iline_flags_parse(char *string)
 	{
 		tmp |= CFLAG_KEXEMPT;
 	}
+#ifdef XLINE
+	if (index(string,'e'))
+	{
+		tmp |= CFLAG_XEXEMPT;
+	}
+#endif
 	if (index(string,'N'))
 	{
 		tmp |= CFLAG_NORESOLVE;
@@ -144,6 +150,12 @@ char	*iline_flags_to_string(long flags)
 	{
 		*s++ = 'E';
 	}
+#ifdef XLINE
+	if (flags & CFLAG_XEXEMPT)
+	{
+		*s++ = 'e';
+	}
+#endif
 	if (flags & CFLAG_NORESOLVE)
 	{
 		*s++ = 'N';
@@ -220,29 +232,33 @@ char	*oline_flags_to_string(long flags)
 	else if (flags & ACL_KILLLOCAL)
 		*s++ = 'k';
 	if (flags & ACL_SQUITREMOTE)
-		*s++ ='S';	
+		*s++ ='S';
 	else if (flags & ACL_SQUITLOCAL)
-		*s++ ='s';	
+		*s++ ='s';
 	if (flags & ACL_CONNECTREMOTE)
-		*s++ ='C';	
+		*s++ ='C';
 	else if (flags & ACL_CONNECTLOCAL)
-		*s++ ='c';	
+		*s++ ='c';
 	if (flags & ACL_CLOSE)
-		*s++ ='l';	
+		*s++ ='l';
 	if (flags & ACL_HAZH)
-		*s++ ='h';	
+		*s++ ='h';
 	if (flags & ACL_DNS)
-		*s++ ='d';	
+		*s++ ='d';
 	if (flags & ACL_REHASH)
-		*s++ ='r';	
+		*s++ ='r';
 	if (flags & ACL_RESTART)
-		*s++ ='R';	
+		*s++ ='R';
 	if (flags & ACL_DIE)
-		*s++ ='D';	
+		*s++ ='D';
 	if (flags & ACL_SET)
-		*s++ ='e';	
+		*s++ ='e';
 	if (flags & ACL_TKLINE)
-		*s++ ='T';	
+		*s++ ='T';
+#ifdef CLIENTS_CHANNEL
+	if (flags & ACL_CLIENTS)
+		*s++ ='&';
+#endif
 	if (s == ofsbuf)
 		*s++ = '-';
 	*s++ = '\0';
@@ -274,6 +290,9 @@ long	oline_flags_parse(char *string)
 		case 'D': tmp |= ACL_DIE; break;
 		case 'e': tmp |= ACL_SET; break;
 		case 'T': tmp |= ACL_TKLINE; break;
+#ifdef CLIENTS_CHANNEL
+		case '&': tmp |= ACL_CLIENTS; break;
+#endif
 		}
 	}
 	return tmp;
@@ -514,6 +533,12 @@ int	attach_Iline(aClient *cptr, struct hostent *hp, char *sockhost)
 		{
 			SetKlineExempt(cptr);
 		}
+#ifdef XLINE
+		if (IsConfXlineExempt(aconf))
+		{
+			ClearXlined(cptr);
+		}
+#endif
 
 		/* Copy uhost (hostname) over sockhost, if conf flag permits. */
 		if (hp && !IsConfNoResolve(aconf))
@@ -1467,6 +1492,11 @@ int 	initconf(int opt)
 			case 'y':
 			        aconf->status = CONF_CLASS;
 		        	break;
+#ifdef XLINE
+			case 'X':
+				aconf->status = CONF_XLINE;
+				break;
+#endif
 		    default:
 			Debug((DEBUG_ERROR, "Error in config file: %s", line));
 			break;
@@ -1499,6 +1529,14 @@ int 	initconf(int opt)
 			DupString(aconf->name, tmp);
 			if ((tmp = getfield(NULL)) == NULL)
 				break;
+#ifdef XLINE
+			if (aconf->status == CONF_XLINE)
+			{
+				DupString(aconf->source_ip, tmp);
+				/* For X: we stop parsing after 4th field */
+				break;
+			}
+#endif
 			aconf->port = 0;
 			if (sscanf(tmp, "0x%x", &aconf->port) != 1 ||
 			    aconf->port == 0)
@@ -1603,7 +1641,6 @@ int 	initconf(int opt)
 				}
 			}
 		}
-
 		if (aconf->status & CONF_SERVICE)
 			aconf->port &= SERVICE_MASK_ALL;
 		if (aconf->status & (CONF_SERVER_MASK|CONF_SERVICE))
@@ -2176,41 +2213,55 @@ void	find_bounce(aClient *cptr, int class, int fd)
 */
 aConfItem	*find_denied(char *name, int class)
 {
-    aConfItem	*aconf;
+	aConfItem	*aconf;
 
-    for (aconf = conf; aconf; aconf = aconf->next)
+	for (aconf = conf; aconf; aconf = aconf->next)
 	{
-	    if (aconf->status != CONF_DENY)
-		    continue;
-	    if (!aconf->name)
-		    continue;
-	    if (match(aconf->name, name) && aconf->port != class)
-		    continue;
-	    if (isdigit(*aconf->passwd))
+		if (aconf->status != CONF_DENY)
+			continue;
+		if (!aconf->name)
+			continue;
+		if (match(aconf->name, name) && aconf->port != class)
+			continue;
+		if (isdigit(*aconf->passwd))
 		{
-		    aConfItem	*aconf2;
-		    int		ck = atoi(aconf->passwd);
+			aConfItem	*aconf2;
+			int		ck = atoi(aconf->passwd);
 
-		    for (aconf2 = conf; aconf2; aconf2 = aconf2->next)
+			for (aconf2 = conf; aconf2; aconf2 = aconf2->next)
 			{
-			    if (aconf2->status != CONF_NOCONNECT_SERVER)
-				    continue;
-			    if (!aconf2->class || ConfClass(aconf2) != ck)
-				    continue;
-			    if (find_client(aconf2->name, NULL))
-				    return aconf2;
+				if (aconf2->status != CONF_NOCONNECT_SERVER)
+					continue;
+				if (!aconf2->class || ConfClass(aconf2) != ck)
+					continue;
+				if (find_client(aconf2->name, NULL))
+					return aconf2;
 			}
 		}
-	    if (aconf->host)
+		if (aconf->host)
 		{
-		    aServer	*asptr;
+			aServer	*asptr;
+			char	*host = aconf->host;
+			int	reversed = 0;
 
-		    for (asptr = svrtop; asptr; asptr = asptr->nexts)
-			    if (!match(aconf->host, asptr->bcptr->name))
-				    return aconf;
+			if (*host == '!')
+			{
+				host++;
+				reversed = 1;
+			}
+			for (asptr = svrtop; asptr; asptr = asptr->nexts)
+				if (!match(host, asptr->bcptr->name))
+					break;
+
+			if (!reversed && asptr)
+				return aconf;
+			if (reversed && !asptr)
+				/* anything but NULL; tho using it may give
+				** funny results in calling function */
+				return conf;
 		}
 	}
-    return NULL;
+	return NULL;
 }
 
 #ifdef TKLINE

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.214 2004/06/26 00:44:49 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.221 2004/06/30 20:05:30 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1546,7 +1546,7 @@ int	m_info(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	char **text = infotext;
 
-	if (IsServer(cptr) && check_link(cptr))
+	if (check_link(sptr))
 	    {
 		sendto_one(sptr, replies[RPL_TRYAGAIN], ME, BadTo(parv[0]),
 			   "INFO");
@@ -1588,7 +1588,7 @@ int	m_links(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 	if (parc > 2)
 	    {
-		if (IsServer(cptr) && check_link(cptr) && !IsOper(sptr))
+		if (check_link(sptr))
 		    {
 			sendto_one(sptr, replies[RPL_TRYAGAIN], ME, BadTo(parv[0]),
 				   "LINKS");
@@ -1856,6 +1856,24 @@ static int report_array[18][3] = {
 		{ 0, 0, 0}
 	};
 
+#ifdef XLINE
+static  void    report_x_lines(aClient *sptr, char *to)
+{
+	aConfItem *tmp;
+
+	for (tmp = conf; tmp; tmp = tmp->next)
+	{
+		if (tmp->status != CONF_XLINE)
+			continue;
+
+		sendto_one(sptr,":%s %d %s X :%s %s %s %s", 
+			ME, RPL_STATSDEBUG, to,
+			BadTo(tmp->host), BadTo(tmp->passwd),
+			BadTo(tmp->name), BadTo(tmp->source_ip));
+	}
+}
+#endif
+
 static	void	report_configured_links(aClient *sptr, char *to, int mask)
 {
 	static	char	null[] = "<NULL>";
@@ -2003,34 +2021,16 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	/* If request from remote client, let's tame it a little. */
 	if (IsServer(cptr))
 	{
+		/* These stats usually output large quantity of lines. */
 		switch(stat)
 		{
-		/* These stats are available with no penalty for all. */
-		case 'd': case 'D':	/* defines */
-		case 'p': 		/* ping stats */
-		case 'P': 		/* ports listening */
-		case 'q': case 'Q':	/* Q:lines */
-		case 's': case 'S':	/* services */
-		case 'u': case 'U':	/* uptime */
-		case 'v': case 'V':	/* V:lines */
-		case 'l': case 'L':	/* links (wildcard is dropped later) */
-			break;
-		/* These are available with no penalty for opers. */
-		/* Although I have no idea, why only for opers. --B. */
-		case 'o': case 'O':	/* O:lines */
-		case 'c': 		/* C:/N: lines */
-		case 'y': case 'Y': 	/* Y:lines */
-		case 'h': case 'H':	/* H:/D: lines */
-		case 'a': case 'A':	/* iauth conf */
-		case 'b': case 'B':	/* B:lines */
-		case '?': 		/* connected servers */
-			if (IsOper(sptr))
-			{
-				break;
-			}
-			/* else fallthrough */
-		default:
-			if (check_link(cptr))
+		case 'i': case 'I':
+		case 'c': case 'C':
+		case 'k': case 'K':
+		case 'm': case 'M':
+		case 't': case 'T':
+		case 'z': case 'Z':
+			if (check_link(sptr))
 			{
 				sendto_one(sptr, replies[RPL_TRYAGAIN], ME,
 					BadTo(parv[0]), "STATS");
@@ -2102,7 +2102,7 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		 */
 		if (doall || wilds)
 		    {
-			if (IsServer(cptr) && check_link(cptr))
+			if (check_link(sptr))
 		    	{
 				sendto_one(sptr, replies[RPL_TRYAGAIN], ME,
 					BadTo(parv[0]), "STATS");
@@ -2169,6 +2169,15 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		break;
 #endif
 	case 'K' : /* K lines */
+#ifdef TXT_NOSTATSK
+		if (!IsAnOper(sptr))
+		{
+			sendto_one(sptr, replies[ERR_STATSKLINE],
+				ME, BadTo(parv[0]));
+			return 2;
+		}
+		else
+#endif
 		report_configured_links(cptr, parv[0],
 					(CONF_KILL|CONF_OTHERKILL));
 		break;
@@ -2213,11 +2222,19 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	case 'V' : case 'v' : /* V conf lines */
 		report_configured_links(cptr, parv[0], CONF_VER);
 		break;
-#ifdef	DEBUGMODE
-	case 'X' : case 'x' : /* lists */
-		send_listinfo(cptr, parv[0]);
-		break;
+	case 'X' :
+#ifdef XLINE
+		if (IsAnOper(sptr))
+		{
+			report_x_lines(sptr, parv[0]);
+		}
 #endif
+		break;
+	case 'x' : /* lists */
+#ifdef DEBUGMODE
+		send_listinfo(cptr, parv[0]);
+#endif
+		break;
 	case 'Y' : case 'y' : /* Y lines */
 		report_classes(cptr, parv[0]);
 		break;
@@ -2926,7 +2943,7 @@ int	m_motd(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	register aMotd *temp;
 	struct tm *tm;
 
-	if (check_link(cptr))
+	if (check_link(sptr))
 	    {
 		sendto_one(sptr, replies[RPL_TRYAGAIN], ME, BadTo(parv[0]), "MOTD");
 		return 5;
@@ -3375,11 +3392,16 @@ int	find_server_num(char *sname)
 */
 static	int	check_link(aClient *cptr)
 {
-    if (!IsServer(cptr))
+    if (MyClient(cptr))
+	    return 0;
+    /* Oh well... free opers from RPL_TRYAGAIN. */
+    if (IsOper(cptr))
 	    return 0;
     if (!(bootopt & BOOT_PROT))
 	    return 0;
 
+    /* changing cptr to get link where it came from */
+    cptr = cptr->from;
     ircstp->is_ckl++;
     if ((int)DBufLength(&cptr->sendQ) > 65536) /* SendQ is already (too) high*/
 	{

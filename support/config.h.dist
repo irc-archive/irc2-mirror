@@ -398,6 +398,46 @@
  */
 #define DELAY_CLOSE     15       /* Recommended value: 15 */
 
+/*
+** Define this to get oper-only &CLIENTS channel with clients connects,
+** quits and nick changes.
+*/
+#undef CLIENTS_CHANNEL
+
+/*
+** Bitmask defining type of information sent to &CLIENTS, combine from
+** CCL_CONN, CCL_CONNINFO, CCL_QUIT, CCL_QUITINFO, CCL_NICK
+*/
+#define CLIENTS_CHANNEL_LEVEL (CCL_CONN|CCL_QUIT)
+
+
+/*
+** This adds ability to ban users with specified realnames from
+** connecting to the server. May be useful for various drones.
+*/
+#undef XLINE
+
+/*
+** Define the reason users get as a rejection message.
+** Some may use first form for the sake of transparency, some may believe it
+** is not good that users can see the real reason behind X-rejection.
+*/
+/* #define XLINE_EXIT_REASON "X-denied user" */
+#define XLINE_EXIT_REASON "Too many host connections (global)"
+
+/*
+** Define this to whatever you want to see after successful OPER
+*/
+#define TXT_YOUREOPER "You are now an IRC Operator"
+
+/*
+** If you have huge number of K-lines and provide your users with
+** some other means of looking at them (or you are mean and simply
+** do not want to show it at all), define this.
+** Note that operators will get list of K anyway.
+*/
+/* #undef TXT_NOSTATSK "Please use http://example.org/klines instead" */
+
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */

@@ -1,3 +1,98 @@
+2004-07-02  Piotr Kucharski
+
+	* s_user.c/find_denied(): added reverse D: (disable AC when given server
+	  is absent).
+	* s_user.c/save_user(): send saved nick change to &CLIENTS as well.
+	* s_service.c/m_servset(): send "EOB" after burst.
+	* services_def.h: new SERVICE_WANT_UID.
+	* s_service.c/check_services_butone(): if WANT_UID, send it, not nick.
+	* s_service.c/sendnum_toone(): if WANT_UID, send appropriate UNICK.
+	* s_service.c/m_service(): send 005 to services.
+	* services_def.h: new SERVICE_WANT_TKLINE.
+	* s_user.c/is_allowed(): check services for being allowed to TKLINE.
+
+2004-07-01  Piotr Kucharski
+
+	* class.c/get_client_class(): return last attached class, not highest.
+	* class.c/get_sendq(): use sendq of last attached class, not highest.
+
+2004-06-30  Piotr Kucharski
+
+	* channel.c/match_modeid(): drop special case for '#' matching uids.
+	* s_conf.c/initconf(): simplify X-line parsing: just take first 4 fields
+	  from config, no flags.
+	* s_user.c/m_user(): match on each field separately and also break when
+	  all match.
+	* s_serv.c/report_x_lines(): show all 4 fields of X-lines.
+	* s_conf.c: remove xline_flags_to_string() and xline_flags_parse().
+	* struct_def.h: removed no longer needed defines.
+	* struct_def.h: xline exempt related defines added.
+	* s_conf.c/iline_flags_parse(), iline_flags_to_string(): added 'e' flag
+	  for X-line exempt.
+	* s_conf.c/attach_Iline(): ClearXlined() if 'e' flag.
+	* register_user(): get rid of IsKlineExempt around IsXlined, new flag
+	  takes care of it now.
+	* s_err.c, config.h.dist: customizable 381 reply.
+	* numeric_def.h: new numeric 499.
+	* config.h.dist, s_err.c: customizable 499 reply.
+	* s_serv.c/m_stats(): if customizable 499 defined, send it to users instead
+	  of reporting K-lines (useful for servers with huge list of K).
+
+2004-06-30  Jakub Vlasek
+
+	* struct_def.h: Added FLAGS_XLINED, CONF_XLINE, IsConfXlineWhole(),
+	  IsXlined(), SetXlined() and EXITC_XLINE.
+	* chkconf.c: recognize X-lines.
+	* s_conf.c, s_conf_ext.h: Added xline_flags_to_string(),
+	  xline_flags_parse().
+	* s_conf.c/initconf(): Parse X-lines.
+	* s_serv.c: Added report_x_lines for stats X.
+	* s_user.c/register_user(): Exit X-lined clients.
+	* s_user.c/m_user(): Check for X-lines.
+	* config.h.dist: Added XLINE_EXIT_REASON and XLINE defines.
+
+2004-06-29  Piotr Kucharski
+
+	* s_service.c/m_service(): set FLAGS_CBURST on service.
+	* send.c/send_message(): support bursting services.
+	* s_misc.c/exit_client(): do not log service quits to users log.
+	* send.c/sendto_flog(): revert from tabs to spaces in logs, do not
+	  write ending "\n" to syslog and services.
+	* s_bsd.c/inetport(): under Cygwin call set_non_blocking() here, not
+	  after returning to add_listener() (from Q).
+	* send.c/svchans[], struct_def.h, channel.c/setup_server_channels():
+	  added &CLIENTS server channel.
+	* struct_def.h: add ACL_CLIENTS.
+	* channel.c/can_join(): allow join &CLIENTS only if is_allowed().
+	* s_conf.c/oline_flags_to_string(), oline_flags_parse(): add '&' flag
+	  for ACL_CLIENTS.
+	* struct_def.h: CCL_mumble restrictions (for CLIENTS_CHANNEL).
+	* config.h.dist: CLIENTS_CHANNEL (undefined) and CLIENTS_CHANNEL_LEVEL.
+	* s_misc.c/exit_client(): log client quits to &CLIENTS.
+	* s_user.c/register_user(): log client connects to &CLIENTS.
+	* s_user.c/m_nick(): log client nick changes to &CLIENTS.
+
+2004-06-28  Piotr Kucharski
+
+	* s_user.c/is_allowed(): silly bug.
+	* s_user.c/m_kill(): service can be killed, too, format &KILLS message
+	  appropriately.
+	* struct_def.h: SCH_* changed to enum.
+	* send.c/setup_svchans(), send.c/sendto_flag(): adjustments to SCH
+	  being enum (and starting from 0).
+
+2004-06-27  Piotr Kucharski
+
+	* s_serv.c/check_link(): make check_link() accept sptr, not cptr.
+	* s_serv.c/check_link(): free opers from RPL_TRYAGAIN.
+	* s_serv.c/m_stats(): change a little what's subject to RPL_TRYAGAIN
+	  for users (now only stats i c k m t z).
+
+2004-06-26  Piotr Kucharski
+
+	* s_user.c/m_kill(): recent cleaning did too much, we must not cut the
+	  path from remotes.
+
 2004-06-25  Piotr Kucharski
 
 	* config.h.dist, send.c/logfiles_open(): LOGFILES_ALWAYS_CREATE define.

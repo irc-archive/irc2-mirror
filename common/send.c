@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: send.c,v 1.73 2004/06/25 18:02:26 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: send.c,v 1.77 2004/06/29 23:25:58 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -145,7 +145,12 @@ int	send_message(aClient *to, char *msg, int len)
 # ifdef HUB
 		if (CBurst(to))
 		{
-			aConfItem	*aconf = to->serv->nline;
+			aConfItem	*aconf;
+
+			if (IsServer(to))
+				aconf = to->serv->nline;
+			else
+				aconf = to->confs->value.aconf;
 
 			poolsize -= MaxSendq(aconf->class) >> 1;
 			IncSendq(aconf->class);
@@ -192,7 +197,12 @@ tryagain:
 	{
 		if (i == -2 && CBurst(to))
 		    {	/* poolsize was exceeded while connect burst */
-			aConfItem	*aconf = to->serv->nline;
+			aConfItem	*aconf;
+
+			if (IsServer(to))
+				aconf = to->serv->nline;
+			else
+				aconf = to->confs->value.aconf;
 
 			poolsize -= MaxSendq(aconf->class) >> 1;
 			IncSendq(aconf->class);
@@ -1099,6 +1109,9 @@ static	SChan	svchans[SCH_MAX] = {
 	{ SCH_AUTH,	"&AUTH",	NULL },
 	{ SCH_SAVE,	"&SAVE",	NULL },
 	{ SCH_WALLOP,	"&WALLOPS",	NULL },
+#ifdef CLIENTS_CHANNEL
+	{ SCH_CLIENT,	"&CLIENTS",	NULL },
+#endif
 };
 
 
@@ -1107,7 +1120,7 @@ void	setup_svchans(void)
 	int	i;
 	SChan	*shptr;
 
-	for (i = SCH_MAX, shptr = svchans + (i - 1); i > 0; i--, shptr--)
+	for (i = SCH_MAX - 1, shptr = svchans + i; i >= 0; i--, shptr--)
 		shptr->svc_ptr = find_channel(shptr->svc_chname, NULL);
 }
 
@@ -1117,9 +1130,9 @@ void	sendto_flag(u_int chan, char *pattern, ...)
 	SChan	*shptr;
 	char	nbuf[1024];
 
-	if (chan < 1 || chan > SCH_MAX)
+	if (chan < 0 || chan >= SCH_MAX)
 		chan = SCH_NOTICE;
-	shptr = svchans + (chan - 1);
+	shptr = svchans + chan;
 
 	if ((chptr = shptr->svc_ptr))
 	    {
@@ -1273,7 +1286,7 @@ void	sendto_flog(aClient *cptr, char msg, char *username, char *hostname)
 		(void)sprintf(buf, "%s", anyptr);
 	}
 	(void)sprintf(linebuf,
-		"%s (%s): %s@%s [%s] %c %lu %luKb %lu %luKb\n",
+		"%s (%s): %s@%s [%s] %c %lu %luKb %lu %luKb",
 		myctime(cptr->firsttime), buf,
 		username[0] ? username : "<none>", hostname,
 		cptr->auth ? cptr->auth : "<none>",
@@ -1284,7 +1297,7 @@ void	sendto_flog(aClient *cptr, char msg, char *username, char *hostname)
 	** This is the content of loglines.
 	*/
 	(void)sprintf(linebuf,
-		"%c\t%d\t%d\t%s\t%s\t%s\t%s\t%d\t%s\t%lu\t%llu\t%lu\t%llu\n",
+		"%c %d %d %s %s %s %s %d %s %lu %llu %lu %llu",
 		cptr->exitc, (u_int) cptr->firsttime, (u_int) timeofday,
 		username, hostname, cptr->auth ? cptr->auth : "",
 		cptr->user ? cptr->user->sip :
@@ -1325,6 +1338,7 @@ void	sendto_flog(aClient *cptr, char msg, char *username, char *hostname)
 #endif
 	if (logfile != -1)
 	{
+		(void)strcat(linebuf, "\n");
 		(void)write(logfile, linebuf, strlen(linebuf));
 	}
 }

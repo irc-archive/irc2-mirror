@@ -17,7 +17,7 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *   $Id: struct_def.h,v 1.109 2004/06/25 01:41:07 chopin Exp $
+ *   $Id: struct_def.h,v 1.116 2004/06/30 18:59:12 chopin Exp $
  */
 
 typedef	struct	ConfItem aConfItem;
@@ -187,7 +187,9 @@ typedef enum Status {
 #define FLAGS_RESTRICT	0x0010 /* restricted user */
 #define FLAGS_AWAY	0x0020 /* user is away */
 #define FLAGS_EXEMPT    0x0040 /* user is exempted from k-lines */
-	
+#ifdef XLINE
+#define FLAGS_XLINED	0x0100	/* X-lined client */
+#endif
 #define	SEND_UMODES	(FLAGS_INVISIBLE|FLAGS_OPER|FLAGS_WALLOP|FLAGS_AWAY)
 #define	ALL_UMODES	(SEND_UMODES|FLAGS_LOCOP|FLAGS_RESTRICT)
 
@@ -251,6 +253,12 @@ typedef enum Status {
 #define	ClearXAuth(x)		((x)->flags &= ~FLAGS_XAUTH)
 #define	ClearWXAuth(x)		((x)->flags &= ~FLAGS_WXAUTH)
 #define ClearListenerInactive(x) ((x)->flags &= ~FLAGS_LISTENINACTIVE)
+#ifdef XLINE
+#define IsXlined(x)		((x)->user && (x)->user->flags & FLAGS_XLINED)
+#define SetXlined(x)		((x)->user->flags |= FLAGS_XLINED)
+#define ClearXlined(x)		((x)->user->flags &= ~FLAGS_XLINED)
+#endif
+
 
 /*
  * defined debugging levels
@@ -339,7 +347,9 @@ struct	ListItem	{
 #define	CONF_TKILL		0x200000
 #define	CONF_TOTHERKILL		0x400000
 #endif
-
+#ifdef XLINE
+#define CONF_XLINE		0x800000
+#endif
 #define	CONF_OPS		CONF_OPERATOR
 #define	CONF_SERVER_MASK	(CONF_CONNECT_SERVER | CONF_NOCONNECT_SERVER |\
 				 CONF_ZCONNECT_SERVER)
@@ -353,6 +363,9 @@ struct	ListItem	{
 #define CFLAG_NORESOLVE		0x00010
 #define CFLAG_FALL		0x00020
 #define CFLAG_NORESOLVEMATCH	0x00040
+#ifdef XLINE
+#define CFLAG_XEXEMPT		0x00080
+#endif
 
 #define IsConfRestricted(x)	((x)->flags & CFLAG_RESTRICTED)
 #define IsConfRNoDNS(x)		((x)->flags & CFLAG_RNODNS)
@@ -361,6 +374,9 @@ struct	ListItem	{
 #define IsConfNoResolve(x)	((x)->flags & CFLAG_NORESOLVE)
 #define IsConfNoResolveMatch(x)	((x)->flags & CFLAG_NORESOLVEMATCH)
 #define IsConfFallThrough(x)	((x)->flags & CFLAG_FALL)
+#ifdef XLINE
+#define IsConfXlineExempt(x)	((x)->flags & CFLAG_XEXEMPT)
+#endif
 
 #define PFLAG_DELAYED		0x00001
 #define PFLAG_SERVERONLY	0x00002
@@ -867,20 +883,25 @@ typedef	struct	{
 	struct	Channel	*svc_ptr;
 }	SChan;
 
-#define	SCH_ERROR	1
-#define	SCH_NOTICE	2
-#define	SCH_KILL	3
-#define	SCH_CHAN	4
-#define	SCH_NUM		5
-#define	SCH_SERVER	6
-#define	SCH_HASH	7
-#define	SCH_LOCAL	8
-#define	SCH_SERVICE	9
-#define	SCH_DEBUG	10
-#define	SCH_AUTH	11
-#define	SCH_SAVE	12
-#define	SCH_WALLOP	13
-#define	SCH_MAX		13
+typedef enum ServerChannels {
+	SCH_ERROR,
+	SCH_NOTICE,
+	SCH_KILL,
+	SCH_CHAN,
+	SCH_NUM,
+	SCH_SERVER,
+	SCH_HASH,
+	SCH_LOCAL,
+	SCH_SERVICE,
+	SCH_DEBUG,
+	SCH_AUTH,
+	SCH_SAVE,
+	SCH_WALLOP,
+#ifdef CLIENTS_CHANNEL
+	SCH_CLIENT,
+#endif
+	SCH_MAX	
+} ServerChannels;
 
 /* used for async dns values */
 
@@ -916,6 +937,9 @@ typedef	struct	{
 #define EXITC_AREF	'U'	/* Unauthorized by iauth */
 #define EXITC_AREFQ	'u'	/* Unauthorized by iauth, be quiet */
 #define EXITC_VIRUS	'v'	/* joined a channel used by PrettyPark virus */
+#ifdef XLINE
+#define EXITC_XLINE	'X'	/* Forbidden GECOS */
+#endif
 #define EXITC_YLINEMAX	'Y'	/* Y:line max clients limit */
 
 /* eXternal authentication slave OPTions */
@@ -981,7 +1005,17 @@ typedef struct
 #define ACL_SET			0x02000
 #define ACL_TKLINE		0x04000
 #define ACL_UNTKLINE		ACL_TKLINE
+#define ACL_CLIENTS		0x08000
 
 #define ACL_ALL_REMOTE		(ACL_KILLREMOTE|ACL_SQUITREMOTE|ACL_CONNECTREMOTE)
 #define ACL_ALL			0xFFFFF
+
+#ifdef CLIENTS_CHANNEL
+/* information scope of &CLIENTS channel. */
+#define CCL_CONN     0x01	/* connections */
+#define CCL_CONNINFO 0x02	/* if connections, then with realname */
+#define CCL_QUIT     0x04	/* quits */
+#define CCL_QUITINFO 0x08	/* if quits, then with quit message */
+#define CCL_NICK     0x10	/* nick changes */
+#endif
 

@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.215 2004/06/13 12:32:10 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.218 2004/06/30 13:04:21 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -312,8 +312,7 @@ static	Link	*match_modeid(int type, aClient *cptr, aChannel *chptr)
 			if (match(tmp->value.alist->nick, cptr->name) != 0)
 			{
 				/* seems like no match on nick, but... */
-				if (isdigit(tmp->value.alist->nick[0]) || 
-					tmp->value.alist->nick[0] == '#')
+				if (isdigit(tmp->value.alist->nick[0]))
 				{
 					/* ...perhaps it is UID-ban? */
 					if (match(tmp->value.alist->nick, 
@@ -678,6 +677,12 @@ void	setup_server_channels(aClient *mp)
 	strcpy(chptr->topic, "SERVER MESSAGES: wallops received");
 	add_user_to_channel(chptr, mp, CHFL_CHANOP);
 	chptr->mode.mode = smode;
+#ifdef CLIENTS_CHANNEL
+	chptr = get_channel(mp, "&CLIENTS", CREATE);
+	strcpy(chptr->topic, "SERVER MESSAGES: clients activity");
+	add_user_to_channel(chptr, mp, CHFL_CHANOP);
+	chptr->mode.mode = smode|MODE_SECRET;
+#endif
 
 	setup_svchans();
 }
@@ -1854,6 +1859,12 @@ static	int	can_join(aClient *sptr, aChannel *chptr, char *key)
 	if (chptr->users == 0 && (bootopt & BOOT_PROT) && 
 	    chptr->history != 0 && *chptr->chname != '!')
 		return (timeofday > chptr->history) ? 0 : ERR_UNAVAILRESOURCE;
+
+#ifdef CLIENTS_CHANNEL
+	if (*chptr->chname == '&' && !strcmp(chptr->chname, "&CLIENTS")
+		&& is_allowed(sptr, ACL_CLIENTS))
+		return (ERR_INVITEONLYCHAN);
+#endif
 
 	for (lp = sptr->user->invited; lp; lp = lp->next)
 		if (lp->chptr == chptr)

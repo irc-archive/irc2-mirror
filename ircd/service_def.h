@@ -27,10 +27,12 @@
 #define	SERVICE_WANT_USERLOG	0x10000000 /* FNAME_USERLOG */
 #define	SERVICE_WANT_CONNLOG	0x20000000 /* FNAME_CONNLOG */
 
+#define	SERVICE_WANT_TKLINE	0x40000000 /* service wants to TKLINE */
+
 /* masks */
 #define	SERVICE_MASK_GLOBAL	0x00007000 /*for these,service must be global*/
 #define	SERVICE_MASK_PREFIX	0x00000FFF /* these actions have a prefix */
-#define	SERVICE_MASK_ALL	0x3F00FFFF /* all possible actions */
+#define	SERVICE_MASK_ALL	0x7F00FFFF /* all possible actions */
 #define	SERVICE_MASK_NUM	(SERVICE_WANT_NICK|SERVICE_WANT_USER|\
 				 SERVICE_WANT_UMODE)
 
@@ -38,17 +40,18 @@
 #define	SERVICE_WANT_PREFIX	0x00010000 /* to receive n!u@h instead of n */
 #define	SERVICE_WANT_TOKEN	0x00020000 /* use serv token instead of name */
 #define	SERVICE_WANT_EXTNICK	0x00040000 /* user extended NICK syntax */
+#define	SERVICE_WANT_UID	0x00080000 /* user extended UID syntax */
 
 /* A couple example types of services */
-#define	SERVICE_ALL	SERVICE_MASK_ALL	/* 4095 */
+#define	SERVICE_ALL	SERVICE_MASK_ALL
 #define	SERVICE_NICK	SERVICE_WANT_NICK | \
 			SERVICE_WANT_QUIT | \
-			SERVICE_WANT_AWAY	/* 168 */
+			SERVICE_WANT_AWAY
 #define	SERVICE_USERS	SERVICE_WANT_NICK | \
 			SERVICE_WANT_USER | \
 			SERVICE_WANT_QUIT | \
 			SERVICE_WANT_AWAY | \
-			SERVICE_WANT_UMODE	/* 236 */
+			SERVICE_WANT_UMODE
 #define	SERVICE_LINKS	SERVICE_WANT_SERVER | \
 			SERVICE_WANT_SQUIT | \
-			SERVICE_WANT_WALLOP	/* 1792 */
+			SERVICE_WANT_WALLOP

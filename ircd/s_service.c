@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_service.c,v 1.53 2004/06/23 17:25:05 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_service.c,v 1.58 2004/07/02 15:10:33 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -130,8 +130,8 @@ void	check_services_butone(long action, char *server, aClient *cptr,
 		if ((sp->wants & action)
 		    && (!server || !match(sp->dist, server)))
 		{
-			if ((sp->wants & SERVICE_WANT_PREFIX) && 
-			    cptr && IsRegisteredUser(cptr) &&
+			if ((sp->wants & (SERVICE_WANT_PREFIX|SERVICE_WANT_UID))
+			    && cptr && IsRegisteredUser(cptr) &&
 			    (action & SERVICE_MASK_PREFIX))
 			{
 				char	buf[2048];
@@ -140,9 +140,14 @@ void	check_services_butone(long action, char *server, aClient *cptr,
 				(void)va_arg(va, char *);
 				vsprintf(buf, fmt+3, va);
 				va_end(va);
-				sprintf(nbuf, "%s!%s@%s", cptr->name,
-					cptr->user->username,cptr->user->host);
-				sendto_one(sp->bcptr, ":%s%s", nbuf, buf);
+				if ((sp->wants & SERVICE_WANT_UID))
+					sendto_one(sp->bcptr, ":%s%s", 
+						HasUID(cptr) ? cptr->user->uid :
+						cptr->name, buf);
+				else
+					sendto_one(sp->bcptr, ":%s!%s@%s%s",
+						cptr->name, cptr->user->username,
+						cptr->user->host, buf);
 			}
 			else
 			{
@@ -167,6 +172,17 @@ static	void	sendnum_toone(aClient *cptr, int wants, aClient *sptr,
 	if (!*umode)
 		umode = "+";
 
+	if ((wants & SERVICE_WANT_UID) && HasUID(sptr))
+		sendto_one(cptr, ":%s UNICK %s %s %s %s %s %s :%s",
+			sptr->user->servp->sid,
+			(wants & SERVICE_WANT_NICK) ? sptr->name : ".",
+			sptr->user->uid,
+			(wants & SERVICE_WANT_USER) ? sptr->user->username : ".",
+			(wants & SERVICE_WANT_USER) ? sptr->user->host : ".",
+			(wants & SERVICE_WANT_USER) ? sptr->user->sip : ".",
+			(wants & (SERVICE_WANT_UMODE|SERVICE_WANT_OPER)) ? umode : "+",
+			(wants & SERVICE_WANT_USER) ? sptr->info : "");
+	else
 	if (wants & SERVICE_WANT_EXTNICK)
 		/* extended NICK syntax */
 		sendto_one(cptr, "NICK %s %d %s %s %s %s :%s",
@@ -393,6 +409,8 @@ int	m_service(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #ifdef	USE_SERVICES
 	if (!IsServer(cptr))
 	    {
+		char **isup = isupport;
+
 		svc = make_service(sptr);
 		sptr->hopcount = 0;
 		server = ME;
@@ -446,6 +464,12 @@ int	m_service(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			   sptr->name);
 		sendto_one(sptr, replies[RPL_YOURHOST], ME, BadTo(sptr->name),
                            get_client_name(&me, FALSE), version);
+		while (*isup)
+		{
+			sendto_one(sptr,replies[RPL_ISUPPORT], ME,
+			BadTo(sptr->name), *isup);
+			isup++;
+		}
 		sendto_one(sptr, replies[RPL_MYINFO], ME, BadTo(sptr->name), ME, version);
 		sendto_flag(SCH_NOTICE, "Service %s connected",
 			    get_client_name(sptr, TRUE));
@@ -601,7 +625,7 @@ int	m_servset(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	** distribution code is respected.
 	** service type also respected.
 	*/
-	/* cptr->flags |= FLAGS_CBURST; doesn't work.. */
+	cptr->flags |= FLAGS_CBURST;
 	if (burst & SERVICE_WANT_SERVER)
 	    {
 		int	split;
@@ -692,7 +716,8 @@ int	m_servset(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					   chptr->chname, chptr->topic);
 		    }
 	    }
-	/* cptr->flags ^= FLAGS_CBURST; */
+	sendto_one(sptr, "EOB");
+	cptr->flags ^= FLAGS_CBURST;
 	return 0;
 }
 #endif
