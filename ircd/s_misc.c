@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_misc.c,v 1.94 2004/08/04 14:04:32 jv Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.97 2004/10/01 20:22:15 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -765,6 +765,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 			else if (!IsMasked(sptr))
 			{
 				sendto_one(acptr, ":%s SQUIT %s :%s",
+					acptr == from->from ? me.name :
 					from->name, sptr->name,
 					comment);
 			}
@@ -1020,6 +1021,7 @@ void	initruntimeconf(void)
 	memset((char *)&iconf, 0, sizeof(iconf));
 	iconf.aconnect = 1; /* default to ON */
 	iconf.split = 1; /* ircd starts in split-mode */
+	iconf.caccept = 2; /* accept clients when no split */
 
 	/* Defaults set in config.h */
 	iconf.split_minservers = SPLIT_SERVERS;

@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: mod_socks.c,v 1.35 2003/10/18 16:26:39 q Exp $";
+static const volatile char rcsid[] = "@(#)$Id: mod_socks.c,v 1.42 2004/10/02 01:20:43 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -32,12 +32,7 @@ static  char rcsid[] = "@(#)$Id: mod_socks.c,v 1.35 2003/10/18 16:26:39 q Exp $"
 static	int	socks_start(u_int cl);
 
 #define CACHETIME 30
-#define SOCKSPORT 1080
-/* 
-   A lot of socks v4 proxies return 4,91 instead of 0,91 otherwise
-   working perfectly -- this will deal with them.
-*/
-#define BROKEN_PROXIES 1
+#define SOCKSPORT (cldata[cl].instance->port)
 
 struct proxylog
 {
@@ -73,8 +68,7 @@ struct socks_private
 	u_char options;
 	/* stats */
 	u_int chitc, chito, chitn, cmiss, cnow, cmax;
-	u_int closed4, closed5, open4, open5, noprox;
-	u_int closed5b, open5b;
+	u_int noproxy, open, closed;
 };
 
 /*
@@ -89,7 +83,7 @@ static	void	socks_open_proxy(int cl, char *strver)
 
 	if (!reason)
 	{
-		reason = "Denied access (open SOCKS proxy found)";
+		reason = "Denied access (insecure proxy found)";
 	}
 	/* open proxy */
 	if (mydata->options & OPT_DENY)
@@ -118,37 +112,15 @@ static	void	socks_add_cache(int cl, int state)
 
 	if (state == PROXY_OPEN)
 	{
-		if (cldata[cl].mod_status == ST_V4)
-		{
-			mydata->open4 += 1;
-		}
-		else if (cldata[cl].mod_status == ST_V5)
-		{
-			mydata->open5 += 1;
-		}
-		else
-		{
-			mydata->open5b += 1;
-		}
+		mydata->open += 1;
 	}
 	else if (state == PROXY_NONE)
 	{
-		mydata->noprox += 1;
+		mydata->noproxy += 1;
 	}
-	else /* state == PROXY_CLOSE|PROXY_UNEXPECTED|PROXY_BADPROTO */
+	else
 	{
-		if (cldata[cl].mod_status == ST_V4)
-		{
-			mydata->closed4 += 1;
-		}
-		else if (cldata[cl].mod_status == ST_V5)
-		{
-			mydata->closed5 += 1;
-		}
-		else
-		{
-			mydata->closed5b += 1;
-		}
+		mydata->closed += 1;
 	}
 
 	if (mydata->lifetime == 0)
@@ -237,15 +209,13 @@ static	int	socks_check_cache(u_int cl)
 
 static	int	socks_write(u_int cl, char *strver)
 {
-#ifdef	INET6
-	struct socks_private *mydata = cldata[cl].instance->data;
-#endif
-	u_char query[22];    /* big enough to hold all queries */
-	int query_len = 13;  /* lenght of socks4 query */
+	u_char query[128];	/* big enough to hold all queries */
+	int query_len;  	/* length of query */
 #ifndef	INET6
 	u_int a, b, c, d;
 #else
 	struct in6_addr	addr;
+	struct socks_private *mydata = cldata[cl].instance->data;
 #endif
 
 #ifndef	INET6
@@ -305,6 +275,7 @@ static	int	socks_write(u_int cl, char *strver)
 		query[8] = 'u'; query[9] = 's';
 		query[10] = 'e'; query[11] = 'r';
 		query[12] = 0;
+		query_len = 13;
 	}
 	else 
 	{
@@ -376,6 +347,11 @@ static	int	socks_read(u_int cl, char *strver)
 	if (cldata[cl].mod_status == ST_V4)
 	{
 		if (cldata[cl].inbuffer[0] == 0
+/* 
+   A lot of socks v4 proxies return 4,91 instead of 0,91 otherwise
+   working perfectly -- this will deal with them.
+*/
+#define BROKEN_PROXIES
 #ifdef BROKEN_PROXIES
 			|| cldata[cl].inbuffer[0] == 4
 #endif
@@ -562,6 +538,15 @@ static	char	*socks_init(AnInstance *self)
 	mydata->lifetime = CACHETIME;
 
 	tmpbuf[0] = txtbuf[0] = '\0';
+
+	/* for stats a */
+	sprintf(tmpbuf, "port=%d", self->port);
+
+	if (self->delayed)
+	{
+		strcat(tmpbuf, ",delayed");
+		strcat(txtbuf, ", Delayed");
+	}
 	if (strstr(self->opt, "log"))
 	{
 		mydata->options |= OPT_LOG;
@@ -631,7 +616,7 @@ static	char	*socks_init(AnInstance *self)
 	strcat(txtbuf, cbuf);
 	mydata->lifetime *= 60;
 
-	self->popt = mystrdup(tmpbuf+1);
+	self->popt = mystrdup(tmpbuf);
 	self->data = mydata;
 	return txtbuf+2;
 }
@@ -658,11 +643,11 @@ static	void	socks_stats(AnInstance *self)
 {
 	struct socks_private *mydata = self->data;
 
-	sendto_ircd("S socks open %u/%u/%u closed %u/%u/%u noproxy %u",
-		mydata->open4, mydata->open5, mydata->open5b,
-		mydata->closed4, mydata->closed5, mydata->closed5b,
-		mydata->noprox);
-	sendto_ircd("S socks cache open %u closed %u noproxy %u miss %u (%u <= %u)",
+	sendto_ircd("S socks:%u open %u closed %u noproxy %u",
+		self->port,
+		mydata->open, mydata->closed, mydata->noproxy);
+	sendto_ircd("S socks:%u cache open %u closed %u noproxy %u miss %u (%u <= %u)",
+		self->port,
 		mydata->chito, mydata->chitc, mydata->chitn,
 		mydata->cmiss, mydata->cnow, mydata->cmax);
 }
@@ -687,7 +672,7 @@ static	int	socks_start(u_int cl)
 	{
 		/* no point of doing anything */
 		DebugLog((ALOG_DSOCKS, 0,
-			"socks_start(%d): A_DENY alredy set ", cl));
+			"socks_start(%d): A_DENY already set ", cl));
 		return -1;
 	}
 

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_debug.c,v 1.44 2004/08/31 13:33:07 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_debug.c,v 1.47 2004/10/01 20:22:15 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -70,7 +70,7 @@ char	serveropts[] = {
 'J',
 #endif
 #ifdef	OPER_KILL
-# ifdef  LOCAL_KILL_ONLY
+# ifndef  OPER_KILL_REMOTE
 'k',
 # else
 'K',
@@ -318,8 +318,8 @@ void	send_defines(aClient *cptr, char *nick)
 		-1
 #endif
 		);
-	sendto_one(cptr, ":%s %d %s :AC:%s SS:%d SU:%d", ME, RPL_STATSDEFINE,
-		   nick, (iconf.aconnect == 1) ? "ON" : "OFF",
+	sendto_one(cptr, ":%s %d %s :AC:%d CA:%d S:%d SS:%d SU:%d", ME, RPL_STATSDEFINE,
+		   nick, iconf.aconnect, iconf.caccept, iconf.split,
 		   iconf.split_minservers, iconf.split_minusers);
 #ifdef CLIENTS_CHANNEL
 	sendto_one(cptr, ":%s %d %s :CCL:0x%X", ME, RPL_STATSDEFINE, nick,

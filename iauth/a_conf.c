@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: a_conf.c,v 1.26 2003/10/18 15:31:29 q Exp $";
+static const volatile char rcsid[] = "@(#)$Id: a_conf.c,v 1.35 2004/10/01 20:22:13 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -68,7 +68,7 @@ char	*conf_read(char *cfile)
 {
 	AnInstance *ident = NULL; /* make sure this module is used */
 	u_char needh = 0; /* do we need hostname information for any host? */
-	u_char o_req = 0, o_dto = 0, o_wup = 0;
+	u_char o_req = 0, o_dto = 0, o_wup = 0, o_del = 0;
 	static char o_all[5];
 	u_int timeout = DEFAULT_TIMEOUT, totto = 0;
 	u_int lnnb = 0, i;
@@ -81,6 +81,7 @@ char	*conf_read(char *cfile)
 	Mlist[Mcnt++] = &Module_socks;
 	Mlist[Mcnt++] = &Module_pipe;
 	Mlist[Mcnt++] = &Module_lhex;
+	Mlist[Mcnt++] = &Module_webproxy;
 	Mlist[Mcnt] = NULL;
 
 	cfh = fopen((cfile) ? cfile : IAUTHCONF_PATH, "r");
@@ -134,6 +135,11 @@ char	*conf_read(char *cfile)
 			if (!strncmp("extinfo", buffer, 7))
 			  {
 				o_wup = 1;
+				continue;
+			  }
+			if (!strncmp("delayed", buffer, 7))
+			  {
+				o_del = 1;
 				continue;
 			  }
 			if (!strncmp("timeout = ", buffer, 10))
@@ -249,6 +255,8 @@ char	*conf_read(char *cfile)
 			(*last)->address = NULL;
 			(*last)->timeout = timeout;
 			(*last)->reason	= NULL;
+			(*last)->delayed = o_del;
+			(*last)->port = 0;
 			if (Mlist[i] == &Module_rfc931)
 				ident = *last;
 
@@ -352,6 +360,17 @@ char	*conf_read(char *cfile)
 					(*last)->timeout = local_timeout;
 					continue;
 				    }
+				else if (!strncmp(buffer+1, "port = ", 7))
+				    {
+					u_int local_port;
+					if (sscanf(buffer+1, "port = %u",
+						   &local_port) != 1)
+						conf_err(lnnb,
+							 "Invalid setting.",
+							 cfile);
+					(*last)->port = local_port;
+					continue;
+				    }
 				else
 				    {
 					conf_err(lnnb, "Invalid keyword.",
@@ -378,6 +397,12 @@ char	*conf_read(char *cfile)
 				    }
 				(*ttmp)->nextt = NULL;
 			    }
+			if ((*last)->port == 0 &&
+				(Mlist[i] == &Module_webproxy ||
+				Mlist[i] == &Module_socks))
+			{
+				conf_err(lnnb, "port here is mandatory.", cfile);
+			}
 
 			last = &((*last)->nexti);
 		    }
@@ -396,12 +421,40 @@ char	*conf_read(char *cfile)
 		(*last)->in = icount;
 		(*last)->popt = NULL;
 		(*last)->address = NULL;
+		(*last)->delayed = o_del;
+		(*last)->port = 0;
 	    }
-	ident->timeout = MAX(DEFAULT_TIMEOUT, ident->timeout);
+	if (ident->timeout < DEFAULT_TIMEOUT)
+	{
+		if (cfile)
+		{
+			printf("Warning: rfc913 is less than %d.\n",
+				DEFAULT_TIMEOUT);
+		}
+		else
+		{
+			sendto_log(ALOG_IRCD|ALOG_DCONF, LOG_ERR,
+				"Warning: rfc913 is less than %d.",
+				DEFAULT_TIMEOUT);
+		}
+	}
+	if (ident->delayed)
+	{
+		if (cfile)
+		{
+			printf("Warning: rfc913 should not be delayed.\n");
+		}
+		else
+		{
+			sendto_log(ALOG_IRCD|ALOG_DCONF, LOG_ERR,
+				"Warning: rfc913 should not be delayed.");
+		}
+	}
 
 	itmp = instances;
 	while (itmp)
 	    {
+		if (!itmp->delayed)
 		totto += itmp->timeout;
 		itmp = itmp->nexti;
 	    }
@@ -470,6 +523,9 @@ char	*conf_read(char *cfile)
 			if (itmp->timeout != DEFAULT_TIMEOUT)
 				printf("\t\ttimeout: %u seconds\n",
 				       itmp->timeout);
+			if (itmp->port != 0)
+				printf("\t\tport: %u\n",
+				       itmp->port);
 			if (itmp->mod->init)
 			    {
 				err = itmp->mod->init(itmp);

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: ircd.c,v 1.143 2004/08/13 00:00:47 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.146 2004/10/02 01:20:44 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -215,7 +215,9 @@ static	time_t	try_connections(time_t currenttime)
 	aClass	*cltmp;
 	aConfItem *con_conf = NULL;
 	int	allheld = 1;
+#ifdef DISABLE_DOUBLE_CONNECTS
 	int	i;
+#endif
 
 	Debug((DEBUG_NOTICE,"Connection check at   : %s",
 		myctime(currenttime)));
@@ -963,6 +965,7 @@ int	main(int argc, char *argv[])
 
 #endif
 	timeofday = time(NULL);
+	initanonymous();
 	initstats();
 	initruntimeconf();
 	ircd_readtune(tunefile);

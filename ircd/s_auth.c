@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_auth.c,v 1.51 2003/10/18 19:48:21 q Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_auth.c,v 1.54 2004/10/01 20:22:14 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -232,6 +232,7 @@ void	read_iauth(void)
 			    sendto_flag(SCH_AUTH, "iauth version %s running.",
 					iauth_version);
 			    start = end;
+			    sendto_iauth("0 M %s", me.name);
 			    continue;
 			}
 		    if (*start == 'a')
@@ -459,7 +460,21 @@ void	read_iauth(void)
 				    cptr->exitc = EXITC_AREFQ;
 			    /* should also check to make sure it's still
 			       an unregistered client.. */
-			    /* should be extended to work after registration */
+
+			    /* Finally, working after registration. --B. */
+			    if (IsRegisteredUser(cptr))
+			    {
+                        	if (cptr->exitc == EXITC_AREF)
+				{
+					sendto_flag(SCH_LOCAL,
+                                		"Denied after connection "
+						"from %s.",
+						get_client_host(cptr));
+				}
+                        	(void) exit_client(cptr, cptr, &me,
+					cptr->reason ? cptr->reason :
+					"Denied access");
+			    }
 			}
 		    start = end;
 		}

@@ -1,5 +1,5 @@
-.\" @(#)$Id: iauth.conf.5,v 1.18 2004/02/22 20:23:14 chopin Exp $
-.TH IAUTH.CONF 5 "$Date: 2004/02/22 20:23:14 $"
+.\" @(#)$Id: iauth.conf.5,v 1.21 2004/09/21 14:10:27 chopin Exp $
+.TH IAUTH.CONF 5 "$Date: 2004/09/21 14:10:27 $"
 .SH NAME
 iauth.conf \- The Internet Relay Chat Authentication Configuration File
 .SH DESCRIPTION
@@ -21,6 +21,7 @@ module\ \fImodule-name\fP
 [TAB]host = \fIhost-name\fP
 [TAB]ip = \fIip-address\fP
 [TAB]timeout = \fIvalue\fP
+[TAB]port = \fIvalue\fP
 
 .fi
 .RE
@@ -34,6 +35,9 @@ If \fIhost-name\fP and \fIip-address\fP fields are specified, then the
 module will only be used for connections matching one of the fields given
 in the configuration.  An entry prefixed with the character ! indicates a
 negative match.  IP addresses are checked first.
+
+Port is mandatory for socks and webproxy modules and not used in others.
+It tells module what port it should connect to to do its work.
 
 If no host nor ip entry is specified, then the module will always be used.
 
@@ -54,12 +58,19 @@ the \fInotimeout\fP option.
 .TP
 .B notimeout
 By specifying this keyword, the IRC server is told not to accept new user
-connections if \fIiauth\fP hasn't finished its work in time.
+connections if \fIiauth\fP hasn't finished its work in time. Note that
+modules specified after \fIdelayed\fP keyword are not considered.
 .TP
 .B extinfo
 This keyword allows extra information (user supplied username, and
 eventually password) to be received by \fIiauth\fP from the server.  This
 is only useful if a module using this information is loaded.
+.TP
+.B delayed
+All modules below this keyword will run in "delayed" execution mode. This
+means that ircd gets (fake) message that iauth is done with this client
+so that it allows it. Modules however do work as usual and upon deciding that this
+client should be removed, message is sent to ircd and client removed.
 .TP
 .B shared <name> <mod_name.so>
 If iauth was compiled with Dynamically Shared Module support, it can be
@@ -83,10 +94,11 @@ This module requires the following option:
 .B socks
 This module performs a basic check to verify that the host where the
 connection originated from doesn't run a SOCKS v4 or v5 proxy server on
-port 1080 that is open to the world.  It is useful to reject abusive
-clients using a relay to evade kill lines and bans.
+a given in configuration port that is open to the world. 
+It is useful to reject abusive clients using a relay to evade kill lines and bans.
+Multiple instances (with different ports) are allowed.
 
-This module understands nine options:
+This module understands ten options:
 .B reject
 to reject connections originating from a host where an open proxy
 was detected,
@@ -112,6 +124,8 @@ positive answer as valid.
 to check only socks v4.
 .B v5only
 to check only socks v5.
+.B reason
+text to send to rejected clients
 .TP
 .B rfc931
 This module is for authentication TCP connections using the protocol
@@ -122,26 +136,64 @@ does not recognize the \fIhost\fP nor \fIip\fP fields.
 This module acts as a proxy, communicating with a LHEx server to perform
 authentication of client connections.  It takes a single (mandatory)
 option, which is the IP-address of the LHEx server to use.
+.TP
+.B webproxy
+This module performs a basic HTTP CONNECT to verify that the host where the
+connection originated from doesn't run an open WWW proxy.
+It is useful to reject abusive clients using a relay to evade kill lines and bans.
+Multiple instances (with different ports) are allowed.
+
+This module understands five options:
+.B reject
+to reject connections originating from a host where an open proxy was detected.
+.B log
+to log hostnames where an open proxy is detected.
+.B cache[=value]
+to set the cache lifetime in minutes.  By default, caching is enabled for
+30 minutes.  A value of 0 disables caching.
+.B careful
+to make sure that we connected to our own ircd; without
+this parameter, module will accept any "HTTP/1.? 200" with an exception
+of servers sending "Date:" header along (which is common with some
+Apache+PHP configurations).
+.B reason
+text to send to rejected clients
+
 .SH EXAMPLE
 The following file will cause the IRC daemon to reject all connections
 originating from a system where an open proxy is running for hosts within
 *.fr and *.enserb.u-bordeaux.fr but not for other hosts matching
 *.u-bordeaux.fr.  For all connections, an ident lookup (RFC 1413) will be
-performed. In addition, every connection is authenticated with the LHEx
-server at IP-address 127.0.0.1.
+performed as well as checking for WWW proxy on port 8080 and 3128.
+In addition, every connection is authenticated with the LHEx
+server at IP-address 127.0.0.1. Client will be let in after ident and
+lhex are done but if socks or webproxy finds an open proxy, client will
+be removed asap.
 
 .RS
 .nf
+module rfc931
+
+module lhex
+        option = 127.0.0.1
+
+delayed
+
 module socks
         option = reject,paranoid
         host = *.enserb.u-bordeaux.fr
         host = !*.u-bordeaux.fr 
         host = *.fr            
+        port = 1080
 
-module rfc931
+module webproxy
+        option = reject
+        port = 8080
 
-module lhex
-        option = 127.0.0.1
+module webproxy
+        option = reject,careful
+        port = 3128
+
 .fi
 .RE
 .SH CAVEATS

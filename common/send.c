@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: send.c,v 1.77 2004/06/29 23:25:58 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: send.c,v 1.82 2004/10/01 20:59:15 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -345,22 +345,28 @@ int	send_queued(aClient *to)
 }
 
 
-static	anUser	ausr = { NULL, NULL, NULL, NULL, 0, 0, 0, 0, NULL,
-			 0, NULL, NULL,
-			 "anonymous", "0", "anonymous.", "anonymous.",
-			 0,NULL, ""};
+static	anUser	ausr;
+static	aClient	anon;
 
-static	aClient	anon = { NULL, NULL, NULL, &ausr, NULL, NULL, 0, 0,/*flags*/
-			 &anon, -2, 0, STAT_CLIENT, anon.namebuf, "anonymous",
-			 "anonymous", "anonymous identity hider", 0, "",
-# ifdef	ZIP_LINKS
-			 NULL,
-# endif
-			 0, {0, 0, NULL }, {0, 0, NULL },
-			 0, 0, 0L, 0L, 0, 0, 0, NULL, NULL, 0, NULL, 0
-			/* hack around union{} initialization	-Vesa */
-			 , {0}, NULL, "", "", EXITC_UNDEF
-			};
+void initanonymous()
+{
+	memset(&ausr, 0, sizeof(anUser));
+	strcpy(ausr.username, "anonymous");
+	strcpy(ausr.uid, "0ANONYM");
+	strcpy(ausr.host, "anonymous.");
+	ausr.server = "anonymous.";
+
+	memset(&anon, 0, sizeof(aClient));
+	anon.user = &ausr;
+	anon.from = &anon;
+	anon.fd = -2;
+	anon.status = STAT_CLIENT;
+	anon.name = anon.namebuf;
+	strcpy(anon.namebuf, "anonymous");
+	strcpy(anon.username, "anonymous");
+	anon.info = "anonymous identity hider";
+	anon.exitc = EXITC_UNDEF;
+}
 
 /*
  * sendprep: takes care of building the string according to format & args
@@ -1228,6 +1234,7 @@ void	sendto_flog(aClient *cptr, char msg, char *username, char *hostname)
 	** And the rest... just count, I got 154 --Beeth
 	*/
 	char	linebuf[1500];
+	int	linebuflen;
 	/*
 	** This is a potential buffer overflow.
 	** I mean, when you manage to keep ircd
@@ -1285,8 +1292,8 @@ void	sendto_flog(aClient *cptr, char msg, char *username, char *hostname)
 		}
 		(void)sprintf(buf, "%s", anyptr);
 	}
-	(void)sprintf(linebuf,
-		"%s (%s): %s@%s [%s] %c %lu %luKb %lu %luKb",
+	linebuflen = sprintf(linebuf,
+		"%s (%s): %s@%s [%s] %c %lu %luKb %lu %luKb ",
 		myctime(cptr->firsttime), buf,
 		username[0] ? username : "<none>", hostname,
 		cptr->auth ? cptr->auth : "<none>",
@@ -1296,18 +1303,39 @@ void	sendto_flog(aClient *cptr, char msg, char *username, char *hostname)
 	/*
 	** This is the content of loglines.
 	*/
-	(void)sprintf(linebuf,
-		"%c %d %d %s %s %s %s %d %s %lu %llu %lu %llu",
-		cptr->exitc, (u_int) cptr->firsttime, (u_int) timeofday,
-		username, hostname, cptr->auth ? cptr->auth : "",
+	linebuflen = sprintf(linebuf,
+		"%c %d %d %s %s %s %s %d %s %lu %llu %lu %llu ",
+		/* exit code as defined in common/struct_def.h; some common:
+		 * '0' normal exit, '-' unregistered client quit, 'k' k-lined,
+		 * 'K' killed, 'X' x-lined, 'Y' max clients limit of Y-line,
+		 * 'L' local @host limit, 'l' local user@host limit, 'P' ping
+		 * timeout, 'Q' send queue exceeded, 'E' socket error */
+		cptr->exitc,
+		/* signon unix time */
+		(u_int) cptr->firsttime,
+		/* signoff unix time */
+		(u_int) timeofday,
+		/* username (if ident is not working, it's from USER cmd) */
+		username,
+		/* hmm, let me take an educated guess... a hostname? */
+		hostname,
+		/* ident, if available */
+		cptr->auth ? cptr->auth : "?",
+		/* client IP */
 		cptr->user ? cptr->user->sip :
 #ifdef INET6
 		inetntop(AF_INET6, (char *)&cptr->ip, mydummy, MYDUMMY_SIZE),
 #else
 		inetntoa((char *)&cptr->ip),
 #endif
-		cptr->port, cptr->acpt ? cptr->acpt->sockhost : "?",
-		cptr->sendM, cptr->sendB, cptr->receiveM, cptr->receiveB);
+		/* client (remote) port */
+		cptr->port,
+		/* server sockhost (IP plus port or unix socket path) */
+		cptr->acpt ? cptr->acpt->sockhost : "?",
+		/* messages and bytes sent to client */
+		cptr->sendM, cptr->sendB,
+		/* messages and bytes received from client */
+		cptr->receiveM, cptr->receiveB);
 #endif /* LOG_OLDFORMAT */
 #if defined(USE_SYSLOG) && (defined(SYSLOG_USERS) || defined(SYSLOG_CONN))
 	if (msg == EXITC_REG)
@@ -1338,7 +1366,7 @@ void	sendto_flog(aClient *cptr, char msg, char *username, char *hostname)
 #endif
 	if (logfile != -1)
 	{
-		(void)strcat(linebuf, "\n");
-		(void)write(logfile, linebuf, strlen(linebuf));
+		linebuf[linebuflen-1] = '\n';
+		(void)write(logfile, linebuf, linebuflen);
 	}
 }

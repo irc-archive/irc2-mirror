@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.229 2004/08/27 19:06:44 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.232 2004/10/02 01:20:43 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -3750,7 +3750,7 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 	/* Why do we wait until CD expires? --B. */
 	if (now - chptr->history > DELAYCHASETIMELIMIT)
 	{
-		int idlelimit1, idlelimit2;
+		int idlelimit1 = 0, idlelimit2 = 0;
 
 		if (reopmode != CHFL_REOPLIST)
 		{
@@ -3832,8 +3832,8 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 			ME, chptr->chname, op.value.cptr->name);
 		sendto_channel_butserv(chptr, &me, ":%s MODE %s +o %s",
 			ME, chptr->chname, op.value.cptr->name);
+		chptr->reop = 0;
 	}
-	chptr->reop = 0;
 	return 1;
 }
 

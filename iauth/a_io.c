@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: a_io.c,v 1.26 2003/10/18 15:31:29 q Exp $";
+static const volatile char rcsid[] = "@(#)$Id: a_io.c,v 1.30 2004/10/01 20:22:13 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -170,6 +170,15 @@ static	void	next_io(int cl, AnInstance *last)
 	    /* sixth, we've got an instance to try */
 	{
 	    int r;
+
+	    if (cldata[cl].instance->delayed &&
+			!(cldata[cl].state & A_DELAYEDSENT))
+		{
+		    /* fake to ircd that we're done */
+		    sendto_ircd("D %d %s %u ", cl, cldata[cl].itsip,
+				cldata[cl].itsport);
+		    cldata[cl].state |= A_DELAYEDSENT;
+		}
 
 	    cldata[cl].timeout = time(NULL) + cldata[cl].instance->timeout;
 	    r = cldata[cl].instance->mod->start(cl);
@@ -454,6 +463,10 @@ static	void	parse_ircd(void)
 		case 'E': /* error message from ircd */
 			sendto_log(ALOG_DIRCD, LOG_DEBUG,
 				   "Error from ircd: %s", chp);
+			break;
+		case 'M':
+			/* RPL_HELLO to be exact, but who cares. */
+			strConnLen = sprintf(strConn, ":%s 020 * :", chp+2);
 			break;
 		default:
 			sendto_log(ALOG_IRCD, LOG_ERR, "Unexpected data [%s]",
