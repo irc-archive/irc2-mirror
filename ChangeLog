@@ -1,5 +1,6 @@
 /************************************************************************
- *   IRC - Internet Relay Chat, include/patchlevel.h
+ *   IRC - Internet Relay Chat, ChangeLog
+ *   Copyright (C) 1990
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -16,16 +17,11 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-/*
- * $Id: patchlevel.h,v 6.1 1991/07/04 21:04:33 gruner stable gruner $
- *
- * $Log: patchlevel.h,v $
- * Revision 6.1  1991/07/04  21:04:33  gruner
- * Revision 2.6.1 [released]
- *
- * Revision 6.0  1991/07/04  18:05:04  gruner
- * frozen beta revision 2.6.1
- *
- */
+Sat Dec 01 17:52:09 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
 
-#define PATCHLEVEL "2.6.1"
+	* README-2.6
+	  Comments on Apollo compilation..
+
+Sat Nov 10 17:58:16 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* Created VM-directory: A client for VM/CMS has been added.
