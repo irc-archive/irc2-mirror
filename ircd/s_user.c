@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.78 1999/06/17 01:16:40 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.80 1999/06/27 17:53:26 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -380,6 +380,9 @@ char	*nick, *username;
 		char *reason = NULL;
 
 #if defined(USE_IAUTH)
+		static time_t last = 0;
+		static u_int count = 0;
+
 		if (iauth_options & XOPT_EARLYPARSE && DoingXAuth(cptr))
 		    {
 			cptr->flags |= FLAGS_WXAUTH;
@@ -394,15 +397,15 @@ char	*nick, *username;
 		    }
 		if (!DoneXAuth(sptr) && (iauth_options & XOPT_REQUIRED))
 		    {
-			time_t last = 0;
 			char *reason;
 
 			if (iauth_options & XOPT_NOTIMEOUT)
 			    {
+				count += 1;
 				if (timeofday - last > 300)
 				    {
 					sendto_flag(SCH_AUTH, 
-		    "iauth may not be running! (refusing new connections)");
+	    "iauth may not be running! (refusing new user connections)");
 					last = timeofday;
 				    }
 				reason = "No iauth!";
@@ -412,6 +415,11 @@ char	*nick, *username;
 			sptr->exitc = EXITC_AUTHFAIL;
 			return ereject_user(cptr, reason,
 					    "Authentication failure!");
+		    }
+		if (timeofday - last > 300 && count)
+		    {
+			sendto_flag(SCH_AUTH, "%d users rejected.", count);
+			count = 0;
 		    }
 
 		/* this should not be needed, but there's a bug.. -kalt */
@@ -945,31 +953,34 @@ char	*parv[];
 nickkilldone:
 	if (IsServer(sptr))
 	    {
+		char	*pv[7];
+
 		if (parc != 8)
+		    {
 			sendto_flag(SCH_NOTICE,
 			    "Bad NICK param count (%d) for %s from %s via %s",
 				    parc, parv[1], sptr->name,
 				    get_client_name(cptr, FALSE));
+			sendto_one(cptr, ":%s KILL %s :%s (Bad NICK %d)",
+				   ME, nick, ME, parc);
+			return 0;
+		    }
 		/* A server introducing a new client, change source */
 		sptr = make_client(cptr);
 		add_client_to_list(sptr);
 		if (parc > 2)
 			sptr->hopcount = atoi(parv[2]);
 		(void)strcpy(sptr->name, nick);
-		if (parc == 8 && cptr->serv)
-		    {
-			char	*pv[7];
 
-			pv[0] = sptr->name;
-			pv[1] = parv[3];
-			pv[2] = parv[4];
-			pv[3] = parv[5];
-			pv[4] = parv[7];
-			pv[5] = parv[6];
-			pv[6] = NULL;
-			(void)add_to_client_hash_table(nick, sptr);
-			return m_user(cptr, sptr, 6, pv);
-		    }
+		pv[0] = sptr->name;
+		pv[1] = parv[3];
+		pv[2] = parv[4];
+		pv[3] = parv[5];
+		pv[4] = parv[7];
+		pv[5] = parv[6];
+		pv[6] = NULL;
+		(void)add_to_client_hash_table(nick, sptr);
+		return m_user(cptr, sptr, 6, pv);
 	    }
 	else if (sptr->name[0])		/* NICK received before, changing */
 	    {
