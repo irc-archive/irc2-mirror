@@ -25,11 +25,7 @@ char c_vms_id[] = "c_vms.c v2.0 (c) 1988 University of Oulu, Computing Center";
 
 #include "struct.h"
 
-#if HPUX
-#include <time.h>
-#else
 #if VMS
-#include <sys/time.h>
 #include <vms/inetiodef.h>
 #include iodef
 #include ssdef
@@ -41,9 +37,6 @@ typedef struct {
 	int info;
 } io_statblk;
 
-#else
-#include <sys/time.h>
-#endif
 #endif
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -55,10 +48,10 @@ typedef struct {
 #include <signal.h>
 #include <file.h>
 #include <curses.h>
-#if BSD42 || ULTRIX || HPUX
-#include "sock.h"
-#endif
+#include "common.h"
 #include "sys.h"
+#include "sock.h"	/* If FD_ZERO isn't defined up to this point, */
+			/* define it (BSD4.2 needs this) */
 
 #define STDINBUFSIZE (0x80)
 

@@ -17,6 +17,16 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+Wed Nov 28 20:45:42 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+      * c_msg.c
+	Fixed abuf[123] overflow. (by using mybuf and removing the buffers)
+
+Sat Nov 10 17:59:29 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+      * Added #include "common.h" into all source files, moved "common"
+	and regularly used declarations to include/common.h
+
 Wed Jun 20 11:45:30 1990  Jarkko Oikarinen (jto@tolsun.oulu.fi)
 
 	String channel fixes to files, added some numerics.

@@ -1,5 +1,19 @@
 Extensions to IRC protocol:
 
+* Wed 20 Feb 11:01:12 1991 WiZ (jto@tolsun.oulu.fi)
+
+IRC 2.6 has multiple channels, ie. channels beginning with '#'-character.
+These channels are specific in the sense that people can join several
+of them simultaneusly and take part in several conversations.
+
+IRC 2.6 allows also be started from inetd.
+ircd -i specifies that at startup standard input (fd 0) is the port
+where this daemon should accept connections from.
+
+IRC 2.6 allows local users to start their own ircds for their private
+channels. As the users have complete control of their own ircdaemon,
+this provides much more secure way to communicate for people.
+
 * Wed 20 Jun 11:41:19 1990 WiZ (jto@tolsun.oulu.fi)
 
 IRC daemon under testing in tolsun.oulu.fi has now channels with
@@ -45,7 +59,7 @@ MODE 42 +l 10             - Change the maximum number of users in
 MODE 42 +o WiZ            - Gives channel operator privileges to WiZ
 MODE 42 -o WiZ            - Takes channel operator privileges from WiZ
 
-* Sun Jun 17 22:21:33 1990 Gonzo <gruner.informatik.tu-muenchen.de>
+* Sun Jun 17 22:21:33 1990 Armin <gruner.informatik.tu-muenchen.de>
 
 Enhancement on PRIVMSG (works only for OPERs):
   PRIVMSG $<server name mask> <text> sends a private msg to all clients on

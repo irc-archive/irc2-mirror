@@ -27,6 +27,7 @@ char swear_id[]="swear.c v2.0 (c) 1989 Jarkko Oikarinen";
 #include <ctype.h>
 #include <strings.h>
 #include "struct.h"
+#include "common.h"
 #include "sys.h"
 #if HPUX
 #include <sys/ttold.h>

@@ -22,6 +22,7 @@ char conf_id[] = "conf.c v2.0 (c) 1988 University of Oulu, Computing Center and 
 
 #include <stdio.h>
 #include "struct.h"
+#include "common.h"
 #include "sys.h"
 
 extern char *getfield();
@@ -54,6 +55,8 @@ int *port;
     case 'A':
     case 'k':
     case 'K':
+    case 'q':
+    case 'Q':
       break;
     case 'U':   /* Uphost, ie. host where client reading */
     case 'u':   /* this should connect.                  */
@@ -72,7 +75,7 @@ int *port;
       }
       break;    
     default:
-      debug(DEBUG_ERROR, "Error in config file: %s", line);
+/*      debug(DEBUG_ERROR, "Error in config file: %s", line); */
       break;
     }
   }

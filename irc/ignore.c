@@ -20,6 +20,7 @@
 char ignore_id[]="ignore.c v2.0 (c) 1988, 1989 Jarkko Oikarinen";
 
 #include "struct.h"
+#include "common.h"
 #include "sys.h"
 
 anIgnore *ignore = (anIgnore *) 0;

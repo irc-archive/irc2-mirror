@@ -25,8 +25,8 @@
 
 IRC was conceived of and written by Jarkko Oikarinen <jto@tolsun.oulu.fi>.
 IRC was originally written in University of Oulu, Computing Center.
-Jun 1990 - IRC 2.5 brought by jto@tolsun.oulu.fi
-  - String channels, moderated channels, invite-only channels, etc...
+Jan 1991 - IRC 2.6  jto@tolsun.oulu.fi
+	- Multiple Channels and protocol changes
 
 Contributions were made by a cast of dozens, including the following:
 
@@ -49,13 +49,30 @@ enhancements
 Tom Davis <conslt16@zeus.unl.edu> and Tim Russell <russell@zeus.unl.edu>:
 VMS modifications
 
-Markku Savela <msa@tel4.tel.vtt.fi>: advice and support
+Markku Savela <msa@tel4.tel.vtt.fi>: advice, support, and being the
+incentive to do some of our *own* coding. :)
+
+Tom Hopkins <hoppie@buengf.bu.edu>: bug fixes, quarantine lines,
+consolidation of various patches.
+
+Christopher Davis <ckd@cs.bu.edu>: EFnet/Anet gateway coding,
+many automata ;), documentation fixing.
+
+Helen Rose <hrose@cs.bu.edu>: documentation updating, and fixing.
+
+Tom Hinds <rocker@bucsf.bu.edu>: emacs client updating.
+
+Tim Miller <cerebus@bu-pub.bu.edu>: various server and client-breaking
+features.
 
 The version 2.2 release was coordinated by Mike Bolotski
 <mikeb@salmon.ee.ubc.ca>.
 
 The version 2.4 release was coordinated by Markku Savela and
 Chelsea Ashley Dyerman
+
+The version 2.5.2 release was coordinated by Christopher Davis, Helen Rose,
+and Tom Hopkins.
 
 Markku Savela <Markku.Savela@vtt.fi> / April 1990
 Fixed various bugs in 2.2PL1 release server (2.2msa.4) and changed
@@ -82,15 +99,28 @@ Armin Gruner <gruner@informatik.tu-muenchen.de> / May, June 1990:
   are displayed if client does not recognize them. (strange, if a server
   sends an 'unknown command', isn't it?)
 
+Tom Hopkins <hoppie@buengf.bu.edu> / September, October 1990:
+* Patched msa's K lines for servers (Q lines).
+* Consolidated several patches, including Stealth's logging patch. 
+* Fixed several minor bugs. 
+* Has done lots of other stuff that I can't seem to remember, but he
+  always works on code, so he has to have done alot more than three
+  lines worth. :) 
+
 Thanks go to those persons not mentioned here who have added their advice,
 opinions, and code to IRC.
 
 Various modifications, bugreports, cleanups and testing by:
 
 Hugo Calendar <hugo@ucscb.ucsc.edu>
-Bo Adler <beau@through.cs.caltech.edu>
+Bo Adler <adler@csvax.cs.caltech.edu>
 Michael Sandrof <ms5n+@andrew.cmu.edu>
-Jon Solomon <jsol@buit5.bu.edu>
-Jan Peterson <jlp@hamblin.byu.edu>
+Jon Solomon <jsol@cs.bu.edu>
+Jan Peterson <jlp@hamblin.math.byu.edu>
 Nathan Glasser <nathan@brokaw.lcs.mit.edu>
-Helen Rose <hrose@uceng.uc.edu>
+Helen Rose <hrose@cs.bu.edu>
+Mike Pelletier <stealth@caen.engin.umich.edu>
+Basalat Ali Raja <gwydion@tavi.rice.edu>
+Eric P. Scott <eps@toaster.sfsu.edu>
+Dan Goodwin <fornax@wpi.wpi.edu>
+Noah Friedman <friedman@ai.mit.edu>

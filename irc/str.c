@@ -21,6 +21,7 @@
 char str_id[] = "str.c v2.0 (c) 1988 University of Oulu, Computing Center and Jarkko Oikarinen";
 
 #include "struct.h"
+#include "common.h"
 #include "sys.h"
 
 char *

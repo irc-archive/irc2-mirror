@@ -35,6 +35,7 @@
 #else DEBUG
 #include	<stdio.h>
 #include	<file.h>
+#include	"common.h"
 #include	"struct.h"
 #define		export
 #define		import		extern

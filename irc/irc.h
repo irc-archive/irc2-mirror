@@ -35,8 +35,11 @@ struct Command {
 extern int do_mypriv(), do_cmdch(), do_quote(), do_query();
 extern int do_ignore(), do_help(), do_log(), do_clear();
 extern int do_unkill(), do_bye(), do_server();
+#ifdef VMSP
+extern int do_channel(), do_bye(), do_exec();
 #ifdef GETPASS
 extern int do_oper();
+#endif
 #endif
 
 struct Command commands[] = {
@@ -55,10 +58,24 @@ struct Command commands[] = {
   { (int (*)()) 0, "WHO",     SERVER_CMD, "\0\0", MSG_WHO },
   { (int (*)()) 0, "WHOIS",   SERVER_CMD, "\0\0", MSG_WHOIS },
   { (int (*)()) 0, "WHOWAS",  SERVER_CMD, "\0\0", MSG_WHOWAS },
-  { (int (*)()) 0, "JOIN",    SERVER_CMD, "\0\0", MSG_CHANNEL },
+  { (int (*)()) 0, "LEAVE",   SERVER_CMD, "\0\0", MSG_PART },
+  { (int (*)()) 0, "PART",    SERVER_CMD, "\0\0", MSG_PART },
   { (int (*)()) 0, "WALL",    SERVER_CMD, "\0\0", MSG_WALL },
   { (int (*)()) 0, "WOPS",    SERVER_CMD, "\0\0", MSG_WALLOPS },
-  { (int (*)()) 0, "CHANNEL", SERVER_CMD, "\0\0", MSG_CHANNEL },
+#ifdef VMSP
+  { do_exec,       "EXEC",    LOCAL_FUNC, "\0\0", "EXEC" },
+  { do_channel,    "JOIN",    SERVER_CMD, "\0\0", MSG_JOIN },
+  { do_channel,    "CHANNEL", SERVER_CMD, "\0\0", MSG_JOIN },
+  { do_oper,       "OPER",    LOCAL_FUNC, "\0\0", "OPER" },
+#else
+  { (int (*)()) 0, "JOIN",    SERVER_CMD, "\0\0", MSG_JOIN },
+  { (int (*)()) 0, "CHANNEL", SERVER_CMD, "\0\0", MSG_JOIN },
+#ifdef GETPASS
+  { do_oper,       "OPER",    LOCAL_FUNC, "\0\0", "OPER" },
+#else
+  { (int (*)()) 0, "OPER",    SERVER_CMD, "\0\0", MSG_OPER },
+#endif
+#endif
   { (int (*)()) 0, "AWAY",    SERVER_CMD, "\0\0", MSG_AWAY },
   { do_mypriv,     "MSG",     LOCAL_FUNC, "\0\0", MSG_PRIVATE },
   { (int (*)()) 0, "TOPIC",   SERVER_CMD, "\0\0", MSG_TOPIC },
@@ -67,11 +84,6 @@ struct Command commands[] = {
   { (int (*)()) 0, "INFO",    SERVER_CMD, "\0\0", MSG_INFO },
   { (int (*)()) 0, "LIST",    SERVER_CMD, "\0\0", MSG_LIST },
   { (int (*)()) 0, "KILL",    SERVER_CMD, "\0\0", MSG_KILL },
-#ifdef GETPASS
-  { do_oper,       "OPER",    LOCAL_FUNC, "\0\0", "OPER" },
-#else
-  { (int (*)()) 0, "OPER",    SERVER_CMD, "\0\0", MSG_OPER },
-#endif
   { do_quote,      "QUOTE",   LOCAL_FUNC, "\0\0", "QUOTE" },
   { (int (*)()) 0, "LINKS",   SERVER_CMD, "\0\0", MSG_LINKS },
   { (int (*)()) 0, "ADMIN",   SERVER_CMD, "\0\0", MSG_ADMIN },

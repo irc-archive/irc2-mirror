@@ -24,19 +24,23 @@
  
 char c_msg_id[] = "c_msg.c v2.0 (c) 1988 University of Oulu, Computing Center and Jarkko Oikarinen";
 
-#include "struct.h"
-#include "msg.h"
+#include "config.h"
 #ifdef AUTOMATON
 #include <ctype.h>
 #else
+#ifndef VMSP
 #include <curses.h>
 #endif
+#endif
+
+#include "common.h"
+#include "struct.h"
+#include "msg.h"
 
 char mybuf[513];
-char abuf1[20], abuf2[20], abuf3[20], abuf4[20];
 
 extern anIgnore *find_ignore();
-extern char *center(), *last_to_me();
+extern char *last_to_me();
 extern aClient *client;
 
 m_restart() {
@@ -61,6 +65,10 @@ m_motd() {
 
 m_admin() {
   putline("*** Received admin message..!");
+}
+
+m_service() {
+  putline("*** Received service message..!");
 }
 
 m_trace() {
@@ -96,13 +104,13 @@ aClient *sptr, *cptr;
 int parc;
 char *parv[];
 {
-  strcpy(abuf1, "*** Mode change ");
+  strcpy(mybuf, "*** Mode change ");
   while (parc--) {
-    strcat(abuf1, parv[0]);
-    strcat(abuf1, " ");
+    strcat(mybuf, parv[0]);
+    strcat(mybuf, " ");
     parv++;
   }
-  putline(abuf1);
+  putline(mybuf);
 }
 
 m_wall(sptr, cptr, parc, parv)
@@ -110,8 +118,8 @@ aClient *sptr, *cptr;
 int parc;
 char *parv[];
 {
-  sprintf(abuf1, "*** #%s# %s", parv[0], parv[1]);
-  putline(abuf1);
+  sprintf(mybuf, "*** #%s# %s", parv[0], parv[1]);
+  putline(mybuf);
 }
 
 m_wallops(sptr, cptr, parc, parv)
@@ -119,8 +127,8 @@ aClient *sptr, *cptr;
 int parc;
 char *parv[];
 {
-  sprintf(abuf1, "*** =%s= %s", parv[0], parv[1]);
-  putline(abuf1);
+  sprintf(mybuf, "*** =%s= %s", parv[0], parv[1]);
+  putline(mybuf);
 }
 
 m_connect() {
@@ -208,20 +216,23 @@ char *parv[];
   putline(mybuf);
 }
 
-m_channel(sptr, cptr, parc, parv)
+m_join(sptr, cptr, parc, parv)
 aClient *cptr, *sptr;
 int parc;
 char *parv[];
 {
-  if (parv[1] == 0 || *parv[1] == '\0' ||
-      (atoi(parv[1]) == 0 && *parv[1] != '+')) {
-    sprintf(mybuf,"*** Change: %s has left this Channel", parv[0]);
-#ifdef AUTOMATON
-    a_leave(parv[0]);
-#endif
-  } else
-    sprintf(mybuf,"*** Change: %s has joined this Channel (%s)", 
-	    parv[0], parv[1]);
+  sprintf(mybuf,"*** Change: %s has joined channel %s", 
+	  parv[0], parv[1]);
+  putline(mybuf);
+}
+
+m_part(sptr, cptr, parc, parv)
+aClient *cptr, *sptr;
+int parc;
+char *parv[];
+{
+  sprintf(mybuf,"*** Change: %s has left channel %s", 
+	  parv[0], parv[1]);
   putline(mybuf);
 }
 
@@ -236,7 +247,7 @@ char *parv[];
 
 m_bye()
 {
-#ifndef AUTOMATON
+#if !defined(AUTOMATON) && !defined(VMSP)
   echo();
   nocrmode();
   clear();
@@ -314,7 +325,7 @@ char *parv[];
   char *channel = parv[1],
        *username = parv[2],
        *host = parv[3],
-       *server = parv[4],
+  /*   *server = parv[4], not used .. --Armin */
        *nickname = parv[5],
        *away = parv[6],
        *realname = parv[7];
@@ -390,20 +401,27 @@ int parc;
 char *parv[];
 {
   anIgnore *iptr;
+  int ignoreflag = 0;
   if ((iptr = find_ignore(parv[0], (anIgnore *) 0)) &&
       (iptr->flags & IGNORE_PRIVATE)) {
+    ignoreflag = 1;
+  }
+  if (parv[0] && parv[0][0]) {
+#ifdef AUTOMATON
+    a_privmsg(sender, parv[2]);
+#else
+    if ((parv[1][0] >= '0' && parv[1][0] <= '9') || parv[1][0] == '-'
+	|| parv[1][0] == '+' || parv[1][0] == '#' || parv[1][0] == '$') {
+      if (ignoreflag)
+	return (0);
+      sprintf(mybuf,"(%s:%s) %s", parv[0], parv[1], parv[2]);
+    } else {
+      if (ignoreflag) {
 	sendto_one(client,
 		   "NOTICE %s :*** Automatic reply: You have been ignored",
 		   parv[0]);
 	return(0);
       }
-  if (parv[0] && parv[0][0]) {
-#ifdef AUTOMATON
-    a_privmsg(sender, parv[2]);
-#else
-    if ((parv[1][0] >= '0' && parv[1][0] <= '9') || parv[1][0] == '-')
-      sprintf(mybuf,"(%s) %s", parv[0], parv[2]);
-    else {
       sprintf(mybuf,"*%s* %s", parv[0], parv[2]);
       last_to_me(parv[0]);
     }

@@ -17,6 +17,26 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+Mon Dec 03 13:56:36 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* config.h
+	  Switches for NEED_* added.
+
+Mon Nov 26 10:33:43 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* sys.h[.SH]
+	  declaration of dummy() and restart() depending on configuration
+	  process.
+
+Sat Nov 10 18:00:44 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* New header file: common.h, should be included into all source
+	  files. Created sys.h.SH, Makefile.SH, config.h.SH; these files
+	  are extracted by running Configure.
+
+	* Added some function declarations
+	  Removed Makefile (do we need one here ?).
+
 Wed Jun 20 11:44:00 1990  Jarkko Oikarinen (jto@tolsun.oulu.fi)
 
 	* config.h

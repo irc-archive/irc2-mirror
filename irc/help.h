@@ -18,12 +18,13 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#include "common.h"
+#include "config.h"
+ 
 struct Help {
   char *command, *syntax, *explanation[5];
 };
-
-#define NULL ((char *) 0)
-
+ 
 struct Help helplist[] = {
   { "ADMIN", "/ADMIN <server>",
     "Prints administrative information about an IRC server.",
@@ -53,6 +54,13 @@ struct Help helplist[] = {
   { "EXIT", "/EXIT",
     "Exit from IRC. /BYE, /EXIT, /QUIT and /SIGNOFF are identical.",
     "", "", "", "" },
+#ifdef VMSP
+  { "EXEC", "/EXEC <CP/CMS command>",
+    "Executes a CP/CMS command. If the command spends some time, you may",
+    "be signed off by the server. See UNKILL.",
+    "Warning: Screen is cleared after execcuting a command.",
+    "", "" },
+#endif
   { "HELP", "/HELP <command>",
     "/HELP without parameters lists all IRC commands.",
     "/HELP followed by a command name prints a description of that command.",
@@ -70,7 +78,7 @@ struct Help helplist[] = {
   { "JOIN", "/JOIN <channel>",
     "Leave the current channel and join a new one. Channels above 999",
     "are private channels; their numbers are not listed by /WHO. Negative",
-    "numbered channels are secret; they do not appear in /WHO at all.", 
+    "numbered channels are secret; they do not appear in /WHO at all.",
     "/JOIN and /CHANNEL are identical.", "" },
   { "KICK", "/KICK <channel> <user>",
     "Kicks specified user off given channel",
@@ -78,7 +86,7 @@ struct Help helplist[] = {
     "Channel operator privileges can be given to other users of channel",
     "by command '/MODE <channel> +o <user>' and taken away by command",
     "'/MODE <channel> -o <user>'" },
-  { "LINKS", "/LINKS [<pattern>]", "Lists all active IRC servers.", 
+  { "LINKS", "/LINKS [<pattern>]", "Lists all active IRC servers.",
     "If <pattern> is given, list all active irc links matching <pattern>",
     "For example, /links *.fi lists all links in Finland", "", "" },
   { "LIST", "/LIST",

@@ -17,6 +17,101 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+Mon Feb 25 16:08:51 1991  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* s_msg.c
+	  'Fixed' K:-line behaviour of m_user(). Now, the connection
+	  is not closed; USER-msg is distributed with K:-line remark, and
+	  user isn't introduced locally, so user gets 'You have not registered
+	  as a user'.
+
+	* ircd.c
+	  SIGHUP generates rehash() now.
+
+Mon Feb 11 18:57:56 1991  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+ 	* s_msg.c
+	  Fixed m_server(). The domain matching was done against the
+	  return value of GetClientName(), but this never matches
+	  if the servername differs from the host name, because
+	  [real socketname] is added to 'inpath'.
+
+Fri Jan 12 12:34:21 1991  Jarkko Oikarinen (jto@tolsun.oulu.fi)
+
+        * more ircd options at startup...
+
+Mon Dec 03 13:54:25 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* class.c, s_msg.c, s_bsd.c
+	  Fixes from Avalon. Sigh.
+
+Wed Nov 28 14:07:11 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* class.c, s_bsd.c (CloseConnection)
+	  Fixes from avalon (DEBUG stuff)
+
+Tue Nov 27 11:24:56 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* s_msg.c, s_bsd.c, ircd.c, class.c
+	  Isolated the implementation of 'classes' to class.c (by using
+	  macros for accessing the structure members) -- we should start
+	  using this everywhere -- especially with this linear list of
+	  clients!!
+
+	* channel.h (new file)
+	  prototyping, 'channel'-misc, try to isolate channel implemen-
+	  tation to channel.h and channel.c
+
+Sun Nov 25 16:13:42 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* class.c, class.h
+	  New files for class-handling. Applied Avalon's patches.
+	  Change some code into more readable one (MIN).
+
+Tue Nov 13 11:44:28 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* s_msg.c
+	  Fixed Invite bug.
+
+	* s_bsd.c
+	  Fixed overhead of check_access.
+	  New function to get qualified (local) domain name: AddLocalDomain()
+
+Mon Nov 12 20:42:44 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* channel.c
+	  Fixed 2.6 MODE_NOPRIVMSG bug
+
+	* Added mkversion.sh into self configuration extraction,
+	  now version.c.SH
+
+Sat Nov 10 19:10:33 1990  Armin Gruner <gruner@informatik.tu-muenchen.de>
+
+	* Removed getlongtime() everywhere.
+
+	* s_bsd.c
+	  Removed some ULTRIX sidesteps.
+
+	* s_conf.c
+	  Changed the return values of find_kill().
+
+	* ircd.c
+	  Avalon's cleanup's.
+	  Change close() to shutdown() (restart()). 
+
+Wed Oct 31 18:20:00 1990  Jarkko Oikarinen (jto@tolsun.oulu.fi)
+
+	* 2.6:
+	  - multichannels
+	  - wildcard servers
+	  - more fun stuff I don't remember anymore but which should
+	    be in documentation...
+
+Sun Oct 21 18:53:02 1990  Christopher Davis (ckd at bucsd)
+
+        * Makefile
+          - Added IRCDLIBS and IRCDMODE variables
+
 Wed Jun 20 11:53:00 1990  Jarkko Oikarinen (jto@tolsun.oulu.fi)
 
 	numerous files changed and functions moved around to make

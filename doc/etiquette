@@ -23,7 +23,6 @@ Authors:      Lea Viljanen (LadyBug)  viljanen@kreeta.helsinki.fi
               Ari Husa     (luru)     so-luru@tolsun.oulu.fi 
 
 
-
 1) Language
 
    The most widely understood and spoken language on IRC is English. 
@@ -59,14 +58,7 @@ to join in, but do not try to force your topic into the discussion
 if that doesn't come naturally.
 
 
-4) Limits
-
-   On channel numbers above 10 there can be only 10 persons
-per channel. So if the channel is full and you don't actively
-participate, please move to another channel to let someone else in.
-
-
-5) {}|[]\
+4) {}|[]\
 
    IRC has quite a lot of people from Scandinavian countries,
 the above characters are letters in their alphabet. This 
@@ -78,8 +70,15 @@ read the following, do not ask it on IRC:
    |     is either an O with 2 dots over it or an O with a dash (/) through it
    [, ], and \ are the preceding three letters in upper case.
 
+   There are a lot of people from Japan as well, who use Kanji characters
+which may look quite exotic as well. As I don't know Kanji I don't
+even try to explain any of the characters.
 
 5) ATTENTION!
 
    Remember, people on IRC form their opinions about you only by 
 your actions, writings and comments on IRC. So think before you type.
+Do not "dump" to a channel or user (send large amounts of unwanted
+information). This is likely to get you /kicked off the channel or
+/killed off from irc. Dumping causes network 'burbs', connections going
+down because servers cannot handle the large amount of traffic any more.

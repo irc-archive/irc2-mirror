@@ -24,6 +24,7 @@ char debug_id[] = "debug.c v2.0 (c) 1988 University of Oulu, Computing Center an
 #include <sys/file.h>
 #include <stdio.h>
 #include "struct.h"
+#include "common.h"
 #if HPUX
 #include <fcntl.h>
 #endif

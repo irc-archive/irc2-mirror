@@ -32,16 +32,9 @@
 
 char c_numeric_id[] = "numeric.c (c) 1989 Jarkko Oikarinen";
 
-#include "config.h"
-#include "sys.h" 
 #include "struct.h"
+#include "common.h"
 #include "numeric.h"
-
-#define NULL (char *) 0
-
-extern aClient *find_client();
-extern aChannel *find_channel();
-
 
 extern char mybuf[];
 /*
@@ -64,8 +57,6 @@ aClient *cptr, *sptr;
 int parc;
 char *parv[];
     {
-	aClient *acptr;
-	aChannel *chptr;
 	char *nick, *tmp;
 	int i;
 	
@@ -77,6 +68,10 @@ char *parv[];
 	    case ERR_NOSUCHNICK:
 		sprintf(mybuf, "*** Error: %s: No such nickname (%s)",
 			parv[0], parv[2]);
+		sendto_one(&me, "WHOWAS %s", parv[2]);
+		break;
+            case ERR_WASNOSUCHNICK:
+		mybuf[0] = '\0';
 		break;
 	    case ERR_NOSUCHSERVER:
 		sprintf(mybuf, "*** Error: %s: No such server (%s)",
@@ -198,6 +193,10 @@ char *parv[];
 		sprintf(mybuf, "*** %s has been touched by magic forces",
 			parv[2]);
 		break;
+	    case RPL_WHOISIDLE:
+		sprintf(mybuf, "*** %s %s %s %s %s %s",
+			parv[2], parv[3], parv[4], parv[5], parv[6], parv[7]);
+		break;
 	    case RPL_LISTSTART:
 		sprintf(mybuf, "*** Chn Users  Name");
 		break;
@@ -242,6 +241,9 @@ char *parv[];
 		sprintf(mybuf, "*** %s: %s", parv[0], (parv[2][0] == '\0') ?
 			"Rereading configuration file.." : parv[2]);
 		break;
+            case RPL_MYPORTIS:
+		sprintf(mybuf, "*** %s: %s %s", parv[0], parv[2], parv[1]);
+		break;
 	    case RPL_TIME:
 		sprintf(mybuf, "*** Time on host %s is %s",
 			parv[2], parv[3]);
@@ -263,5 +265,5 @@ char *parv[];
 	    }
 	if (mybuf[0])
 	  putline(mybuf);
-    }
-
+	return 0;
+}

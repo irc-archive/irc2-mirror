@@ -23,12 +23,7 @@ char edit_id[] = "edit.c v2.0 (c) 1988 University of Oulu, Computing Center and 
 #include <curses.h>
 #include <signal.h>
 #include "struct.h"
-
-#ifdef TRUE
-#undef TRUE
-#endif
-#define FALSE (0)
-#define TRUE  (!FALSE)
+#include "common.h"
 
 #define FROM_START 0
 #define FROM_END   1
@@ -188,13 +183,14 @@ del_ch_right()
     i1=get_position();
     
     if (!get_char(i1))
-	return;			/* last char in line */
+	return 0;			/* last char in line */
     set_position(0, FROM_END);
     i2=get_position();
     for (i3=i1; i3<i2; i3++)
 	set_char(i3, get_char(i3+1));
     set_char(i3, 0);
     set_position(i1, FROM_START);
+    return 0;
 }
 
 del_ch_left()
@@ -204,7 +200,7 @@ del_ch_left()
     i1=get_position();
     
     if (!i1)
-	return;			/* first pos in line */
+	return 0;			/* first pos in line */
     set_position(0, FROM_END);
     i2=get_position();
     for (i3=i1-1; i3<i2; i3++)
@@ -212,11 +208,12 @@ del_ch_left()
     set_char(i3, 0);
     set_position(i1, FROM_START);
     set_position(-1, RELATIVE);
+    return 0;
 }
 
 suspend_irc()
 {
-#if HPUX || defined(mips)
+#if HPUX || defined(mips) || AIX
 #ifdef SIGSTOP
   kill(getpid(), SIGSTOP);
 #endif
@@ -238,7 +235,7 @@ char ch;
     if (literal) {
 	literal=0;
 	add_ch(ch);
-	return;
+	return 0;
     }
     esc = 0;
     switch (ch) {
@@ -260,6 +257,7 @@ char ch;
     default:
 	break;
     }
+    return 0;
 }
 
 refresh_screen()

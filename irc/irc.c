@@ -70,6 +70,7 @@ char *a_myuser();
 #endif
 #include <signal.h>
 
+#include "common.h"
 #include "msg.h"
 #include "sys.h"
 #include "irc.h"
@@ -80,6 +81,7 @@ char *makeclientbuf();
 extern char *HEADER;
 int timeout();
 char buf[BUFSIZE];
+aChannel *channel = (aChannel *) 0;
 static char currserver[HOSTLEN + 1];
 char *mycncmp(), *real_name(), *last_to_me(), *last_from_me();
 aClient me;
@@ -382,8 +384,10 @@ int sock;
   client_loop(sock);
 }
 
+#define QUERYLEN 50
+
 static char cmdch = '/';
-static char queryuser[NICKLEN+2] = "";
+static char queryuser[QUERYLEN+2] = "";
 
 int
 do_cmdch(ptr, temp)
@@ -419,7 +423,7 @@ char *ptr, *temp;
     queryuser[0] = '\0';
   }
   else {
-    strncpyzt(queryuser, ptr, (NICKLEN+1));
+    strncpyzt(queryuser, ptr, QUERYLEN);
     sprintf(buf, "*** Beginning a private chat with %s", queryuser);
     putline(buf);
   }
@@ -450,7 +454,10 @@ char *buf1, *buf2;
     sendto_one(&me, "PRIVMSG %s", buf1);
     *(tmp++) = '\0';
     last_from_me(buf1);
-    sprintf(buf,"-> *%s* %s", buf1, tmp);
+    if (*buf1 == '#' || *buf1 == '+' || atoi(buf1))
+      sprintf(buf, "%s> %s", buf1, tmp);
+    else
+      sprintf(buf,"->%s> %s", buf1, tmp);
     putline(buf);
   }
   return (0);
@@ -618,7 +625,7 @@ char *line;
   char *ptr, *ptr2;
 #ifdef DOCURSES
   char ch='\0';
-  int pagelen = LINES - 3;
+  /* int pagelen = LINES - 3; not used -Armin */
   int rmargin = COLS - 1;
 #endif
 
@@ -845,3 +852,6 @@ char *ptr, *xtra;
       sendto_one(&me, "%s %s", xtra, ptr);
 }
 #endif
+
+/* Fake routine (it's only in server...) */
+int IsMember() { return 0; }

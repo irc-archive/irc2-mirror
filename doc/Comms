@@ -19,7 +19,7 @@
 
 					 	   Author: Jarkko Oikarinen
 						     Date: 3 Sep 1988
-					Last modification: 7 Jul 90
+					Last modification: 20 Feb 91
 
 		     Internet Relay Chat Protocol
 
@@ -36,8 +36,8 @@ on each host (It is not recommended to use several servers, it is
 possible anyway). Servers are connected with each other so that they
 form a tree-like net. [See Fig. 1]. This protocol defines no limit
 how many servers (or clients) one server can handle, it is machine
-and server dependent. The name of the server is the same as the
-name of the host where server is running.
+and server dependent. The name of the server should the same as the
+name of the host where server is running (including domainname).
 
 			     [ Server 1 ]
 			      /        \
@@ -74,24 +74,29 @@ and name of the server to which client is connected.
 
 Channels are the way several (more that two) clients can communicate
 with each other. Every channel has a name with which it can be
-unambiguously distinguished from other channels. Channel name is an
-32-bit integer number. Channels are divided into three groups:
+unambiguously distinguished from other channels.
+
+Channels can be numbers or strings (beginning with a '+' character or
+'#'-character). Channels beginning with '#' character are special in the
+way that a client may join several such channels simultaneusly.
+
+By default channels are divided into three groups which represents
+the default status for a channel in the beginning:
 Channels with negative name are secret channels, and users on those
 channels are not shown to other users unless they are on same channel.
-Channels with name in between 1-999 are public channels, and users
-and their channel names are shown to everyone. Channels 1000 - are
-private channels, and users on these channels may be seen, but not
-the number of the channel. This system is not perfectly secure (nor
-it is meant to be like that) because channel name can always be guessed.
+Channels with string name and numeric name in between 1-999 are public
+channels, and users and their channel names are shown to everyone.
+Channels 1000 - are private channels, and users on these channels may
+be seen, but not the number of the channel. 
+
+The first person to join a channel creates it and can therefore
+allow/disallow people to join it, limit the number of people on it,
+etc... See command MODE (3.36) for documentation on different channel
+modes.
 
 1.4. Services
 
-Services are used to allow servers and clients use certain databases
-over IRCnet. These databases are mainly used to maintain access lists
-for servers and clients; that is, servers can query service and get
-a list of other servers and clients that should be allowed to connect.
-There may be several (even similar) services connected to net at the
-same time.
+Services are not yet implemented.
 
 2. The IRC Specification
 
@@ -104,10 +109,7 @@ functions.
 
 2.2. Character codes
 
-Commands are composed of characters from the ASCII character set.
-When the transport service provides an 8-bit byte (octet) transmission
-channel, each 7-bit character is transmitted right justified in an
-octet with the high order bit cleared to zero.
+Commands are composed of characters from the 8-bit ISO-ASCII character set.
 
 2.3. Messages
 
@@ -132,11 +134,14 @@ the trailing CR-LF (thus there are 510 characters maximum allowed
 for the command and its parameters). There is no provision for
 continuation message lines.
 
-2.4. Replies
+2.4. Numeric replies
 
 Most messages sent to daemon generate normally a reply. Reply consists
-of three digits, space, comment and CR-LF combination. List of different
-replies will be on chapter 6. Replies are not yet implemented.
+of one line consisting of sender prefix, three digits, space and
+any number of additional parameters. Line ends with CR-LF combination.
+So numeric replies are just like normal messages, except instead of
+string keyword the keyword is a 3-digit number.
+List of different replies will be on chapter 6.
 
 3. Message details
 
@@ -154,6 +159,9 @@ Parameters: <username> <hostname> <servername> <realname>
 User message is used in the beginning of connection to specify username,
 hostname, servername and realname of new user. It also used in
 communication between servers to indicate new user arriving IRC.
+Between servers USER has to be prefixed with user's NICKname.
+Note that hostname and servername are normally ignored by irc server
+due to security reasons, but they're used in server-server communication.
 
 It must be noted that Realname parameter must be the last parameter,
 because it may contain space characters.
@@ -199,23 +207,27 @@ Password message is used to give password if secure version of irc is used.
    Command: NICK
 Parameters: <nickname>
 
-NICK message is used to give user a nickname.
+NICK message is used to give user a nickname or change the previous one.
+For example:
+:WiZ NICK Kilroy
+means that user WiZ changed his nickname to be Kilroy.
 
 3.6. Quit message
 
    Command: QUIT
 Parameters: none
 
-The session is finished with a quit message.
+The session is finished with a quit message. The server should close
+the connection to a client which sends QUIT message.
 
 3.7. Squit message
 
    Command: SQUIT
 Parameters: <server>
 
-Squit message is needed to tell about quitting or died servers.
+Squit message is needed to tell about quitting or dead servers.
 
-3.8. Text message
+3.8. Text message (OBSOLETE, will be removed from later versions of IRC !)
 
    Command: MSG
 Parameters: <text to be sent to channel>
@@ -260,9 +272,17 @@ Examples:
 
    Command: WHOIS
 Parameters: <nickname>
+or
+Parameters: <server> <nickname>
 
 This message is used to query information about particular user. Server
-will answer this message with two text messages.
+will answer this message with several numeric messages indicating different
+statuses of user. Nickname can also be a list of nicknames.
+
+The latter version sends the query to a specific server. It is useful
+if you want to know how long the user in question has been idle, as only
+local server (ie. the server the user is directly connected to) knows that
+information.
 
 Examples:
  WHOIS wiz
@@ -308,7 +328,7 @@ Examples:
  :Angel INVITE Wiz 7
  INVITE Wiz -13
 
-3.15. Channel message
+3.15. Channel message (obsoleted by JOIN and PART messages)
 
    Command: CHANNEL
 Parameters: <channel> [<flag>]
@@ -409,7 +429,7 @@ Parameters: <nickname> <text>
 NOTICE message is used similarly to PRIVMSG. The difference between NOTICE
 and PRIVMSG is that automatic replies, etc. may NEVER reply to notice
 message. Notice messages are generally used only by servers, but may
-also be used by client. Not yet implemented.
+also be used by client.
 
 3.25. Connect message
 
@@ -490,7 +510,11 @@ Parameters: <channel>
 Join command is used by client to start listening a specific channel.
 The difference to CHANNEL command is that in Join message user does not
 PART from previous channel. Join message doesn't change default channel
-either.
+either. Since irc 2.6 is has been possible to be on several channels
+simultaneusly. To maintain compatibility with previous versions a new
+channel type had to be created. This channel type is recognized by
+#-prefix. These are the only types of channels a user can simultaneusly
+be on several of them.
 
 3.34. Part command
 
@@ -522,6 +546,7 @@ Modes available:
  i  - invite-only channel flag
  t  - topic settable by chanel operator only flag
  n  - no private messages to channel flag
+ l  - set the user limit to channel
 
 More modes may be available later on.
 
@@ -547,28 +572,10 @@ are implementation specific and they are not listed here.
 4.2. Hide message
 
    Command: HIDE 
-Parameters: [nickname|id@host]
+Parameters: [nickname|id@host [<type>]]
 
-Messages from specific nickname/id will not be displayed.
-Hide without parameters hides all messages.
-
-4.3. Reset message
-
-   Command: RESET
-Parameters: [nickname|id@host]
-
-Resets messages from specific nickname/id to normal state, ie.
-if HIDE or command has been issued, this removes it's effect.
-Reset without any parameters undoes all previous hide messages.
-
-4.4. Status message
-
-   Command: STATUS
-Parameters: [nickname|id@host]
-
-Returns status of given nickname/id. Ie. if messages are ignored
-(with HIDE command), status is HIDE. Status without parameters
-returns status of all changed nickname/id entries.
+Toggles hiding mode from specific nickname/id.
+Hide without parameters lists all people in HIDE list.
 
 4.5. Away message
 
@@ -802,7 +809,9 @@ alias for QUERY.
 
 6. Replies
 
-Implemented. Not documented, sorry.
+See file /include/numeric.h for explanation to these messages.
+Because new numerics get added relatively often, it is better that
+the current status of these messages can be found in one place.
 
 7. User and server authentication
 

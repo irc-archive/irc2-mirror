@@ -17,7 +17,7 @@
 #*   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 #*/
 
-# 17 Jun 1990 - Gonzo
+# 17 Jun 1990 - Armin
 # Now, common/debug.c has changed to irc/c_debug.c, for the benefit of
 # displaying wrong server stuff
 
@@ -26,9 +26,19 @@
 # Removed it (as suggested by Kim).
 
 # Check the curses libraries if your systems wants them differently...
-# CLIBS = -lcurses -lcur # for AIX PS/2 --Gonzo
-CLIBS = -lcurses -ltermcap
 
+INCLUDE =../include
+
+#For MIPS, use this:
+#CFLAGS =-O -systype bsd43 -I${INCLUDE}
+CFLAGS =-O -I${INCLUDE}
+
+# For AIX, use the following:
+#IRCLIBS=-lcurses -lcur
+IRCLIBS=-lcurses -ltermcap
+
+CC=cc
+RM=/bin/rm
 OBJS=c_bsd.o c_conf.o c_msg.o c_numeric.o c_version.o edit.o help.o ignore.o\
      irc.o screen.o str.o c_debug.o
 
@@ -36,12 +46,9 @@ SRC=c_bsd.c c_conf.c c_msg.c c_numeric.c c_version.c edit.c help.c ignore.c\
      irc.c screen.c str.c c_debug.c
 
 COMMONOBJS=../common/bsd.o ../common/dbuf.o\
-           ../common/packet.o ../common/parse.o ../common/send.o\
-	   ../common/match.o
+           ../common/packet.o ../common/send.o\
+	   ../common/match.o ../common/parse.o
 
-INCLUDE = ../include
-
-CFLAGS = -O -I${INCLUDE}
 
 MAKE = make 'CFLAGS=${CFLAGS}' 'CC=${CC}'
 
@@ -50,28 +57,28 @@ all: build
 build: irc
 
 irc: $(OBJS) $(COMMONOBJS)
-	$(CC) $(OBJS) $(COMMONOBJS) -o irc $(CLIBS)
+	$(CC) $(OBJS) $(COMMONOBJS) -o irc $(IRCLIBS) $(LIBFLAGS)
 
-../common/bsd.o: ../common/bsd.c
+../common/parse.o:
 	(cd ../common; ${MAKE} build);
 
-../common/dbuf.o: ../common/dbuf.c
+../common/bsd.o:
 	(cd ../common; ${MAKE} build);
 
-../common/packet.o: ../common/packet.c
+../common/dbuf.o:
 	(cd ../common; ${MAKE} build);
 
-../common/parse.o: ../common/parse.c
+../common/packet.o:
 	(cd ../common; ${MAKE} build);
 
-../common/send.o: ../common/send.c
+../common/send.o:
 	(cd ../common; ${MAKE} build);
 
-../common/match.o: ../common/match.c
+../common/match.o:
 	(cd ../common; ${MAKE} build);
 
 clean:
-	rm -f *.o *~ core #* irc *.bak irc
+	rm -f *.o *~ irc core #* *.bak
 
 depend:
 	makedepend -I${INCLUDE} ${SRC}

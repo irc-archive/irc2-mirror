@@ -20,12 +20,6 @@
 
 char c_bsd_id[] = "c_bsd.c v2.0 (c) 1988 University of Oulu, Computing Center and Jarkko Oikarinen";
 
-#include "struct.h"
-#if HPUX
-#include <time.h>
-#else
-#include <sys/time.h>
-#endif
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/file.h>
@@ -38,10 +32,11 @@ char c_bsd_id[] = "c_bsd.c v2.0 (c) 1988 University of Oulu, Computing Center an
 #ifndef AUTOMATON
 #include <curses.h>
 #endif
-#if BSD42 || ULTRIX || HPUX
-#include "sock.h"
-#endif
+#include "struct.h"
+#include "common.h"
 #include "sys.h"
+#include "sock.h"	/* If FD_ZERO isn't defined up to this point, */
+			/* define it (BSD4.2 needs this) */
 
 #ifdef AUTOMATON
 #ifdef DOCURSES
@@ -160,7 +155,7 @@ int sock;
     if (ready.fds_bits[0] & 1) {
       if ((size = read(0, apubuf, STDINBUFSIZE)) < 0) {
 	putline("FATAL ERROR: End of stdin file !");
-	return;
+	return -1;
       }
       for (pos = 0; pos < size; pos++) {
 	i=do_char(apubuf[pos]);
