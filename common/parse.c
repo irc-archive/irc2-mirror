@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: parse.c,v 1.87 2004/11/21 00:44:42 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: parse.c,v 1.92 2005/02/08 02:47:10 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -352,14 +352,6 @@ aClient	*find_mask(char *name, aClient *cptr)
 }
 
 /*
-** Find a server from hash table, given its token
-*/
-aServer	*find_tokserver(int token, aClient *cptr, aClient *c2ptr)
-{
-	return hash_find_stoken(token, cptr, c2ptr);
-}
-
-/*
 ** Find a server, given its name (which might contain *'s, in which case
 ** the first match will be return [not the best one])
 */
@@ -422,7 +414,7 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 {
 	aClient *from = NULL;
 
-	if (ST_UID(cptr))
+	if (IsServer(cptr))
 	{
 		if (isdigit(*sender))
 		{
@@ -435,18 +427,6 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 			{
 				/* UID */
 				from = find_uid(sender, NULL);
-			}
-		}
-		else if (*sender == '$' && strlen(sender) == SIDLEN)
-		{
-			/* Compatibility SID. */
-			aServer *servptr;
-
-			servptr = find_tokserver(idtol(sender + 1, SIDLEN - 1),
-				cptr, NULL);
-			if (servptr)
-			{
-				from = servptr->bcptr;
 			}
 		}
 	}
@@ -475,7 +455,7 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 	{
 		from = find_mask(sender, (aClient *) NULL);
 	}
-	if (from && (isdigit(sender[0]) || sender[0] == '$'))
+	if (from && isdigit(sender[0]))
 	{
 		para[0] = from->name;
 	}
@@ -520,7 +500,7 @@ aClient	*find_target(char *name, aClient *cptr)
 {
 	aClient *acptr = NULL;
 	
-	if (ST_UID(cptr))
+	if (IsServer(cptr))
 	{
 		if (isdigit(name[0]))
 		{
@@ -531,16 +511,6 @@ aClient	*find_target(char *name, aClient *cptr)
 			else
 			{
 				acptr = find_uid(name, NULL);
-			}
-		}
-		else if (name[0] == '$' && name[SIDLEN] == '\0')
-		{
-			aServer *asptr;
-			asptr = find_tokserver(idtol(name + 1, SIDLEN - 1),
-				cptr, NULL);
-			if (acptr)
-			{
-				acptr = asptr->bcptr;
 			}
 		}
 	}

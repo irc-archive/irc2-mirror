@@ -17,7 +17,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: hash.c,v 1.48.2.1 2005/02/15 21:36:46 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: hash.c,v 1.53 2005/02/22 17:09:37 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -29,7 +29,6 @@ static const volatile char rcsid[] = "@(#)$Id: hash.c,v 1.48.2.1 2005/02/15 21:3
 static	aHashEntry	*clientTable = NULL;
 static	aHashEntry	*uidTable = NULL;
 static	aHashEntry	*channelTable = NULL;
-static	aHashEntry	*serverTable = NULL;
 static	aHashEntry	*sidTable = NULL;
 static  aHashEntry      *hostnameTable = NULL;
 static	unsigned int	*hashtab = NULL;
@@ -38,11 +37,9 @@ static	int	uidhits = 0, uidmiss = 0, uidsize = 0;
 static	int	chhits = 0, chmiss = 0, chsize = 0;
 static	int	sidhits = 0, sidmiss = 0, sidsize = 0;
 static  int     cnhits = 0, cnmiss = 0 ,cnsize = 0;
-static	int	svsize = 0;
 int	_HASHSIZE = 0;
 int	_UIDSIZE = 0;
 int	_CHANNELHASHSIZE = 0;
-int	_SERVERSIZE = 0;
 int	_SIDSIZE = 0;
 int     _HOSTNAMEHASHSIZE = 0;
 
@@ -277,18 +274,6 @@ static	void	clear_channel_hash_table(int size)
 		_CHANNELHASHSIZE, size));
 }
 
-static	void	clear_server_hash_table(int size)
-{
-	_SERVERSIZE = bigger_prime(size);
-	svsize = 0;
-	if (!serverTable)
-		serverTable = (aHashEntry *)MyMalloc(_SERVERSIZE *
-						     sizeof(aHashEntry));
-	bzero((char *)serverTable, sizeof(aHashEntry) * _SERVERSIZE);
-	Debug((DEBUG_DEBUG, "Server Hash Table Init: %d (%d)",
-		_SERVERSIZE, size));
-}
-
 
 static	void	clear_sid_hash_table(int size)
 {
@@ -297,7 +282,7 @@ static	void	clear_sid_hash_table(int size)
 	sidmiss = 0;
 	sidsize = 0;
 	if (!sidTable)
-		sidTable = (aHashEntry *)MyMalloc(_SERVERSIZE *
+		sidTable = (aHashEntry *)MyMalloc(_SIDSIZE *
 						     sizeof(aHashEntry));
 	bzero((char *)sidTable, sizeof(aHashEntry) * _SIDSIZE);
 	Debug((DEBUG_DEBUG, "Sid Hash Table Init: %d (%d)", _SIDSIZE, size));
@@ -317,7 +302,7 @@ static	void	clear_hostname_hash_table(int size)
 		_HOSTNAMEHASHSIZE, size));
 }
 
-void	inithashtables()
+void	inithashtables(void)
 {
 	Reg int i;
 
@@ -325,9 +310,7 @@ void	inithashtables()
 	clear_uid_hash_table((_UIDSIZE) ? _UIDSIZE : UIDSIZE);
 	clear_channel_hash_table((_CHANNELHASHSIZE) ? _CHANNELHASHSIZE
                                  : CHANNELHASHSIZE);
-	clear_server_hash_table((_SERVERSIZE) ? _SERVERSIZE : SERVERSIZE);
-	_SIDSIZE = _SERVERSIZE;
-	clear_sid_hash_table(_SIDSIZE);
+	clear_sid_hash_table((_SIDSIZE) ? _SIDSIZE : SIDSIZE);
 	clear_hostname_hash_table((_HOSTNAMEHASHSIZE) ? _HOSTNAMEHASHSIZE : 
 				   HOSTNAMEHASHSIZE);
 	/*
@@ -418,7 +401,7 @@ static	void	bigger_hash_table(int *size, aHashEntry *table, int new)
 			if (cptr->user)
 				cptr->user->uhnext = NULL;
 		for (cptr = client; cptr; cptr = cptr->next)
-			if (HasUID(cptr))
+			if (cptr->user)
 				add_to_uid_hash_table(cptr->user->uid, cptr);
 		MyFree(otab);
 	    }
@@ -445,19 +428,6 @@ static	void	bigger_hash_table(int *size, aHashEntry *table, int new)
 					user);
 			    }
 		    }
-		MyFree(otab);
-	    }
-	else if (otab == serverTable)
-	    {
-		Debug((DEBUG_ERROR, "Server Hash Table from %d to %d (%d)",
-			    osize, new, svsize));
-		sendto_flag(SCH_HASH, "Server Hash Table from %d to %d (%d)",
-			    osize, new, svsize);
-		svsize = 0;
-		serverTable = table;
-		for (sptr = svrtop; sptr; sptr = sptr->nexts)
-			if (ST_NOTUID(sptr->bcptr))
-			(void)add_to_server_hash_table(sptr, sptr->bcptr);
 		MyFree(otab);
 	    }
 	else if (otab == sidTable)
@@ -538,26 +508,6 @@ int	add_to_channel_hash_table(char *name, aChannel *chptr)
 	return 0;
 }
 
-/*
- * add_to_server_hash_table
- */
-int	add_to_server_hash_table(aServer *sptr, aClient *cptr)
-{
-	Reg	u_int	hashv;
-
-	Debug((DEBUG_DEBUG, "Add %s token %d/%d/%s cptr %#x to server table",
-		sptr->bcptr->name, sptr->stok, sptr->ltok, sptr->tok, cptr));
-	hashv = sptr->stok * 15053;
-	hashv %= _SERVERSIZE;
-	sptr->shnext = (aServer *)serverTable[hashv].list;
-	serverTable[hashv].list = (void *)sptr;
-	serverTable[hashv].links++;
-	serverTable[hashv].hits++;
-	svsize++;
-	if (svsize > _SERVERSIZE)
-		bigger_hash_table(&_SERVERSIZE, serverTable, 0);
-	return 0;
-}
 
 /*
 ** add_to_sid_hash_table
@@ -720,42 +670,6 @@ int	del_from_channel_hash_table(char *name, aChannel *chptr)
 	return 0;
 }
 
-
-/*
- * del_from_server_hash_table
- */
-int	del_from_server_hash_table(aServer *sptr, aClient *cptr)
-{
-	Reg	aServer	*tmp, *prev = NULL;
-	Reg	u_int	hashv;
-
-	hashv = sptr->stok * 15053;
-	hashv %= _SERVERSIZE;
-	for (tmp = (aServer *)serverTable[hashv].list; tmp; tmp = tmp->shnext)
-	    {
-		if (tmp == sptr)
-		    {
-			if (prev)
-				prev->shnext = tmp->shnext;
-			else
-				serverTable[hashv].list = (void *)tmp->shnext;
-			tmp->shnext = NULL;
-			if (serverTable[hashv].links > 0)
-			    {
-				serverTable[hashv].links--;
-				svsize--;
-				return 1;
-			    }
-			else
-			    {
-                                sendto_flag(SCH_ERROR, "se-hash table failure");
-				return -1;
-			    }
-		    }
-		prev = tmp;
-	    }
-	return 0;
-}
 
 /*
 ** del_from_sid_hash_table
@@ -1100,43 +1014,6 @@ aChannel	*hash_find_channels(char *name, aChannel *chptr)
 	return NULL;
 }
 
-/*
- * hash_find_stoken
- */
-aServer	*hash_find_stoken(int tok, aClient *cptr, void *mydummy)
-{
-	Reg	aServer	*tmp, *prv = NULL;
-	Reg	aHashEntry	*tmp3;
-	u_int	hashv;
-	int	count = 0;
-
-	hashv = tok * 15053;
-	hashv %= _SERVERSIZE;
-	tmp3 = &serverTable[hashv];
-
-	for (tmp = (aServer *)tmp3->list; tmp; prv = tmp, tmp = tmp->shnext)
-	{
-		if (tmp->stok == tok && tmp->bcptr->from == cptr)
-		    {
-			if (prv)
-			    {
-				Reg	aServer	*tmp2;
-
-				tmp2 = (aServer *)tmp3->list;
-				tmp3->list = (void *)tmp;
-				prv->shnext = tmp->shnext;
-				tmp->shnext = tmp2;
-			    }
-			return (tmp);
-		    }
-		if (count++ > 21142)
-		{
-			sendto_flag(SCH_ERROR, "hash_find_stoken possible loop");
-			break;
-		}
-	}
-	return (aServer *)mydummy;
-}
 
 /*
 ** hash_find_sid
@@ -1278,20 +1155,6 @@ static	void	show_hash_bucket(aClient *sptr, struct HashTable_s *HashTables,
 		}
 
 	}
-	else if (htab == serverTable)
-	{
-		asptr = (aServer *) tab->list;
-		while (asptr)
-		{
-			sendto_one(sptr,
-			 	":%s NOTICE %s :Bucket %d entry %d - %s (%d)",
-			 	ME, sptr->name, bucket, j, asptr->bcptr->name,
-			 	asptr->stok);
-			j++;
-			asptr = asptr->shnext;
-		}
-
-	}
 	else if (htab == sidTable)
 	{
 		asptr = (aServer *) tab->list;
@@ -1331,7 +1194,6 @@ int	m_hash(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	int shash = -1, i, l;
 	int deepest = 0 , deeplink = 0, totlink = 0, mosthits = 0, mosthit = 0;
 	int tothits = 0, used = 0, used_now = 0, link_pop[11];
-	static int unavailable = -1;
 	
 	struct HashTable_s HashTables[] =
 	{
@@ -1341,8 +1203,6 @@ int	m_hash(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			hash_uid},
 		{'C', "channel", &channelTable, &chhits, &chmiss, &sidsize,
 			&_CHANNELHASHSIZE, NULL},
-		{'s', "server", &serverTable, &unavailable, &unavailable,
-			&svsize, &_SERVERSIZE, NULL },
 		{'S', "SID", &sidTable, &sidhits, &sidmiss, &sidsize, &_SIDSIZE,
 			hash_sid },
 		{'h', "hostname", &hostnameTable, &cnhits, &cnmiss, &cnsize,

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_debug.c,v 1.47 2004/10/01 20:22:15 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_debug.c,v 1.49 2005/02/10 16:54:42 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -63,7 +63,7 @@ char	serveropts[] = {
 #ifdef	BETTER_CDELAY
 'h',
 #endif
-#ifndef	NO_DEFAULT_INVISIBLE
+#ifdef	DEFAULT_INVISIBLE
 'I',
 #endif
 #ifdef	OPER_DIE
@@ -112,7 +112,7 @@ char	serveropts[] = {
 #ifndef	NO_PREFIX
 'u',
 #endif
-#ifdef	ENABLE_USERS
+#ifdef	USERS_SHOWS_UTMP
 'U',
 #endif
 #ifdef	UNIXPORT
@@ -295,7 +295,7 @@ void	send_defines(aClient *cptr, char *nick)
 		   DELAYCHASETIMELIMIT, LDELAYCHASETIMELIMIT,
 		   CLIENT_FLOOD, MAXCHANNELSPERUSER);
 	sendto_one(cptr, ":%s %d %s :H:%d N:%d D:%d U:%d R:%d T:%d C:%d P:%d K:%d",
-		   ME, RPL_STATSDEFINE, nick, HOSTLEN, ONICKLEN, UIDLEN, USERLEN,
+		   ME, RPL_STATSDEFINE, nick, HOSTLEN, LOCALNICKLEN, UIDLEN, USERLEN,
 		   REALLEN, TOPICLEN, CHANNELLEN, PASSWDLEN, KEYLEN);
 	sendto_one(cptr, ":%s %d %s :BS:%d MXR:%d MXB:%d MXBL:%d PY:%d",
 		   ME, RPL_STATSDEFINE, nick, BUFSIZE, MAXRECIPIENTS, MAXBANS,

@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: class.c,v 1.16 2004/10/01 20:22:14 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: class.c,v 1.21 2005/02/22 17:09:37 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -129,7 +129,7 @@ int	get_con_freq(aClass *clptr)
  * immeadiately after the first one (class 0).
  */
 void	add_class(int class, int ping, int confreq, int maxli, int sendq,
-		int hlocal, int uhlocal, int hglobal, int uhglobal)
+		int bsendq, int hlocal, int uhlocal, int hglobal, int uhglobal)
 {
 	aClass *t, *p;
 
@@ -145,8 +145,8 @@ void	add_class(int class, int ping, int confreq, int maxli, int sendq,
 	else
 		p = t;
 	Debug((DEBUG_DEBUG,
-"Add Class %d: p %x t %x - cf: %d pf: %d ml: %d sq: %d ml: %d.%d mg: %d.%d",
-		class, p, t, confreq, ping, maxli, QUEUELEN, hlocal, uhlocal,
+"Add Class %d: p %x t %x - cf: %d pf: %d ml: %d sq: %d.%d ml: %d.%d mg: %d.%d",
+		class, p, t, confreq, ping, maxli, sendq, bsendq, hlocal, uhlocal,
 	       hglobal, uhglobal));
 	Class(p) = class;
 	ConFreq(p) = confreq;
@@ -154,6 +154,7 @@ void	add_class(int class, int ping, int confreq, int maxli, int sendq,
 	MaxLinks(p) = maxli;
 	if (sendq)
 		MaxSendq(p) = sendq;
+	MaxBSendq(p) = bsendq ? bsendq : MaxSendq(p);
 	MaxHLocal(p) = hlocal;
 	MaxUHLocal(p) = uhlocal;
 	MaxHGlobal(p) = hglobal;
@@ -172,7 +173,7 @@ aClass	*find_class(int cclass)
 	return classes;
 }
 
-void	check_class()
+void	check_class(void)
 {
 	Reg	aClass	*cltmp, *cltmp2;
 
@@ -198,7 +199,7 @@ void	check_class()
 	    }
 }
 
-void	initclass()
+void	initclass(void)
 {
 	classes = (aClass *)make_class();
 	istat.is_class++;
@@ -224,27 +225,28 @@ void	report_classes(aClient *sptr, char *to)
 	{
 		sendto_one(sptr, replies[RPL_STATSYLINE], ME, BadTo(to), 'Y',
 			Class(cltmp), PingFreq(cltmp), ConFreq(cltmp),
-			MaxLinks(cltmp), MaxSendq(cltmp),
+			MaxLinks(cltmp), MaxSendq(cltmp), MaxBSendq(cltmp),
 			MaxHLocal(cltmp), MaxUHLocal(cltmp),
 			MaxHGlobal(cltmp), MaxUHGlobal(cltmp), Links(cltmp));
 	}
 }
 
-int	get_sendq(aClient *cptr)
+int	get_sendq(aClient *cptr, int bursting)
 {
 	Reg	int	sendq = QUEUELEN;
 	Reg	Link	*tmp;
 	Reg	aClass	*cl;
 
 	if (cptr->serv && cptr->serv->nline)
-		sendq = MaxSendq(cptr->serv->nline->class);
+		sendq = bursting ? MaxBSendq(cptr->serv->nline->class) :
+			MaxSendq(cptr->serv->nline->class);
 	else if (cptr && !IsMe(cptr)  && (cptr->confs))
 		for (tmp = cptr->confs; tmp; tmp = tmp->next)
 		    {
 			if (!tmp->value.aconf ||
 			    !(cl = tmp->value.aconf->class))
 				continue;
-			sendq = MaxSendq(cl);
+			sendq = bursting ? MaxBSendq(cl) : MaxSendq(cl);
 			break;
 		    }
 	return sendq;

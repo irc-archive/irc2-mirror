@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_err.c,v 1.59 2004/10/23 13:54:29 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_err.c,v 1.62 2005/03/29 22:57:36 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -246,7 +246,7 @@ char *	replies[] = {
 /* 215 RPL_STATSILINE */	":%s 215 %s %c %s %s %s %d %d %s",
 /* 216 RPL_STATSKLINE */	":%s 216 %s %c %s %s %s %d %d",
 /* 217 RPL_STATSQLINE */	":%s 217 %s %c %s %s %s %d %d",
-/* 218 RPL_STATSYLINE */	":%s 218 %s %c %d %d %d %d %ld %d.%d %d.%d %d",
+/* 218 RPL_STATSYLINE */	":%s 218 %s %c %d %d %d %d %ld.%ld %d.%d %d.%d %d",
 /* 219 RPL_ENDOFSTATS */	":%s 219 %s %c :End of STATS report",
 /* 220 */ (char *)NULL,
 /* 221 RPL_UMODEIS */	":%s 221 %s %s",
@@ -396,7 +396,7 @@ char *	replies[] = {
 /* 361 RPL_KILLDONE */	(char *)NULL,
 /* 362 RPL_CLOSING */	":%s 362 %s %s :Closed. Status = %d",
 /* 363 RPL_CLOSEEND */	":%s 363 %s %d: Connections Closed",
-/* 364 RPL_LINKS */	":%s 364 %s %s %s :%d %s",
+/* 364 RPL_LINKS */	":%s 364 %s %s %s :%d %s %s",
 /* 365 RPL_ENDOFLINKS */	":%s 365 %s %s :End of LINKS list.",
 /* 366 RPL_ENDOFNAMES */	":%s 366 %s %s :End of NAMES list.",
 /* 367 RPL_BANLIST */	":%s 367 %s %s %s!%s@%s",
@@ -424,7 +424,7 @@ char *	replies[] = {
 /* 389 */ (char *)NULL,
 /* 390 */ (char *)NULL,
 /* 391 RPL_TIME */	":%s 391 %s %s :%s",
-#if defined(USERS_RFC1459) && defined(ENABLE_USERS)
+#if defined(USERS_RFC1459) && defined(USERS_SHOWS_UTMP)
 /* 392 RPL_USERSSTART */	":%s 392 %s :UserID   Terminal  Host",
 /* 393 RPL_USERS */	":%s 393 %s :%-8s %-9s %-8s",
 /* 394 RPL_ENDOFUSERS */	":%s 394 %s :End of Users",
@@ -489,7 +489,7 @@ char *	replies[] = {
 #else
 /* 445 */ (char *)NULL,
 #endif
-#if defined(USERS_RFC1459) && !defined(ENABLE_USERS)
+#if defined(USERS_RFC1459) && !defined(USERS_SHOWS_UTMP)
 /* 446 ERR_USERSDISABLED */	":%s 446 %s :USERS has been disabled",
 #else
 /* 446 */ (char *)NULL,

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.98 2004/11/04 21:04:53 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.103 2005/03/28 23:33:27 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -321,11 +321,7 @@ int	mark_blind_servers (aClient *cptr, aClient *server)
 			continue;
 		}
 		if (((aconf = acptr->serv->nline) &&
-			!match(my_name_for_link(ME, aconf->port), server->name))
-			||
-			(IsMasked(server) &&
-			server->serv->maskedby == cptr->serv->maskedby && 
-			ST_NOTUID(acptr)))
+			!match(my_name_for_link(ME, aconf->port), server->name)))
 		{
 			acptr->flags |= FLAGS_HIDDEN;
 			j++;
@@ -538,22 +534,11 @@ int	exit_client(aClient *cptr, aClient *sptr, aClient *from,
 			 * the squit reason for rebroadcast on the other side
 			 * - jv
 			 */
-			if (ST_UID(sptr))
+			if (IsServer(sptr))
 			{
-				if (sptr->serv->sid[0] != '$')
-				{
-					sendto_one(sptr, ":%s SQUIT %s :%s",
-						me.serv->sid, sptr->serv->sid,
-						comment);
-				}
-				else
-				{
-					sendto_flag(SCH_DEBUG,
-						"ST_UID(sptr) && fake SID");
-					sendto_one(sptr, ":%s SQUIT %s :%s",
-						me.serv->sid, sptr->name,
-						comment);
-				}
+				sendto_one(sptr, ":%s SQUIT %s :%s",
+					me.serv->sid, sptr->serv->sid,
+					comment);
 			}
 
 			if (cptr != NULL && sptr != cptr)
@@ -730,46 +715,29 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 			{
 				continue;
 			}
-			if (ST_UID(acptr) && !(sptr->flags & FLAGS_SQUIT))
+			if (!(sptr->flags & FLAGS_SQUIT))
 			{
 				/* Make sure we only send the last SQUIT
 				** to a 2.11. */
 				continue;
 			}
-			if ((acptr->flags & FLAGS_HIDDEN) && ST_NOTUID(acptr))
+			if ((acptr->flags & FLAGS_HIDDEN) &&
+				!IsMasked(sptr))
 			{
-				/* A 2.10 can't see this server, so don't send
-				** the SQUIT.
-				*/ 
-				continue;
+				/* We need a special SQUIT reason, so
+				** the remote server can send the
+				** right quit message. */
+				sendto_one(acptr, ":%s SQUIT %s :%s %s",
+					sptr->serv->up->serv->sid,
+					sptr->serv->sid,
+					sptr->serv->up->name,
+					sptr->name);
 			}
-			if (ST_UID(acptr))
-			{
-				if ((acptr->flags & FLAGS_HIDDEN) &&
-					!IsMasked(sptr))
-				{
-					/* We need a special SQUIT reason, so
-					** the remote server can send the
-					** right quit message. */
-					sendto_one(acptr, ":%s SQUIT %s :%s %s",
-						sptr->serv->up->serv->sid,
-						sptr->serv->sid,
-						sptr->serv->up->name,
-						sptr->name);
-				}
-				else
-				{
-					sendto_one(acptr, ":%s SQUIT %s :%s",
-						sptr->serv->up->serv->sid,
-						sptr->serv->sid, comment);
-				}
-			}
-			else if (!IsMasked(sptr))
+			else
 			{
 				sendto_one(acptr, ":%s SQUIT %s :%s",
-					acptr == from->from ? me.name :
-					from->name, sptr->name,
-					comment);
+					sptr->serv->up->serv->sid,
+					sptr->serv->sid, comment);
 			}
 		}
 #ifdef	USE_SERVICES
@@ -777,8 +745,6 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 				      ":%s SQUIT %s :%s", from->name,
 				      sptr->name, comment);
 #endif
-		(void) del_from_server_hash_table(sptr->serv, cptr ? cptr :
-						  sptr->from);
 		del_from_sid_hash_table(sptr->serv);
 		remove_server_from_tree(sptr);
 		/* remove server from svrtop */
@@ -804,7 +770,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 			if ((sptr->flags & FLAGS_SPLIT) == 0)
 			    {
 				sendto_serv_butone(cptr, ":%s QUIT :%s",
-						   sptr->name, comment);
+						   sptr->user->uid, comment);
 #ifdef	USE_SERVICES
 				check_services_butone(SERVICE_WANT_QUIT|
 						      SERVICE_WANT_RQUIT, 
@@ -822,15 +788,13 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 					for (i = fdas.highest; i >= 0; i--)
 					{
 						if (!(acptr =local[fdas.fd[i]])
-						    || !IsServer(acptr)
 						    || acptr == cptr
-						    || ST_UID(acptr)
 						    || IsMe(acptr))
 							continue;
 						if (acptr->flags & FLAGS_HIDDEN)
 							sendto_one(acptr,
 								":%s QUIT :%s",
-								sptr->name,
+								sptr->user->uid,
 								comment);
 					}
 #ifdef	USE_SERVICES
@@ -910,7 +874,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 			}
 
 			/* remove from uid hash table */
-			if (HasUID(sptr))
+			if (sptr->user)
 			{
 				del_from_uid_hash_table(sptr->user->uid, sptr);
 			}

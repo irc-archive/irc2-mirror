@@ -1,7 +1,7 @@
 # IRC - Internet Relay Chat, doc/example.conf
 # Copyright (C) 1994, Helen Rose
 #
-# $Id: ircd.conf.example,v 1.22 2004/08/23 12:49:50 chopin Exp $
+# $Id: ircd.conf.example,v 1.24 2005/02/01 18:13:45 chopin Exp $
 #
 # some changes for 295 and cleaning, delta, Sat Jun 13 01:09:25 MES 1998
 #
@@ -133,9 +133,13 @@ P:/tmp/.ircd:*::6666:
 #   2 ping frequency (in seconds)
 #   3 connect frequency (in seconds)
 #   4 maximum number of automatically initiated links in this class
-#   5 sendq (this overrides any MAXSENDQLENGTH set in config.h)
+#   5 sendq
 #   6 unused for server classes
 #   7 unused for server classes
+#
+# Sendq have the format <x>.<y>, where x defines sendq whereas y defines
+# burst sendq. It is useful to have for example 1MB normal sendq and 20MB
+# of burst sendq, which allows for quicker broken link detection.
 #
 # The class numbers are not arbitrary.  In auto-connecting servers -- that is,
 # servers that you have a port number (e.g. 6667) on the end of the C: line 
@@ -144,9 +148,9 @@ P:/tmp/.ircd:*::6666:
 # Note that it is a good idea to have ping frequency the same at both ends
 # of the link.
 #
-# This is a normal (uncompressed) server connection (normal as of April, 2002)
+# This is a normal (uncompressed) server connection (normal as of January, 2005)
 # Y:<Class>:<Ping Frequencys>:<Connect freq>:<Max Links>:<SendQ>::
-Y:2:90:300:1:8000000
+Y:2:90:300:1:20000000
 #
 #
 # For CLIENT CLASSES, the fields are:
@@ -459,18 +463,17 @@ D::2:*.fi:3:
 # The first and third fields accept wildcards.  The fields are as follow:
 # V:<Version Mask>:<Flags>:<Server Mask>::
 #
-# Example, you believe 2.10.3 is a really old version, and you want your
-# peers to upgrade:
-V:021003*::*::
+# Example, 2.10 is an old version, and you want your peers to upgrade:
+V:IRC/0210*::*::
 #
 # If you are running a production network, you most likely don't want to
 # allow servers compiled in DEBUGMODE which is a threat for the net
 # as well as for the privacy of the users:
 V:*:D:*::
 #
-# Finally, you don't want *.edu servers to be version 2.9.2 *OR* to be
+# Finally, you don't want *.edu servers to be version 2.10.2 *OR* to be
 # compiled with remote oper kills enabled:
-V:020902*:K:*.edu::
+V:IRC/021002*:K:*.edu::
 #
 #
 ############################

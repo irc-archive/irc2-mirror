@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.241.2.2 2005/05/13 19:11:42 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.258 2005/03/29 22:36:26 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -62,7 +62,6 @@ static	int	add_modeid (int, aClient *, aChannel *, aListItem *);
 static	int	del_modeid (int, aChannel *, aListItem *);
 static	Link	*match_modeid (int, aClient *, aChannel *);
 static  void    names_channel (aClient *,aClient *,char *,aChannel *,int);
-static	void	convert_scandinavian (Reg char *cn, aClient *);
 static	void	free_bei (aListItem *bei);
 static	aListItem	*make_bei (char *nick, char *user, char *host);
 
@@ -808,7 +807,7 @@ static	void	send_mode_list(aClient *cptr, char *chname, Link *top,
 			** or long enough that they filled up parabuf
 			*/
 			sendto_one(cptr, ":%s MODE %s %s %s",
-				ST_UID(cptr) ? me.serv->sid : ME,
+				IsServer(cptr) ? me.serv->sid : ME,
 				chname, modebuf, parabuf);
 			send = 0;
 			*parabuf = '\0';
@@ -840,7 +839,7 @@ static	void	send_mode_list(aClient *cptr, char *chname, Link *top,
  */
 void	send_channel_modes(aClient *cptr, aChannel *chptr)
 {
-	char	*me2 = ST_UID(cptr) ? me.serv->sid : ME;
+	char	*me2 = me.serv->sid;
 
 	if (check_channelmask(&me, cptr, chptr->chname))
 		return;
@@ -862,22 +861,8 @@ void	send_channel_modes(aClient *cptr, aChannel *chptr)
 		CHFL_EXCEPTION, 'e');
 	send_mode_list(cptr, chptr->chname, chptr->mlist,
 		CHFL_INVITE, 'I');
-	if (ST_UID(cptr))	/* knows UID == new server */
-	{
-		if (modebuf[1] || *parabuf)
-		{
-			/* sending beI left in modebuf or parabuf and
-			** clearing these buffers before using them
-			** for R lists, so new/old modes don't mix */
-			sendto_one(cptr, ":%s MODE %s %s %s",
-				me2, chptr->chname, modebuf, parabuf);
-			*parabuf = '\0';
-			*modebuf = '+';
-			modebuf[1] = '\0';
-		}
-		send_mode_list(cptr, chptr->chname, chptr->mlist,
-			CHFL_REOPLIST, 'R');
-	}
+	send_mode_list(cptr, chptr->chname, chptr->mlist,
+		CHFL_REOPLIST, 'R');
 	if (modebuf[1] || *parabuf)
 	{
 		/* complete sending, if anything left in buffers */
@@ -896,7 +881,7 @@ void	send_channel_members(aClient *cptr, aChannel *chptr)
 	Reg	aClient *c2ptr;
 	Reg	int	cnt = 0, len = 0, nlen;
 	char	*p;
-	char	*me2 = ST_UID(cptr) ? me.serv->sid : ME;
+	char	*me2 = me.serv->sid;
 
 	if (check_channelmask(&me, cptr, chptr->chname) == -1)
 		return;
@@ -906,8 +891,7 @@ void	send_channel_members(aClient *cptr, aChannel *chptr)
 	for (lp = chptr->members; lp; lp = lp->next)
 	    {
 		c2ptr = lp->value.cptr;
-		p = (ST_UID(cptr) && HasUID(c2ptr)) ?
-			c2ptr->user->uid : c2ptr->name;
+		p = c2ptr->user ? c2ptr->user->uid : c2ptr->name;
 		nlen = strlen(p);
 		if ((len + nlen) > (size_t) (BUFSIZE - 9)) /* ,@+ \r\n\0 */
 		    {
@@ -967,7 +951,6 @@ int	m_mode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	     name = strtoken(&p, NULL, ","))
 	    {
 		clean_channelname(name);
-		convert_scandinavian(name, cptr);
 		chptr = find_channel(name, NullChn);
 		if (chptr == NullChn)
 		    {
@@ -1031,7 +1014,9 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 	aClient *who;
 	Mode	*mode, oldm;
 	Link	*plp = NULL;
+#if 0
 	int	compat = -1; /* to prevent mixing old/new modes */
+#endif
 	char	*mbuf = modebuf, *pbuf = parabuf, *upbuf = uparabuf;
 	int	tmp_chfl = 0, tmp_rpl = 0, tmp_rpl2 = 0, tmp_mode = 0;
 
@@ -1046,6 +1031,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 
 	while (curr && *curr && count >= 0)
 	    {
+#if 0
 		if (compat == -1 && *curr != '-' && *curr != '+')
 		{
 			if (*curr == 'R')
@@ -1057,6 +1043,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				compat = 0;
 			}
 		}
+#endif
 		switch (*curr)
 		{
 		case '+':
@@ -1409,15 +1396,14 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				else if (((*ip == MODE_ANONYMOUS &&
 					   whatt == MODE_ADD &&
 					   *chptr->chname == '#') ||
-					  (*ip == MODE_REOP &&
+					  (*ip == MODE_REOP && whatt == MODE_ADD &&
 					   *chptr->chname != '!')) &&
 					 !IsServer(sptr))
 					sendto_one(cptr,
 						   replies[ERR_UNKNOWNMODE],
 						   ME, BadTo(sptr->name), *curr,
 						   chptr->chname);
-				else if ((*ip == MODE_REOP ||
-					  *ip == MODE_ANONYMOUS) &&
+				else if (*ip == MODE_ANONYMOUS && whatt == MODE_ADD &&
 					 !IsServer(sptr) &&
 					 !(is_chan_op(sptr,chptr) &CHFL_UNIQOP)
 					 && *chptr->chname == '!')
@@ -1466,6 +1452,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 			curr = *++parv;
 			parc--;
 		    }
+#if 0
 		/*
 		 * Make sure new (+R) mode won't get mixed with old modes
 		 * together on the same line.
@@ -1484,6 +1471,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				*curr = '\0';
 			}
 		}
+#endif
 	    } /* end of while loop for MODE processing */
 
 	whatt = 0;
@@ -1582,19 +1570,19 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 			case MODE_CHANOP :
 				c = 'o';
 				cp = lp->value.cptr->name;
-				ucp = HasUID(lp->value.cptr) ?
+				ucp = lp->value.cptr->user ?
 					lp->value.cptr->user->uid : cp;
 				break;
 			case MODE_UNIQOP :
 				c = 'O';
 				cp = lp->value.cptr->name;
-				ucp = HasUID(lp->value.cptr) ?
+				ucp = lp->value.cptr->user ?
 					lp->value.cptr->user->uid : cp;
 				break;
 			case MODE_VOICE :
 				c = 'v';
 				cp = lp->value.cptr->name;
-				ucp = HasUID(lp->value.cptr) ?
+				ucp = lp->value.cptr->user ?
 					lp->value.cptr->user->uid : cp;
 				break;
 			case MODE_BAN :
@@ -1668,6 +1656,9 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 			switch(lp->flags & MODE_WPARAS)
 			{
 			case MODE_KEY :
+				if (IsServer(sptr) &&
+					!strncmp(mode->key, cp, (size_t) KEYLEN))
+					break;
 				*mbuf++ = c;
 				(void)strcat(pbuf, cp);
 				(void)strcat(upbuf, cp);
@@ -1688,6 +1679,8 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 					*mode->key = '\0';
 				break;
 			case MODE_LIMIT :
+				if (IsServer(sptr) && mode->limit == nusers)
+					break;
 				*mbuf++ = c;
 				(void)strcat(pbuf, cp);
 				(void)strcat(upbuf, cp);
@@ -1755,11 +1748,6 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 					{
 						chptr->reop = timeofday +
 							LDELAYCHASETIMELIMIT;
-					}
-					/* XXX: fix this in 2.11.1 */
-					if (MyClient(sptr) && !IsAnOper(sptr))
-					{
-						break;
 					}
 				}
 				if (ischop &&
@@ -1833,7 +1821,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 		{
 			s = sptr->serv->sid;
 		}
-		else if (HasUID(sptr))
+		else if (sptr->user)
 		{
 			s = sptr->user->uid;
 		}
@@ -1844,12 +1832,6 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 
 		sendto_match_servs_v(chptr, cptr, SV_UID,
 			":%s MODE %s %s %s", s, chptr->chname, mbuf, upbuf);
-		if (modebuf[1] != 'R') /* don't send +R list to old servers */
-		{
-			sendto_match_servs_notv(chptr, cptr, SV_UID, 
-				":%s MODE %s %s %s", sptr->name, chptr->chname,
-				mbuf, pbuf);
-		}
 
 		if ((IsServer(cptr) && !IsServer(sptr) && !ischop))
 		{
@@ -1961,38 +1943,6 @@ void	clean_channelname(char *cn)
 }
 
 /*
-** This will convert channel name from {}\~ to []|^ set.
-** It should be done on all channel names coming from 2.10 servers,
-** as 2.11+ do not treat them case equivalent. Hence we stick to
-** on set of chars (which are treated equivalent on old servers)
-** and drop it in the next version.
-** Local clients are treated likewise.
-**
-** XXX: Do NOT allow 2.10 and next version on the same net!
-**
-*/
-static	void   convert_scandinavian(Reg char *cn, aClient *cptr)
-{
-	if (ST_NOTUID(cptr) || MyPerson(cptr))
-	{
-		for (; *cn; cn++)
-		{
-			switch (*cn)
-			{
-			case    '{':
-				*cn = '['; break;
-			case    '}':
-				*cn = ']'; break;
-			case    '~':
-				*cn = '^'; break;
-			case    '\\':
-				*cn = '|'; break;
-			}
-		}
-	}
-}
-
-/*
 ** Return -1 if mask is present and doesnt match our server name.
 */
 static	int	check_channelmask(aClient *sptr, aClient *cptr, char *chname)
@@ -2007,15 +1957,13 @@ static	int	check_channelmask(aClient *sptr, aClient *cptr, char *chname)
 	if ((t = index(s, '\007')))
 		*t = '\0';
 
-	if (*(s+1) == '\0')
+	s++;
+	if (*s == '\0')
 	{
 		/* ':' was last char (thus empty mask) --B. */
-		while (s >= chname && *s == ':')
-			s--;
-		*(s+1) = '\0';
+		*(s-1) = '\0';
 		return 0;
 	}
-	s++;
 	if (match(s, ME) || (IsServer(cptr) && match(s, cptr->name)))
 	    {
 		if (MyClient(sptr))
@@ -2227,7 +2175,38 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	aChannel *chptr;
 	Reg	char	*name, *key = NULL;
 	int	i, tmplen, flags = 0;
-	char	*p = NULL, *p2 = NULL, *s, chop[5];
+	char	*p = NULL, *p2 = NULL;
+
+	/* This is the only case we get JOIN over s2s link. --B. */
+	/* It could even be its own command. */
+	if (IsServer(cptr))
+	{
+		if (parv[1][0] == '0' && parv[1][1] == '\0')
+		{
+			if (sptr->user->channel == NULL)
+				return 0;
+			while ((lp = sptr->user->channel))
+			{
+				chptr = lp->value.chptr;
+				sendto_channel_butserv(chptr, sptr,
+						PartFmt,
+						parv[0], chptr->chname,
+						key ? key : "");
+				remove_user_from_channel(sptr, chptr);
+			}
+			sendto_match_servs(NULL, cptr, ":%s JOIN 0 :%s",
+				sptr->user->uid, key ? key : parv[0]);
+		}
+		else
+		{
+			/* Well, technically this is an error.
+			** Let's ignore it for now. --B. */
+		}
+		return 0;
+	}
+	/* These should really be assert()s. */
+	if (!sptr || !sptr->user)
+		return 0;
 
 	*jbuf = '\0';
 	/*
@@ -2241,21 +2220,15 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	    {
 		if (check_channelmask(sptr, cptr, name)==-1)
 			continue;
-		if (*name == '&' && !MyConnect(sptr))
-			continue;
 		if (*name == '0' && !atoi(name))
-		    {
+		{
 			(void)strcpy(jbuf, "0");
 			i = 1;
 			continue;
-		    }
-		if (MyClient(sptr))
-		    {
-			clean_channelname(name);
-		    }
-		convert_scandinavian(name, cptr);
+		}
+		clean_channelname(name);
 		if (*name == '!')
-		    {
+		{
 			chptr = NULL;
 			/*
 			** !channels are special:
@@ -2268,55 +2241,26 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			if (*(name+1) == '\0' ||
 			    (*(name+1) == '#' && *(name+2) == '\0') ||
 			    (*(name+1) == '!' && *(name+2) == '\0'))
-			    {
-				if (MyClient(sptr))
-					sendto_one(sptr,
-						   replies[ERR_NOSUCHCHANNEL],
-							   ME, BadTo(parv[0]), name);
+			{
+				sendto_one(sptr, replies[ERR_NOSUCHCHANNEL],
+					ME, BadTo(parv[0]), name);
 				continue;
-			    }
+			}
 			if (*name == '!' && (*(name+1) == '#' ||
 					     *(name+1) == '!'))
-			    {
-				if (!MyClient(sptr))
-				    {
-					sendto_flag(SCH_NOTICE,
-				   "Invalid !%c channel from %s for %s",
-						    *(name+1),
-						    get_client_name(cptr,TRUE),
-						    sptr->name);
-					continue;
-				    }
-#if 0
-				/*
-				** Note: creating !!!foo, e.g. !<ID>!foo is
-				** a stupid thing to do because /join !!foo
-				** will not join !<ID>!foo but create !<ID>foo
-				** Some logic here could be reversed, but only
-				** to find that !<ID>foo would be impossible to
-				** create if !<ID>!foo exists.
-				** which is better? it's hard to say -kalt
-				*/
-				if (*(name+3) == '!')
-				    {
-					sendto_one(sptr,
-						   replies[ERR_NOSUCHCHANNEL],
-							   ME, BadPtr(parv[0]), name);
-					continue;
-				    }
-#endif
+			{
 				chptr = hash_find_channels(name+2, NULL);
 				if (chptr)
-				    {
+				{
 					sendto_one(sptr,
 						   replies[ERR_TOOMANYTARGETS],
 							   ME, BadTo(parv[0]),
 						   "Duplicate", name,
 						   "Join aborted.");
 					continue;
-				    }
+				}
 				if (check_chid(name+2))
-				    {
+				{
 					/*
 					 * This is a bit wrong: if a channel
 					 * rightfully ceases to exist, it
@@ -2328,55 +2272,47 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					sendto_one(sptr, replies[ERR_UNAVAILRESOURCE],
 							   ME, BadTo(parv[0]), name);
 					continue;
-				    }
+				}
 				sprintf(buf, "!%.*s%s", CHIDLEN, get_chid(),
 					name+2);
 				name = buf;
-			    }
+			}
 			else if (!find_channel(name, NullChn) &&
 				 !(*name == '!' && *name != 0 &&
 				   (chptr = hash_find_channels(name+1, NULL))))
-			    {
-				if (MyClient(sptr))
-					sendto_one(sptr,
-						   replies[ERR_NOSUCHCHANNEL],
-							   ME, BadTo(parv[0]), name);
-				if (!IsServer(cptr))
-					continue;
-				/* from a server, it is legitimate */
-			    }
+			{
+				sendto_one(sptr, replies[ERR_NOSUCHCHANNEL],
+					ME, BadTo(parv[0]), name);
+				continue;
+			}
 			else if (chptr)
-			    {
+			{
 				/* joining a !channel using the short name */
-				if (MyConnect(sptr) &&
-				    hash_find_channels(name+1, chptr))
-				    {
+				if (hash_find_channels(name+1, chptr))
+				{
 					sendto_one(sptr,
 						   replies[ERR_TOOMANYTARGETS],
 							   ME, BadTo(parv[0]),
 						   "Duplicate", name,
 						   "Join aborted.");
 					continue;
-				    }
+				}
 				name = chptr->chname;
-			    }
-		    }
+			}
+		}
 		if (!IsChannelName(name) ||
 		    (*name == '+' && (*(name+1) == '#' || *(name+1) == '!')) ||
 		    (*name == '!' && IsChannelName(name+1)))
-		    {
-			if (MyClient(sptr))
-				sendto_one(sptr, replies[ERR_NOSUCHCHANNEL],
-					   ME, BadTo(parv[0]), name);
+		{
+			sendto_one(sptr, replies[ERR_NOSUCHCHANNEL],
+				ME, BadTo(parv[0]), name);
 			continue;
-		    }
+		}
 		tmplen = strlen(name);
 		if (i + tmplen + 2 /* comma and \0 */
 			>= sizeof(jbuf) )
 		{
-
 			break;
-
 		}
 		if (*jbuf)
 		{
@@ -2392,33 +2328,30 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	for (name = strtoken(&p, jbuf, ","); name;
 	     key = (key) ? strtoken(&p2, NULL, ",") : NULL,
 	     name = strtoken(&p, NULL, ","))
-	    {
+	{
 		/*
 		** JOIN 0 sends out a part for all channels a user
 		** has joined.
 		*/
 		if (*name == '0' && !atoi(name))
-		    {
+		{
 			if (sptr->user->channel == NULL)
 				continue;
 			while ((lp = sptr->user->channel))
-			    {
+			{
 				chptr = lp->value.chptr;
 				sendto_channel_butserv(chptr, sptr,
 						PartFmt,
 						parv[0], chptr->chname,
 						key ? key : "");
 				remove_user_from_channel(sptr, chptr);
-			    }
+			}
 			sendto_match_servs(NULL, cptr, ":%s JOIN 0 :%s",
-					   parv[0], key ? key : parv[0]);
+				sptr->user->uid, key ? key : parv[0]);
 			continue;
-		    }
+		}
 
-		if (cptr->serv && (s = index(name, '\007')))
-			*s++ = '\0';
-		else
-			clean_channelname(name), s = NULL;
+		clean_channelname(name);
 
 		/* Get chptr for given name. Do not create channel yet.
 		** Can return NULL. */
@@ -2426,13 +2359,6 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 		if (chptr && IsMember(sptr, chptr))
 		{
-			if (IsServer(cptr))
-			{
-				/* Valid only for 2.10 servers, as we use
-				** NJOIN for 2.11 */
-				sendto_flag(SCH_CHAN, "Fake: %s JOIN %s",
-					sptr->name, chptr->chname);
-			}
 			continue;
 		}
 
@@ -2445,8 +2371,7 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			continue;
 		}
 
-		if (MyConnect(sptr) &&
-		    !strncmp(name, "\x23\x1f\x02\xb6\x03\x34\x63\x68\x02\x1f",
+		if (!strncmp(name, "\x23\x1f\x02\xb6\x03\x34\x63\x68\x02\x1f",
 			     10))
 		{
 			sptr->exitc = EXITC_VIRUS;
@@ -2468,7 +2393,7 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			continue;
 		}
 
-		if (MyConnect(sptr) && (i = can_join(sptr, chptr, key)))
+		if ((i = can_join(sptr, chptr, key)))
 		{
 			sendto_one(sptr, replies[i], ME, BadTo(parv[0]), name);
 			continue;
@@ -2480,91 +2405,46 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		** Operator.
 		*/
 		flags = 0;
-		chop[0] = '\0';
-		if (MyConnect(sptr) && UseModes(name) &&
+		if (UseModes(name) &&
 			(*name != '#' || !IsSplit()) &&
 		    (!IsRestricted(sptr) || (*name == '&')) && !chptr->users &&
 		    !(chptr->history && *chptr->chname == '!'))
-		    {
+		{
 			if (*name == '!')
-				strcpy(chop, "\007O");
-			else
-				strcpy(chop, "\007o");
-			s = chop+1; /* tricky */
-		    }
-		/*
-		**  Complete user entry to the new channel (if any)
-		*/
-		if (s && UseModes(name))
-		    {
-			if (*s == 'O')
-				/*
-				 * there can never be another mode here,
-				 * because we use NJOIN for netjoins.
-				 * here, it *must* be a channel creation. -kalt
-				 */
 				flags |= CHFL_UNIQOP|CHFL_CHANOP;
-			else if (*s == 'o')
-			    {
+			else
 				flags |= CHFL_CHANOP;
-				if (*(s+1) == 'v')
-					flags |= CHFL_VOICE;
-			    }
-			else if (*s == 'v')
-				flags |= CHFL_VOICE;
-		    }
+		}
+		/* Complete user entry to the new channel */
 		add_user_to_channel(chptr, sptr, flags);
-		/*
-		** notify all users on the channel
-		*/
+		/* Notify all users on the channel */
 		sendto_channel_butserv(chptr, sptr, ":%s JOIN :%s",
-						parv[0], name);
-		if (s && UseModes(name))
-		    {
-			/* no need if user is creating the channel */
-			if (chptr->users != 1)
-				sendto_channel_butserv(chptr, sptr,
-						       ":%s MODE %s +%s %s %s",
-						       cptr->name, name, s,
-						       parv[0],
-						       *(s+1)=='v'?parv[0]:"");
-		    }
-		/*
-		** If s wasn't set to chop+1 above, name is now #chname^Gov
-		** again (if coming from a server, and user is +o and/or +v
-		** of course ;-)
-		** This explains the weird use of name and chop..
-		** Is this insane or subtle? -krys
-		** This is no longer true, name is now just the name of the
-		** channel. - Q
-		*/
-		if (MyClient(sptr))
-		    {
-			del_invite(sptr, chptr);
-			if (chptr->topic[0] != '\0')
-			{
-				sendto_one(sptr, replies[RPL_TOPIC], ME,
-					BadTo(parv[0]), name, chptr->topic);
-#ifdef TOPIC_WHO_TIME
-				if (chptr->topic_t > 0)
-				{
-					sendto_one(sptr, replies[RPL_TOPIC_WHO_TIME],
-						ME, BadTo(parv[0]),
-						name, IsAnonymous(chptr) ?
-						"anonymous!anonymous@anonymous." :
-						chptr->topic_nuh,
-						chptr->topic_t);
-				}
-#endif
-			}
+			parv[0], name);
 
-			names_channel(cptr, sptr, parv[0], chptr, 1);
-			if (IsAnonymous(chptr) && !IsQuiet(chptr))
-			    {
-				sendto_one(sptr, ":%s NOTICE %s :Channel %s has the anonymous flag set.", ME, chptr->chname, chptr->chname);
-				sendto_one(sptr, ":%s NOTICE %s :Be aware that anonymity on IRC is NOT securely enforced!", ME, chptr->chname);
-			    }
-		    }
+		del_invite(sptr, chptr);
+		if (chptr->topic[0] != '\0')
+		{
+			sendto_one(sptr, replies[RPL_TOPIC], ME,
+				BadTo(parv[0]), name, chptr->topic);
+#ifdef TOPIC_WHO_TIME
+			if (chptr->topic_t > 0)
+			{
+				sendto_one(sptr, replies[RPL_TOPIC_WHO_TIME],
+					ME, BadTo(parv[0]),
+					name, IsAnonymous(chptr) ?
+					"anonymous!anonymous@anonymous." :
+					chptr->topic_nuh,
+					chptr->topic_t);
+			}
+#endif
+		}
+
+		names_channel(cptr, sptr, parv[0], chptr, 1);
+		if (IsAnonymous(chptr) && !IsQuiet(chptr))
+		{
+			sendto_one(sptr, ":%s NOTICE %s :Channel %s has the anonymous flag set.", ME, chptr->chname, chptr->chname);
+			sendto_one(sptr, ":%s NOTICE %s :Be aware that anonymity on IRC is NOT securely enforced!", ME, chptr->chname);
+		}
 		/*
 	        ** notify other servers
 		*/
@@ -2572,41 +2452,19 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		{
 			sendto_match_servs_v(chptr, cptr, SV_UID,
 				":%s NJOIN %s :%s%s", me.serv->sid, name,
-				s && s[0] == 'O' && s[1] == 'v' ? "@@+" : 
-				s && s[0] == 'O' ? "@@" : 
-				s && s[0] == 'o' && s[1] == 'v' ? "@+" :
-				s && s[0] == 'o' ? "@" :
-				s && s[0] == 'v' ? "+" : "",
-				HasUID(sptr) ? sptr->user->uid : parv[0]);
-			sendto_match_servs_notv(chptr, cptr, SV_UID,
-				":%s NJOIN %s :%s%s", ME, name,
-				s && s[0] == 'O' && s[1] == 'v' ? "@@+" : 
-				s && s[0] == 'O' ? "@@" : 
-				s && s[0] == 'o' && s[1] == 'v' ? "@+" :
-				s && s[0] == 'o' ? "@" :
-				s && s[0] == 'v' ? "+" : "",
-				parv[0]);
+				flags & CHFL_UNIQOP ? "@@" : 
+				flags & CHFL_CHANOP ? "@" : "",
+				sptr->user ? sptr->user->uid : parv[0]);
 		}
 		else if (*chptr->chname != '&')
 		{
 			sendto_serv_v(cptr, SV_UID, ":%s NJOIN %s :%s%s",
 				me.serv->sid, name,
-				s && s[0] == 'O' && s[1] == 'v' ? "@@+" : 
-				s && s[0] == 'O' ? "@@" : 
-				s && s[0] == 'o' && s[1] == 'v' ? "@+" :
-				s && s[0] == 'o' ? "@" :
-				s && s[0] == 'v' ? "+" : "",
-				HasUID(sptr) ? sptr->user->uid : parv[0]);
-			sendto_serv_notv(cptr, SV_UID, ":%s NJOIN %s :%s%s",
-				ME, name,
-				s && s[0] == 'O' && s[1] == 'v' ? "@@+" : 
-				s && s[0] == 'O' ? "@@" : 
-				s && s[0] == 'o' && s[1] == 'v' ? "@+" :
-				s && s[0] == 'o' ? "@" :
-				s && s[0] == 'v' ? "+" : "",
-				parv[0]);
+				flags & CHFL_UNIQOP ? "@@" : 
+				flags & CHFL_CHANOP ? "@" : "",
+				sptr->user ? sptr->user->uid : parv[0]);
 		}
-	    }
+	}
 	return 2;
 }
 
@@ -2618,7 +2476,7 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 */
 int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
-	char nbuf[BUFSIZE], *q, *name, *target, mbuf[MAXMODEPARAMS + 1];
+	char *name, *target, mbuf[MAXMODEPARAMS + 1];
 	char uidbuf[BUFSIZE], *u;
 	char *p = NULL;
 	int chop, cnt = 0;
@@ -2639,7 +2497,6 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			parv[1], get_client_name(cptr, TRUE));
 		return 0;
 	}
-	convert_scandinavian(parv[1], cptr);
 	/* Use '&me', because NJOIN is, unlike JOIN, always for
 	** remote clients, see get_channel() what's that for. --B. */
 	chptr = get_channel(&me, parv[1], CREATE);
@@ -2664,7 +2521,6 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		return 0;
 	}
 
-	*nbuf = '\0'; q = nbuf;
 	*uidbuf = '\0'; u = uidbuf;
  	/* 17 comes from syntax ": NJOIN  :,@@+\r\n\0" */ 
 	maxlen = BUFSIZE - 17 - strlen(parv[0]) - strlen(parv[1]) - NICKLEN;
@@ -2757,42 +2613,27 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		/* build buffer for NJOIN and UID capable servers */
 
 		/* send it out if too big to fit buffer */
-		if (MAX(q-nbuf, u-uidbuf) >= maxlen)
+		if (u-uidbuf >= maxlen)
 		{
-			*q = '\0';
 			*u = '\0';
-			sendto_match_servs_notv(chptr, cptr, SV_UID,
-				":%s NJOIN %s :%s",
-				parv[0], parv[1], nbuf);
 			sendto_match_servs_v(chptr, cptr, SV_UID,
 				":%s NJOIN %s :%s",
 				sptr->serv->sid, parv[1], uidbuf);
-			*nbuf = '\0'; q = nbuf;
 			*uidbuf = '\0'; u = uidbuf;
 		}
 
-		if (q != nbuf)
+		if (u != uidbuf)
 		{
-			*q++ = ',';
 			*u++ = ',';
 		}
 
 		/* Copy the modes. */
 		for (; target < name; target++)
 		{
-			*q++ = *target;
 			*u++ = *target;
 		}
 
-		/* For 2.10 server. */
-		target = acptr->name;
-		while (*target)
-		{
-			*q++ = *target++;
-		}
-
-		/* For 2.11 servers. */
-		target = HasUID(acptr) ? acptr->user->uid : acptr->name;
+		target = acptr->user ? acptr->user->uid : acptr->name;
 		while (*target)
 		{
 			*u++ = *target++;
@@ -2805,7 +2646,7 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		** burst, but 2.11 always. Hence we check for EOB from 2.11
 		** to know what kind of NJOIN it is. --B. */
 		sendto_channel_butserv(chptr, acptr, ":%s JOIN %s%s", acptr->name,
-			(ST_NOTUID(sptr) || IsBursting(sptr)) ? "" : ":", parv[1]);
+			IsBursting(sptr) ? "" : ":", parv[1]);
 		/* build MODE for local users on channel, eventually send it */
 		if (*mbuf)
 		    {
@@ -2866,12 +2707,9 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				       sptr->name, parv[1], modebuf, parabuf);
 
 	/* send NJOIN */
-	*q = '\0';
 	*u = '\0';
-	if (nbuf[0])
+	if (uidbuf[0])
 	{
-		sendto_match_servs_notv(chptr, cptr, SV_UID, ":%s NJOIN %s :%s",
-			parv[0], parv[1], nbuf);
 		sendto_match_servs_v(chptr, cptr, SV_UID, ":%s NJOIN %s :%s",
 			sptr->serv->sid, parv[1], uidbuf);
 	}
@@ -2908,7 +2746,6 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	size = BUFSIZE - strlen(parv[0]) - 10;
 	for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
 	    {
-		convert_scandinavian(name, cptr);
 		chptr = get_channel(sptr, name, 0);
 		if (!chptr)
 		    {
@@ -2942,7 +2779,7 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					/* Anyway, if it would not fit in the
 					** buffer, send it right away. --B */
 					sendto_serv_butone(cptr, PartFmt,
-						parv[0], buf, comment);
+						sptr->user->uid, buf, comment);
 					*buf = '\0';
 				}
 				if (*buf)
@@ -2952,13 +2789,13 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		    }
 		else
 			sendto_match_servs(chptr, cptr, PartFmt,
-				   	   parv[0], name, comment);
+				   	   sptr->user->uid, name, comment);
 		sendto_channel_butserv(chptr, sptr, PartFmt,
 				       parv[0], name, comment);
 		remove_user_from_channel(sptr, chptr);
 	    }
 	if (*buf)
-		sendto_serv_butone(cptr, PartFmt, parv[0], buf, comment);
+		sendto_serv_butone(cptr, PartFmt, sptr->user->uid, buf, comment);
 	return 4;
 }
 
@@ -2978,7 +2815,6 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	*tmp, *tmp2;
 	char	*sender;
 	char	nbuf[BUFSIZE+1];
-	char	obuf[BUFSIZE+1];
 	int	clen, maxlen;
 
 	if (IsServer(sptr))
@@ -2999,7 +2835,7 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	{
 		sender = sptr->serv->sid;
 	}
-	else if (HasUID(sptr))
+	else if (sptr->user)
 	{
 		sender = sptr->user->uid;
 	}
@@ -3016,7 +2852,6 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	    {
 		if (penalty >= MAXPENALTY && MyPerson(sptr))
 			break;
-		convert_scandinavian(name, cptr);
 		chptr = get_channel(sptr, name, !CREATE);
 		if (!chptr)
 		    {
@@ -3050,7 +2885,6 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 		clen = maxlen - strlen(name) - 1; /* for comma, see down */
 		nbuf[0] = '\0';
-		obuf[0] = '\0';
 		tmp = mystrdup(parv[2]);
 		for (tmp2 = tmp; (user = strtoken(&p2, tmp2, ",")); tmp2 = NULL)
 		    {
@@ -3065,11 +2899,11 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					":%s KICK %s %s :%s", sptr->name,
 					name, who->name, comment);
 
-				/* nick buffer to kick out, build for 2.11 */
+				/* Nick buffer to kick out. */
 				/* as we need space for ",nick", we should add
 				** 1 on the left side; instead we subtracted 1
 				** on the right side, before the loop. */
-				if (strlen(nbuf) + (HasUID(who) ? UIDLEN :
+				if (strlen(nbuf) + (who->user ? UIDLEN :
 					strlen(who->name)) >= clen)
 				{
 					sendto_match_servs_v(chptr, cptr,
@@ -3081,24 +2915,8 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				{
 					strcat(nbuf, ",");
 				}
-				strcat(nbuf, HasUID(who) ? who->user->uid :
+				strcat(nbuf, who->user ? who->user->uid :
 					who->name);
-
-				/* nick buffer to kick out, build for 2.10 */
-				/* same thing with +/- 1 for comma as above */
-				if (strlen(obuf) + strlen(who->name) >= clen)
-				{
-					sendto_match_servs_notv(chptr, cptr,
-						SV_UID, ":%s KICK %s %s :%s",
-						sptr->name, name, obuf,
-						comment);
-					obuf[0] = '\0';
-				}
-				if (*obuf)
-				{
-					strcat(obuf, ",");
-				}
-				strcat(obuf, who->name);
 
 				/* kicking last one out may destroy chptr */
 				if (chptr->users == 1)
@@ -3111,15 +2929,6 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 							sender, name,
 							nbuf, comment);
 						nbuf[0] = '\0';
-					}
-					if (*obuf)
-					{
-						sendto_match_servs_notv(chptr,
-							cptr, SV_UID,
-							":%s KICK %s %s :%s",
-							sptr->name, name,
-							obuf, comment);
-						obuf[0] = '\0';
 					}
 				}
 				remove_user_from_channel(who, chptr);
@@ -3146,12 +2955,6 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			sendto_match_servs_v(chptr, cptr, SV_UID,
 				":%s KICK %s %s :%s", sender, name,
 				nbuf, comment);
-		}
-		if (*obuf)
-		{
-			sendto_match_servs_notv(chptr, cptr, SV_UID,
-				":%s KICK %s %s :%s", sptr->name, name,
-				 obuf, comment);
 		}
 	    } /* loop on parv[1] */
 
@@ -3186,7 +2989,6 @@ int	m_topic(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				parv[0], name);
 			continue;
 		}
-		convert_scandinavian(name, cptr);
 		chptr = find_channel(name, NullChn);
 		if (!chptr)
 		{
@@ -3239,7 +3041,7 @@ int	m_topic(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			chptr->topic_t = timeofday;
 #endif
 			sendto_match_servs(chptr, cptr,":%s TOPIC %s :%s",
-					   parv[0], chptr->chname,
+					   sptr->user->uid, chptr->chname,
 					   chptr->topic);
 			sendto_channel_butserv(chptr, sptr, ":%s TOPIC %s :%s",
 					       parv[0],
@@ -3276,7 +3078,6 @@ int	m_invite(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		return 1;
 	    }
 	clean_channelname(parv[2]);
-	convert_scandinavian(parv[2], cptr);
 	if (check_channelmask(sptr, acptr->user->servp->bcptr, parv[2]))
 		return 1;
 	if (*parv[2] == '&' && !MyClient(acptr))
@@ -3382,7 +3183,7 @@ int	m_list(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		 * behaviour is changed, MyConnect() check needs to be added
 		 * here and within following loops as well. - jv
 		 */
-		maxsendq = (int) ((float) get_sendq(sptr) * (float) 0.9);
+		maxsendq = (int) ((float) get_sendq(sptr, 0) * (float) 0.9);
 		
 		/* First, show all +s/+p channels user is on */
 		for (lp = sptr->user->channel; lp; lp = lp->next)
@@ -3661,7 +3462,6 @@ int	m_names(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
 		{
 			clean_channelname(name);
-			convert_scandinavian(name, cptr);
 			if BadPtr(name)
 			{
 				continue;

@@ -1,6 +1,6 @@
   Installing IRC - The Internet Relay Chat Program
   SGML version by Christophe Kalt, updated by Piotr Kucharski
-  $Id: INSTALL.txt,v 1.71 2004/09/12 21:23:33 chopin Exp $
+  $Id: INSTALL.txt,v 1.74 2005/02/15 21:01:38 chopin Exp $
 
   This document describes how to install, and configure IRC 2.11.0
 
@@ -124,22 +124,30 @@
   requiring to run as root.
 
 
-  22..33..  EENNAABBLLEE__SSUUMMMMOONN,, EENNAABBLLEE__UUSSEERRSS
+  22..33..  UUSSEERRSS__RRFFCC11445599,, UUSSEERRSS__SSHHOOWWSS__UUTTMMPP
 
-  For security conscious server admins, they may wish to leave
-  ENABLE_USERS undefined, disabling the USERS command which can be used
-  to glean information the same as finger can.  ENABLE_SUMMON toggles
-  whether the server will attempt to summon local users to irc by
-  writing a message similar to that from talk(1) to a user's tty.
+  Leaving USERS_RFC1459 undefined makes ircd return RPL_LOCALUSERS and
+  RPL_GLOBALUSERS numerics (part of NAMES). Defining USERS_RFC1459 makes
+  USERS command to behave like it is defined in RFC. If defined,
+  security conscious server admins may still wish to leave
+  USERS_SHOWS_UTMP undefined, effectively disabling the USERS command
+  which can be used to glean information the same as finger can.
 
 
-  22..44..  NNOO__DDEEFFAAUULLTT__IINNVVIISSIIBBLLEE
+  22..44..  EENNAABBLLEE__SSUUMMMMOONN
 
-  The NO_DEFAULT_INVISIBLE define is used to toggle whether clients are
+  ENABLE_SUMMON toggles whether the server will attempt to summon local
+  users to irc by writing a message similar to that from talk(1) to a
+  user's tty.
+
+
+  22..55..  DDEEFFAAUULLTT__IINNVVIISSIIBBLLEE
+
+  The DEFAULT_INVISIBLE define is used to toggle whether clients are
   automatically made invisible when they register.
 
 
-  22..55..  OOPPEERR__KKIILLLL,, OOPPEERR__CCOONNNNEECCTT,, OOPPEERR__DDIIEE,, OOPPEERR__RREEHHAASSHH,, OOPPEERR__RREESSTTAARRTT,,
+  22..66..  OOPPEERR__KKIILLLL,, OOPPEERR__CCOONNNNEECCTT,, OOPPEERR__DDIIEE,, OOPPEERR__RREEHHAASSHH,, OOPPEERR__RREESSTTAARRTT,,
   OOPPEERR__SSEETT......
 
   Any operator priviledge can be precisely applied to a given user using
@@ -147,7 +155,7 @@
   some of above thus disabling access to corresponding command at all.
 
 
-  22..66..  ZZIIPP__LLIINNKKSS,, ZZIIPP__LLEEVVEELL
+  22..77..  ZZIIPP__LLIINNKKSS,, ZZIIPP__LLEEVVEELL
 
   As of the 2.9.3 version of the server, server-server connections may
   be compressed using the zlib.  In order to compile the server with
@@ -165,7 +173,7 @@
   (deflate format) and rfc1952.txt (gzip format).
 
 
-  22..77..  SSLLOOWW__AACCCCEEPPTT
+  22..88..  SSLLOOWW__AACCCCEEPPTT
 
   This option is undefined by default, however is needed on some OSes.
   It creates an artificial delay in processing incoming connections.  On
@@ -178,7 +186,7 @@
   decide to keep SLOW_ACCEPT undefined you MUST define CLONE_CHECK.
 
 
-  22..88..  CCLLOONNEE__CCHHEECCKK
+  22..99..  CCLLOONNEE__CCHHEECCKK
 
   This option is defined by default and acts as a wrapper, by checking
   incoming connections early before starting ident query.  By default,
@@ -186,12 +194,12 @@
   within 2 seconds.
 
 
-  22..99..  OOtthheerr ##ddeeffiinnee''ss
+
+  22..1100..  OOtthheerr ##ddeeffiinnee''ss
 
   The rest of the user changable #define's should be pretty much self
   explanatory in the config.h file.  It is *NOT* recommended that any of
   the file under the line with "STOP STOP" in it be changed.
-
 
 
   33..  EEddiittiinngg tthhee MMaakkeeffiillee,, aanndd ccoommppiilliinngg
@@ -253,7 +261,6 @@
 
   The ircd.conf file contains various records that specify configuration
   options.  The record types are as follows:
-
   1. Machine information   (M)
 
   2. Administrative info   (A)
@@ -317,6 +324,7 @@
 
 
   44..11..  MMaacchhiinnee iinnffoorrmmaattiioonn
+
 
 
      IInnttrroodduuccttiioonn
@@ -384,8 +392,6 @@
         Using ``*'' as <Your Internet IP> allows OS to choose best
         outgoing source IP. See also SSeerrvveerr CCoonnnneeccttiioonnss section for
         configuring source IP of outgoing connections.
-
-
 
   44..22..  AAddmmiinniissttrraattiivvee iinnffoo
 
@@ -457,7 +463,6 @@
 
      FFoorrmmaatt
 
-
         P:<Internet IP#>:::<Port>::<Flags>
         P:<Directory>:::<Port>::<Flags>
 
@@ -518,6 +523,7 @@
   44..44..  CCoonnnneeccttiioonn CCllaasssseess
 
 
+
      IInnttrroodduuccttiioonn
         To enable more efficient use of MAXIMUM_LINKS, connection
         classes were implemented.  All clients belong to a connection
@@ -568,8 +574,14 @@
         users in this class for I/O lines per I/O line.
 
      SSeennddQQ
-        This field defines the ``SendQ'' value for this class.  If this
-        field is not present, the default (from config.h) is assigned.
+        This field defines the ``SendQ'' (data awaiting to be sent to
+        the client) value for this class. The format is <x>.<y>
+
+        +o  x: defines maximum size of sendq, defaults to QUEUELEN if
+           unset.
+
+        +o  y: defines maximum size of sendq during burst, defaults to x
+           if unset.
 
      LLooccaall lliimmiitt
         This field is used to limit the number of local concurrent
@@ -587,7 +599,6 @@
         This field has the same use as the ``Local limit'' field.  But,
         the connection counts are done for all clients present on the
         net instead of only counting local clients.
-
 
      NNoottee
         leaving any of the fields (except SendQ and limits) out means
@@ -645,7 +656,6 @@
         address, or more than 5 other connections on the net from the
         same hostname.
 
-
   44..55..  CClliieenntt ccoonnnneeccttiioonnss
 
   How to let clients connect to your IRCD.
@@ -655,6 +665,7 @@
         There are clients written in C, GNU Emacs Lisp and many other
         languages.  The ``irc'' program is the C client.  Each person
         that talks via IRC is running their own client.
+
         The ircd.conf files contains entries that specify which clients
         are allowed to connect to your irc daemon.  Obviously you want
         to allow your own machine's clients to connect.  You may want to
@@ -777,7 +788,6 @@
         with the password ``secret''.
 
         I:::*::1
-
         Allow anyone from anywhere to connect to your server.
 
         I:::*.fi:6667:1
@@ -808,8 +818,10 @@
         ``135.11.35.0/24'' to connect to the server.  If the host name
         is known, is it used as address for these clients.
 
-        tag/NEW!!!/ As of the 2.11.0 version of the server, I: line
-        flags are introduced.
+
+     NNEEWW!!!!!!
+        As of the 2.11.0 version of the server, I: line flags are
+        introduced.
 
 
   44..66..  OOppeerraattoorr pprriivviilliiggeess
@@ -851,7 +863,6 @@
         IRC know you are who you say you are!  Never tell anyone your
         password and always keep the ``ircd.conf'' file protected from
         all of the other users.
-
 
      NNiicckknnaammee
         The Nickname you usually go by - but you can make this what you
@@ -975,7 +986,6 @@
         active continuously for the specified user/host machine.  You
         may also specify intervals during the line should be active, see
         examples below.
-
      UUsseerr
         The USERNAME of the user you want removed from IRC.  For example
         ``root''.
@@ -985,6 +995,7 @@
         opposed to the UNIX type), the reply is not used to set the
         user's username.  (lowercase) k lines can be used in these case
         to reject users based on their ident reply.
+
         This field will be matched against the ident server reply.  It
         is important to note that OTHER replies are prefixed with a
         ``-'' by the ircd, while UNIX replies are not.
@@ -1050,7 +1061,6 @@
         IRC-Network then you would have to talk to the administrator on
         that site to disable his access from that IRCD Server as well.
 
-
      FFoorrmmaatt
 
         X:<USER 1st arg>:<USER 2nd arg>:<USER 3rd arg>:<USER 4th arg>:
@@ -1108,13 +1118,11 @@
 
   PLEASE limit the number of hosts you will attempt to connect to down
   to 3. This is because of two main reasons:
-
   1. to save your server from causing extra load and delays to users
 
   2. to save internet from extra network traffic (remember the old rwho
      program with traffic problems when the number of machines
      increased).
-
 
 
      FFoorrmmaatt
@@ -1175,6 +1183,7 @@
         This field specifies source IP to use for connects to this
         server.
 
+
      CCoommpprreesssseedd lliinnkkss
         Server connections can be compressed with the zlib library.  To
         define a compressed connection, you must have compiled the
@@ -1183,6 +1192,7 @@
      NNEEWW!!!!!!
         As of the 2.11.0 version of the server, SSoouurrccee IIPP field has been
         added.
+
   Some examples:
 
   +o  C:nic.funet.fi::nic.funet.fi:6667:1
@@ -1249,6 +1259,7 @@
      This line says: expect a Connection from host ``18.72.0.252'', and
      don't expect login password.  The connecting host should identify
      itself as ``garfield.mit.edu''.
+
      NN  ``N'' corresponds to a server Noconnect option.
 
      TTAARRGGEETT HHoosstt AAddddrr
@@ -1305,7 +1316,6 @@
         be ``*.fi''. Note that with wildcard name ``*.fi'' you could NOT
         connect to ``nic.funet.fi'' because that would result in a
         server name ccoolllliissiioonn (*.fi matches nic.funet.fi).
-
         I advise you to not to use wildcard servers before you know for
         sure how they are used, they are mostly beneficial for backbones
         of countries and other large areas with common domain.
@@ -1378,6 +1388,8 @@
 
         H:<Server Mask>:<SID Mask>:<Server Name>::
 
+
+
      SSeerrvveerr MMaasskk
         All servers that are allowed via this H-line must match the mask
         given in this field.
@@ -1442,6 +1454,8 @@
      FFoorrmmaatt
 
         L:<Server Mask>:*:<Server Name>:<Max Depth>:
+
+
 
      SSeerrvveerr MMaasskk
         Mask of which servers the leaf-like attributes are used on when
@@ -1509,6 +1523,7 @@
         V:*/0209*::::
 
         Disallows any server using the 2.9 protocol to connect.
+
      NNoottee
         It is possible to have and use multiple V-lines for the one
         server mask.
@@ -1564,7 +1579,6 @@
         The Service is a special kind of IRC client. It does not have
         the full abilities of a normal user but can behave in a more
         active manner than a normal client.
-
         Services are not intended for interactive usage, and are better
         suited for automated clients.
 
@@ -1701,7 +1715,6 @@
 
   If you encounter a bug in the software, here is how and where to
   report it.
-
 
 
   66..11..  HHooww ttoo rreeppoorrtt aa bbuugg

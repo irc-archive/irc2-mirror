@@ -4,7 +4,7 @@
 
 <title>Installing IRC - The Internet Relay Chat Program
 <author>SGML version by Christophe Kalt, updated by Piotr Kucharski
-<date>$Id: INSTALL.sgml,v 1.71 2004/09/12 21:23:33 chopin Exp $
+<date>$Id: INSTALL.sgml,v 1.74 2005/02/15 21:01:38 chopin Exp $
 <abstract>
 This document describes how to install, and configure IRC 2.11.0
 </abstract>
@@ -105,17 +105,22 @@ and that the server is being run as root. Better use some
 other (external) way of setting up chroot environment for ircd
 and run it from there, not requiring to run as root.
 
-<sect1>ENABLE_SUMMON, ENABLE_USERS
-<p>For security conscious server admins, they may wish to
-leave ENABLE_USERS undefined, disabling the USERS command
-which can be used to glean information the same as finger
-can.  ENABLE_SUMMON toggles whether the server will attempt
+<sect1>USERS_RFC1459, USERS_SHOWS_UTMP
+<p>Leaving USERS_RFC1459 undefined makes ircd return RPL_LOCALUSERS
+and RPL_GLOBALUSERS numerics (part of NAMES). Defining USERS_RFC1459
+makes USERS command to behave like it is defined in RFC. If defined,
+security conscious server admins may still wish to leave USERS_SHOWS_UTMP
+undefined, effectively disabling the USERS command which can be used to 
+glean information the same as finger can.
+
+<sect1>ENABLE_SUMMON
+<p>ENABLE_SUMMON toggles whether the server will attempt
 to summon local users to irc by writing a message similar to
 that from talk(1) to a user's tty.
 
-<sect1>NO_DEFAULT_INVISIBLE
+<sect1>DEFAULT_INVISIBLE
 <p>
-The NO_DEFAULT_INVISIBLE define is used to toggle whether
+The DEFAULT_INVISIBLE define is used to toggle whether
 clients are automatically made invisible when they register.
 
 <sect1>OPER_KILL, OPER_CONNECT, OPER_DIE, OPER_REHASH, OPER_RESTART, OPER_SET...
@@ -459,9 +464,12 @@ links this class will allow from automatic connections (C
 lines).  Using /CONNECT overrides this feature.  Also
 defines the maximum number of users in this class for I/O
 lines per I/O line.
-<tag/SendQ/ This field defines the ``SendQ'' value for this
-class.  If this field is not present, the default (from
-config.h) is assigned.
+<tag/SendQ/ This field defines the ``SendQ'' (data awaiting to be sent
+to the client) value for this class. The format is &lt;x&gt;.&lt;y&gt;
+<itemize>
+<item> x: defines maximum size of sendq, defaults to QUEUELEN if unset.
+<item> y: defines maximum size of sendq during burst, defaults to x if unset.
+</itemize>
 <tag/Local limit/  This field is used to limit the number
 of local concurrent connections.  The format is
 &lt;x&gt;.&lt;y&gt;
@@ -650,7 +658,7 @@ I:135.11.35.0/24::::1
 Allows clients from machines which IP address is within block
 ``135.11.35.0/24'' to connect to the server.  If the host name
 is known, is it used as address for these clients.
-<p>tag/NEW!!!/ As of the 2.11.0 version of the server, I: line flags
+<p><tag/NEW!!!/ As of the 2.11.0 version of the server, I: line flags
 are introduced. 
 </descrip>
 

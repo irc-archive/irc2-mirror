@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.153.2.2 2005/02/17 15:21:16 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.158 2005/02/22 18:09:47 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1399,7 +1399,12 @@ int 	initconf(int opt)
 	fdn = fdopen(fd, "r");
 	if (fdn == NULL)
 	{
-		close(fd);
+		if (serverbooting)
+		{
+			fprintf(stderr,
+			"Fatal Error: Can not open configuration file %s (%s)\n",
+			configfile,strerror(errno));
+		}
 		return -1;
 	}
 	ConfigTop = config_read(fdn, 0, new_config_file(configfile, NULL, 0));
@@ -1630,6 +1635,8 @@ int 	initconf(int opt)
 					  atoi(aconf->passwd),
 					  atoi(aconf->name), aconf->port,
 					  tmp ? atoi(tmp) : 0,
+					  (tmp && index(tmp, '.')) ?
+					  atoi(index(tmp, '.') + 1) : 0,
 					  tmp3 ? atoi(tmp3) : 1,
 					  (tmp3 && index(tmp3, '.')) ?
 					  atoi(index(tmp3, '.') + 1) : 1,
@@ -2393,6 +2400,9 @@ int	m_tkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 		user++;
 	}
 	*host++ = '\0';
+#ifdef INET6
+	host = ipv6_convert(host);
+#endif
 	reason = parv[3];
 	if (strlen(reason) > TOPICLEN)
 	{

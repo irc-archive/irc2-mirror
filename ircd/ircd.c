@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.153.2.2 2005/05/13 19:11:43 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.157 2005/03/29 22:50:15 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -152,7 +152,7 @@ RETSIGTYPE s_restart(int s)
 	dorestart = 1;
 }
 
-void	server_reboot()
+void	server_reboot(void)
 {
 	Reg	int	i;
 
@@ -1273,7 +1273,7 @@ static	void	io_loop(void)
  * set from the command line by -x, use /dev/null as the dummy logfile as long
  * as DEBUGMODE has been defined, else don't waste the fd.
  */
-static	void	open_debugfile()
+static	void	open_debugfile(void)
 {
 #ifdef	DEBUGMODE
 	int	fd;
@@ -1303,7 +1303,7 @@ static	void	open_debugfile()
 	return;
 }
 
-static	void	setup_signals()
+static	void	setup_signals(void)
 {
 #if POSIX_SIGNALS
 	struct	sigaction act;
@@ -1416,7 +1416,7 @@ void ircd_writetune(char *filename)
 	    {
 		(void)sprintf(buf, "%d\n%d\n%d\n%d\n%d\n%d\n%d\n", ww_size,
 			       lk_size, _HASHSIZE, _CHANNELHASHSIZE,
-			       _SERVERSIZE, poolsize, _UIDSIZE);
+			       _SIDSIZE, poolsize, _UIDSIZE);
 		if (write(fd, buf, strlen(buf)) == -1)
 			sendto_flag(SCH_ERROR,
 				    "Failed (%d) to write tune file: %s.",
@@ -1469,7 +1469,7 @@ void ircd_readtune(char *filename)
 		_HOSTNAMEHASHSIZE = t_data[2]; /* hostname has always same size
 						  as the client hash */
 		_CHANNELHASHSIZE = t_data[3];
-		_SERVERSIZE = t_data[4];
+		_SIDSIZE = t_data[4];
 		poolsize = t_data[5];
 		_UIDSIZE = t_data[6];
 

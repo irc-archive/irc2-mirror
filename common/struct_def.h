@@ -17,7 +17,7 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *   $Id: struct_def.h,v 1.128 2004/11/19 15:12:59 chopin Exp $
+ *   $Id: struct_def.h,v 1.135 2005/03/29 23:23:49 chopin Exp $
  */
 
 typedef	struct	ConfItem aConfItem;
@@ -41,13 +41,7 @@ typedef struct        LineItem aExtData;
 
 #define	HOSTLEN		63	/* Length of hostname.  Updated to         */
 				/* comply with RFC1123                     */
-
-#define	NICKLEN		15
-#define ONICKLEN	9	/* this is compatibility NICKLEN, allowed
-				** from local clients; we are prepared for
-				** longer nicks (longer NICKLEN), but do not
-				** yet allow them, as older (pre 2.11) servers
-				** would simply KILL them */
+#define	NICKLEN		15	/* Must be the same network-wide. */
 #define UIDLEN		9	/* must not be bigger than NICKLEN --Beeth */
 #define	USERLEN		10
 #define	REALLEN	 	50
@@ -192,8 +186,8 @@ typedef enum Status {
 #ifdef XLINE
 #define FLAGS_XLINED	0x0100	/* X-lined client */
 #endif
-#define	SEND_UMODES	(FLAGS_INVISIBLE|FLAGS_OPER|FLAGS_WALLOP|FLAGS_AWAY)
-#define	ALL_UMODES	(SEND_UMODES|FLAGS_LOCOP|FLAGS_RESTRICT)
+#define	SEND_UMODES	(FLAGS_INVISIBLE|FLAGS_OPER|FLAGS_WALLOP|FLAGS_AWAY|FLAGS_RESTRICT)
+#define	ALL_UMODES	(SEND_UMODES|FLAGS_LOCOP)
 
 /*
  * user flags macros.
@@ -467,8 +461,6 @@ struct	Server	{
 	aConfItem *nline;	/* N-line pointer for this server */
 	int	version;        /* version id for local client */
 	int	snum;
-	int	stok,		/* The token a 2.10 sends us. */
-		ltok;		/* Are we still using this one? */
 	int	refcnt;		/* Number of times this block is referenced
 				** from anUser (field servp), aService (field
 				** servp) and aClient (field serv) */
@@ -479,11 +471,6 @@ struct	Server	{
 				** Self if not masked, *NEVER* NULL. */
 	char	by[NICKLEN+1];
 	char	byuid[UIDLEN + 1];
-	char	tok[7];		/* This is the prepared token we'll be
-				** sending to 2.10 servers.
-				** Note: The size of this depends on the 
-				** on idtol(), with n set to SIDLEN.
-				** To be exact: strlen(CHIDNB^(SIDLEN-1))+1 */
 	char	sid[SIDLEN + 1];/* The Server ID. */
 	char	verstr[11];	/* server version, PATCHLEVEL format */
 	u_int	sidhashv;	/* Raw hash value. */
@@ -773,6 +760,7 @@ struct Channel	{
 #define	MyOper(x)			(MyConnect(x) && IsOper(x))
 #define	MyService(x)			(MyConnect(x) && IsService(x))
 #define	ME	me.name
+#define	MES	me.serv->sid
 
 #define	GotDependantClient(x)	(x->prev &&				\
 		 		 ((IsRegisteredUser(x->prev) &&		\
@@ -780,7 +768,6 @@ struct Channel	{
 				  (IsService(x->prev) &&		\
 				  x->prev->service->servp == x->serv)))
 
-#define	HasUID(x)		(x->user && x->user->uid[0])
 #define	IsMasked(x)		(x && x->serv && x->serv->maskedby != x)
 
 #define IsSplit()		(iconf.split == 1)
@@ -868,20 +855,12 @@ typedef	struct	{
 
 #define	MATCH_SERVER	1
 #define	MATCH_HOST	2
-#define	MATCH_OLDSYNTAX	4
 
 /* used for sendto_serv */
 
 #define	SV_OLD		0x0000
-#define SV_2_10		0x0001 /* 2.10.2+, 2.10.1 is considered to be SV_OLD
-				  because it would kill SAVEd users */
-#define SV_UID		0x0002
-#define	SV_2_11		(SV_2_10|SV_UID)
-
-#define	SV_OLDSQUIT	0x1000	/* server uses OLD SQUIT logic */
-
-#define	ST_UID(x)	(IsServer(x) && (x->serv->version & SV_UID))
-#define	ST_NOTUID(x)	(IsServer(x) && !(x->serv->version & SV_UID))
+#define SV_UID		0x0001
+#define	SV_2_11		SV_UID
 
 /* used for sendto_flag */
 
@@ -889,6 +868,7 @@ typedef	struct	{
 	int	svc_chan;
 	char	*svc_chname;
 	struct	Channel	*svc_ptr;
+	int	fd;
 }	SChan;
 
 typedef enum ServerChannels {
@@ -972,6 +952,9 @@ typedef enum ServerChannels {
 #endif
 #if ! (UIDLEN > SIDLEN)
 #   error UIDLEN must be bigger than SIDLEN
+#endif
+#if (NICKLEN < LOCALNICKLEN)
+#   error LOCALNICKLEN must not be bigger than NICKLEN
 #endif
 
 /*
