@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.188 2004/02/22 16:40:11 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.194 2004/03/05 22:10:19 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -370,6 +370,20 @@ static	Link	*match_modeid(int type, aClient *cptr, aChannel *chptr)
 			/* perhaps we could relax it and check remotes too? */
 			if (MyConnect(cptr))
 			{
+				if (IsConfNoResolveMatch(cptr->confs->value.aconf))
+				{
+					/* user->host contains IP and was just
+					 * checked; try sockhost, it may have
+					 * hostname.
+					 */
+					if (match(tmp->value.alist->host,
+						cptr->sockhost) == 0)
+					{
+						/* match */
+						break;
+					}
+				}
+				else
 				/* Yay, it's 2.11, we have string ip! */
 				if (match(tmp->value.alist->host, cptr->user->sip) == 0)
 				{
@@ -873,10 +887,11 @@ void	send_channel_members(aClient *cptr, aChannel *chptr)
 	Reg	aClient *c2ptr;
 	Reg	int	cnt = 0, len = 0, nlen;
 	char	*p;
+	char	*me2 = ST_UID(cptr) ? me.serv->sid : ME;
 
 	if (check_channelmask(&me, cptr, chptr->chname) == -1)
 		return;
-	sprintf(buf, ":%s NJOIN %s :", ME, chptr->chname);
+	sprintf(buf, ":%s NJOIN %s :", me2, chptr->chname);
 	len = strlen(buf);
 
 	for (lp = chptr->members; lp; lp = lp->next)
@@ -888,7 +903,7 @@ void	send_channel_members(aClient *cptr, aChannel *chptr)
 		if ((len + nlen) > (size_t) (BUFSIZE - 9)) /* ,@+ \r\n\0 */
 		    {
 			sendto_one(cptr, "%s", buf);
-			sprintf(buf, ":%s NJOIN %s :", ME, chptr->chname);
+			sprintf(buf, ":%s NJOIN %s :", me2, chptr->chname);
 			len = strlen(buf);
 			cnt = 0;
 		    }
@@ -2488,8 +2503,16 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		*/
 		if (index(name, ':') || *chptr->chname == '!') /* compat */
 		{
-			sendto_match_servs(chptr, cptr, ":%s NJOIN %s :%s%s",
-				ME, name,
+			sendto_match_servs_v(chptr, cptr, SV_UID,
+				":%s NJOIN %s :%s%s", me.serv->sid, name,
+				s && s[0] == 'O' && s[1] == 'v' ? "@@+" : 
+				s && s[0] == 'O' ? "@@" : 
+				s && s[0] == 'o' && s[1] == 'v' ? "@+" :
+				s && s[0] == 'o' ? "@" :
+				s && s[0] == 'v' ? "+" : "",
+				HasUID(sptr) ? sptr->user->uid : parv[0]);
+			sendto_match_servs_notv(chptr, cptr, SV_UID,
+				":%s NJOIN %s :%s%s", ME, name,
 				s && s[0] == 'O' && s[1] == 'v' ? "@@+" : 
 				s && s[0] == 'O' ? "@@" : 
 				s && s[0] == 'o' && s[1] == 'v' ? "@+" :
@@ -2499,7 +2522,15 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 		else if (*chptr->chname != '&')
 		{
-			sendto_serv_butone(cptr, ":%s NJOIN %s :%s%s",
+			sendto_serv_v(cptr, SV_UID, ":%s NJOIN %s :%s%s",
+				me.serv->sid, name,
+				s && s[0] == 'O' && s[1] == 'v' ? "@@+" : 
+				s && s[0] == 'O' ? "@@" : 
+				s && s[0] == 'o' && s[1] == 'v' ? "@+" :
+				s && s[0] == 'o' ? "@" :
+				s && s[0] == 'v' ? "+" : "",
+				HasUID(sptr) ? sptr->user->uid : parv[0]);
+			sendto_serv_notv(cptr, SV_UID, ":%s NJOIN %s :%s%s",
 				ME, name,
 				s && s[0] == 'O' && s[1] == 'v' ? "@@+" : 
 				s && s[0] == 'O' ? "@@" : 
@@ -2529,7 +2560,8 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 	if (parc < 3 || *parv[2] == '\0')
 	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),"NJOIN");
+		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME,
+			BadTo(parv[0]), "NJOIN");
 		return 1;
 	    }
 	*nbuf = '\0'; q = nbuf;
@@ -2846,6 +2878,9 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	*comment, *name, *p = NULL, *user, *p2 = NULL;
 	char	*tmp, *tmp2;
 	char	*sender;
+	char	nbuf[BUFSIZE+1];
+	char	obuf[BUFSIZE+1];
+	int	clen, maxlen;
 
 	if (parc < 3 || *parv[1] == '\0')
 	    {
@@ -2855,9 +2890,16 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (IsServer(sptr))
 		sendto_flag(SCH_NOTICE, "KICK from %s for %s %s",
 			    parv[0], parv[1], parv[2]);
-	comment = (BadPtr(parv[3])) ? parv[0] : parv[3];
-	if (strlen(comment) > (size_t) TOPICLEN)
-		comment[TOPICLEN] = '\0';
+	if (BadPtr(parv[3]))
+	{
+		comment = "no reason";
+	}
+	else
+	{
+		comment = parv[3];
+		if (strlen(comment) > (size_t) TOPICLEN)
+			comment[TOPICLEN] = '\0';
+	}
 
 	if (IsServer(sptr))
 	{
@@ -2871,6 +2913,10 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	{
 		sender = sptr->name;
 	}
+
+	/* we'll decrease it for each channel later */
+	maxlen = BUFSIZE - MAX(strlen(sender), strlen(sptr->name))
+		- strlen(comment) - 10; /* ":", " KICK ", " " and " :" */
 
 	for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
 	    {
@@ -2908,6 +2954,9 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			continue;
 		    }
 
+		clen = maxlen - strlen(name) - 1; /* for comma, see down */
+		nbuf[0] = '\0';
+		obuf[0] = '\0';
 		tmp = mystrdup(parv[2]);
 		for (tmp2 = tmp; (user = strtoken(&p2, tmp2, ",")); tmp2 = NULL)
 		    {
@@ -2921,24 +2970,53 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				sendto_channel_butserv(chptr, sptr,
 					":%s KICK %s %s :%s", sptr->name,
 					name, who->name, comment);
-				/* 2.11 servers. */
-				sendto_match_servs_v(chptr, cptr, SV_UID,
-					":%s KICK %s %s :%s", sender, name,
-					HasUID(who) ? who->user->uid : 
-					who->name, comment);
-				/* 2.10 servers. */
-				sendto_match_servs_notv(chptr, cptr, SV_UID,
-					":%s KICK %s %s :%s", sptr->name, name,
-					 who->name, comment);
+
+				/* nick buffer to kick out, build for 2.11 */
+				/* as we need space for ",nick", we should add
+				** 1 on the left side; instead we subtracted 1
+				** on the right side, before the loop. */
+				if (strlen(nbuf) + (HasUID(who) ? UIDLEN :
+					strlen(who->name)) >= clen)
+				{
+					sendto_match_servs_v(chptr, cptr,
+						SV_UID, ":%s KICK %s %s :%s",
+						sender, name, nbuf, comment);
+					nbuf[0] = '\0';
+				}
+				if (*nbuf)
+				{
+					strcat(nbuf, ",");
+				}
+				strcat(nbuf, HasUID(who) ? who->user->uid :
+					who->name);
+
+				/* nick buffer to kick out, build for 2.10 */
+				/* same thing with +/- 1 for comma as above */
+				if (strlen(obuf) + strlen(who->name) >= clen)
+				{
+					sendto_match_servs_notv(chptr, cptr,
+						SV_UID, ":%s KICK %s %s :%s",
+						sptr->name, name, obuf,
+						comment);
+					obuf[0] = '\0';
+				}
+				if (*obuf)
+				{
+					strcat(obuf, ",");
+				}
+				strcat(obuf, who->name);
 
 				remove_user_from_channel(who,chptr);
 				penalty += 2;
-				/* Once user kicks himself out of channel,
-				** he cannot kick anymore, can he? --B. */
-				if (MyPerson(sptr) && who == sptr)
+				if (MyPerson(sptr) &&
+					/* penalties, obvious */
+					(penalty >= MAXPENALTY
+					/* Stop if user kicks himself out
+					** of channel --B. */
+					|| who == sptr))
+				{
 					break;
-				if (penalty >= MAXPENALTY && MyPerson(sptr))
-					break;
+				}
 			    }
 			else
 				sendto_one(sptr,
@@ -2946,6 +3024,19 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					   ME, BadTo(parv[0]), user, name);
 		    } /* loop on parv[2] */
 		MyFree(tmp);
+		/* finish sending KICK for given channel */
+		if (*nbuf)
+		{
+			sendto_match_servs_v(chptr, cptr, SV_UID,
+				":%s KICK %s %s :%s", sender, name,
+				nbuf, comment);
+		}
+		if (*obuf)
+		{
+			sendto_match_servs_notv(chptr, cptr, SV_UID,
+				":%s KICK %s %s :%s", sptr->name, name,
+				 obuf, comment);
+		}
 	    } /* loop on parv[1] */
 
 	return penalty;

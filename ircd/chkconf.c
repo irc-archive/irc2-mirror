@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: chkconf.c,v 1.22 2004/02/13 01:30:51 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: chkconf.c,v 1.25 2004/03/05 22:06:10 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -136,7 +136,7 @@ static	int	openconf()
 		 * goes out with report_error.  Could be dangerous,
 		 * two servers running with the same fd's >:-) -avalon
 		 */
-		(void)execlp("m4", "m4", IRCDM4_PATH, configfile, 0);
+		(void)execlp(M4_PATH, "m4", IRCDM4_PATH, configfile, 0);
 		perror("m4");
 		exit(-1);
 	default :
@@ -267,6 +267,7 @@ static	aConfItem 	*initconf()
 		    }
 
 		aconf->status = CONF_ILLEGAL;
+		aconf->flags = 0L;
 
 		switch (*tmp)
 		{
@@ -296,15 +297,11 @@ static	aConfItem 	*initconf()
 			case 'h':
 				aconf->status = CONF_HUB;
 				break;
-			case 'I': /* Just plain normal irc client trying  */
-			          /* to connect me */
+			case 'i' : /* Restricted client */
+				aconf->flags |= CFLAG_RESTRICTED;
+			case 'I':
 				aconf->status = CONF_CLIENT;
 				mandatory_found |= CONF_CLIENT;
-				break;
-			case 'i' : /* Restricted client */
-				aconf->status = CONF_RCLIENT;
-				mandatory_found |= CONF_CLIENT;
-				break;
 				break;
 			case 'K': /* Kill user line on irc.conf           */
 				aconf->status = CONF_KILL;
@@ -394,42 +391,41 @@ static	aConfItem 	*initconf()
 			break;
 		    }
 
-		if ((aconf->status & (CONF_CLIENT|CONF_RCLIENT)))
+		if ((aconf->status & CONF_CLIENT) && tmp3)
 		{
 			/* Parse I-line flags */
-			if (tmp3)
+			for(s = tmp3; *s; ++s)
 			{
-				for(s = tmp3; *s; ++s)
-				    {
-					switch (*s)
-					    {
-						case 'R':
-							aconf->flags |= CFLAG_RESTRICTED;
-							break;
-						case 'D':
-							aconf->flags |= CFLAG_RNODNS;
-							break;
-						case 'I':
-							aconf->flags |= CFLAG_RNOIDENT;
-							break;
-						case 'E':
-							aconf->flags |= CFLAG_KEXEMPT;
-							break;
-						case 'N':
-							aconf->flags |= CFLAG_NORESOLVE;
-							break;
-						case 'F':
-							aconf->flags |= CFLAG_FALL;
-							break;
-						default:
-				                        (void)fprintf(stderr,
-							"%s:%d\tWARNING: unknown I-line flag: %c\n",
-							filelist->filename, nr - filelist->min, *s);
-					    }
-				    }
+				switch (*s)
+				{
+				case 'R':
+					aconf->flags |= CFLAG_RESTRICTED;
+					break;
+				case 'D':
+					aconf->flags |= CFLAG_RNODNS;
+					break;
+				case 'I':
+					aconf->flags |= CFLAG_RNOIDENT;
+					break;
+				case 'E':
+					aconf->flags |= CFLAG_KEXEMPT;
+					break;
+				case 'N':
+					aconf->flags |= CFLAG_NORESOLVE;
+					break;
+				case 'M':
+					aconf->flags |= CFLAG_NORESOLVEMATCH;
+					break;
+				case 'F':
+					aconf->flags |= CFLAG_FALL;
+					break;
+				default:
+					(void)fprintf(stderr, "%s:%d\tWARNING: "
+						"unknown I-line flag: %c\n",
+						filelist->filename,
+						nr - filelist->min, *s);
+				}
 			}
-			else
-				aconf->flags = 0L;
 		}
 
 		/*

@@ -17,7 +17,7 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *   $Id: struct_def.h,v 1.83 2004/02/08 22:48:01 chopin Exp $
+ *   $Id: struct_def.h,v 1.86 2004/03/05 22:06:09 chopin Exp $
  */
 
 typedef	struct	ConfItem aConfItem;
@@ -303,7 +303,7 @@ struct	ListItem	{
 #define	CONF_MATCH		0x40000000
 #define	CONF_QUARANTINED_SERVER	0x000001
 #define	CONF_CLIENT		0x000002
-#define CONF_RCLIENT            0x000004
+
 #define	CONF_CONNECT_SERVER	0x000008
 #define	CONF_NOCONNECT_SERVER	0x000010
 #define	CONF_ZCONNECT_SERVER	0x000020
@@ -325,7 +325,7 @@ struct	ListItem	{
 #define	CONF_OPS		(CONF_OPERATOR | CONF_LOCOP)
 #define	CONF_SERVER_MASK	(CONF_CONNECT_SERVER | CONF_NOCONNECT_SERVER |\
 				 CONF_ZCONNECT_SERVER)
-#define	CONF_CLIENT_MASK	(CONF_CLIENT | CONF_RCLIENT | CONF_SERVICE | CONF_OPS | \
+#define	CONF_CLIENT_MASK	(CONF_CLIENT | CONF_SERVICE | CONF_OPS | \
 				 CONF_SERVER_MASK)
 
 #define CFLAG_RESTRICTED	0x00001
@@ -334,12 +334,14 @@ struct	ListItem	{
 #define CFLAG_KEXEMPT		0x00008
 #define CFLAG_NORESOLVE		0x00010
 #define CFLAG_FALL		0x00020
+#define CFLAG_NORESOLVEMATCH	0x00040
 
 #define IsConfRestricted(x)	((x)->flags & CFLAG_RESTRICTED)
 #define IsConfRNoDNS(x)		((x)->flags & CFLAG_RNODNS)
 #define IsConfRNoIdent(x)	((x)->flags & CFLAG_RNOIDENT)
 #define IsConfKlineExempt(x)	((x)->flags & CFLAG_KEXEMPT)
 #define IsConfNoResolve(x)	((x)->flags & CFLAG_NORESOLVE)
+#define IsConfNoResolveMatch(x)	((x)->flags & CFLAG_NORESOLVEMATCH)
 #define IsConfFallThrough(x)	((x)->flags & CFLAG_FALL)
 
 #define	IsIllegal(x)	((x)->status & CONF_ILLEGAL)
@@ -537,6 +539,7 @@ struct	stats {
 	u_int	is_empt; /* empty message */
 	u_int	is_num;	/* numeric message */
 	u_int	is_kill; /* number of kills generated on collisions */
+	u_int	is_save; /* number of saved clients */
 	u_int	is_fake; /* MODE 'fakes' */
 	u_int	is_asuc; /* successful auth requests */
 	u_int	is_abad; /* bad auth requests */

@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.114 2004/02/15 20:21:39 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.117 2004/02/27 15:43:48 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -63,7 +63,7 @@ static	void	do_dns_async (void);
 static	int	set_sock_opts (int, aClient *);
 #ifdef	UNIXPORT
 static	struct	SOCKADDR *connect_unix (aConfItem *, aClient *, int *);
-static	void	add_unixconnection (aClient *, int);
+static	aClient	*add_unixconnection (aClient *, int);
 static	char	unixpath[256];
 #endif
 static	char	readbuf[READBUF_SIZE];
@@ -1572,7 +1572,7 @@ add_con_refuse:
 }
 
 #ifdef	UNIXPORT
-static	void	add_unixconnection(aClient *cptr, int fd)
+static	aClient	*add_unixconnection(aClient *cptr, int fd)
 {
 	aClient *acptr;
 	aConfItem *aconf = NULL;
@@ -1592,7 +1592,7 @@ static	void	add_unixconnection(aClient *cptr, int fd)
 			acptr->fd = -2;
 			free_client(acptr);
 			(void)close(fd);
-			return;
+			return NULL;
 		    }
 		else
 			aconf->clients++;
@@ -1617,7 +1617,7 @@ static	void	add_unixconnection(aClient *cptr, int fd)
 	sendto_iauth("%d O", acptr->fd);
 	SetDoneXAuth(acptr);
 # endif
-	return;
+	return acptr;
 }
 #endif
 
@@ -1630,6 +1630,7 @@ static	void	add_unixconnection(aClient *cptr, int fd)
 static	void	read_listener(aClient *cptr)
 {
 	int fdnew, max = 10;
+	aClient	*acptr;
 
 #if defined(SLOW_ACCEPT)
 	max = 1;
@@ -1665,19 +1666,22 @@ static	void	read_listener(aClient *cptr)
 			(void)close(fdnew);
 			continue;
 		    }
-		/*
-		 * Use of add_connection (which never fails :) meLazy
-		 * Never say never. MrMurphy visited here. -Vesa
-		 */
 #ifdef	UNIXPORT
 		if (IsUnixSocket(cptr))
-			add_unixconnection(cptr, fdnew);
+			acptr = add_unixconnection(cptr, fdnew);
 		else
 #endif
-			if (!add_connection(cptr, fdnew))
-				continue;
+		acptr = add_connection(cptr, fdnew);
+
+		if (acptr == NULL)
+		{
+			continue;
+		}
 		nextping = timeofday; /* isn't this abusive? -kalt */
 		istat.is_unknown++;
+
+		/* Notice on connect. */
+		sendto_one(acptr, replies[RPL_HELLO], ME, HELLO_MSG);
 	    }
 }
 

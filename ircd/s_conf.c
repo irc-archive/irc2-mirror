@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.76 2004/02/13 01:43:00 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.95 2004/03/05 22:06:10 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -103,6 +103,10 @@ long	iline_flags_parse(char *string)
 	{
 		tmp |= CFLAG_NORESOLVE;
 	}
+	if (index(string,'M'))
+	{
+		tmp |= CFLAG_NORESOLVEMATCH;
+	}
 	if (index(string,'F'))
 	{
 		tmp |= CFLAG_FALL;
@@ -137,9 +141,17 @@ char	*iline_flags_to_string(long flags)
 	{
 		*s++ = 'N';
 	}
+	if (flags & CFLAG_NORESOLVEMATCH)
+	{
+		*s++ = 'M';
+	}
 	if (flags & CFLAG_FALL)
 	{
 		*s++ = 'F';
+	}
+	if (s == ifsbuf)
+	{
+		*s++ = '-';
 	}
 	*s++ = '\0';
 	
@@ -244,66 +256,104 @@ badmask:
 /*
  * find the first (best) I line to attach.
  */
+
+#define UHConfMatch(x, y, z)	(match((x), (index((x), '@') ? (y) : (y)+(z))))
+
 int	attach_Iline(aClient *cptr, struct hostent *hp, char *sockhost)
 {
 	Reg	aConfItem	*aconf;
-	Reg	char	*hname;
-	Reg	int	i;
-	static	char	uhost[HOSTLEN+USERLEN+3];
-	static	char	fullname[HOSTLEN+1];
+	char	uhost[HOSTLEN+USERLEN+2];
+	char	uaddr[HOSTLEN+USERLEN+2];
+	int	ulen = strlen(cptr->username) + 1; /* for '@' */
+	int	retval = -2; /* EXITC_NOILINE in register_user() */
+
+	/* We fill uaddr and uhost now, before aconf loop. */
+	sprintf(uaddr, "%s@%s", cptr->username, sockhost);
+	if (hp)
+	{
+		char	fullname[HOSTLEN+1];
+
+		/* If not for add_local_domain, I wouldn't need this
+		** fullname. Can't we add_local_domain somewhere in
+		** dns code? --B. */
+		strncpyzt(fullname, hp->h_name, sizeof(fullname));
+		add_local_domain(fullname, HOSTLEN - strlen(fullname));
+		Debug((DEBUG_DNS, "a_il: %s->%s", sockhost, fullname));
+		sprintf(uhost, "%s@%s", cptr->username, fullname);
+	}
+	/* all uses of uhost are guarded by if (hp), so no need to zero it. */
 
 	for (aconf = conf; aconf; aconf = aconf->next)
-	    {
-		if ((aconf->status != CONF_CLIENT) &&
-		    (aconf->status != CONF_RCLIENT))
+	{
+		if ((aconf->status != CONF_CLIENT))
+		{
 			continue;
+		}
 		if (aconf->port && aconf->port != cptr->acpt->port)
+		{
 			continue;
+		}
+		/* aconf->name can be NULL with wrong I:line in the config
+		** (without all required fields). If aconf->host can be NULL,
+		** I don't know. Anyway, this is an error! --B. */
 		if (!aconf->host || !aconf->name)
-			goto attach_iline;
-		if (hp)
-			for (i = 0, hname = hp->h_name; hname;
-			     hname = hp->h_aliases[i++])
-			    {
-				strncpyzt(fullname, hname,
-					sizeof(fullname));
-				add_local_domain(fullname,
-						 HOSTLEN - strlen(fullname));
-				Debug((DEBUG_DNS, "a_il: %s->%s",
-				      sockhost, fullname));
-				if (index(aconf->name, '@'))
-				    {
-					(void)strcpy(uhost, cptr->username);
-					(void)strcat(uhost, "@");
-				    }
-				else
-					*uhost = '\0';
-				(void)strncat(uhost, fullname,
-					sizeof(uhost) - strlen(uhost));
-				if (!match(aconf->name, uhost))
-					goto attach_iline;
-			    }
-
-		if (index(aconf->host, '@'))
-		    {
-			strncpyzt(uhost, cptr->username, sizeof(uhost));
-			(void)strcat(uhost, "@");
-		    }
-		else
-			*uhost = '\0';
-		(void)strncat(uhost, sockhost, sizeof(uhost) - strlen(uhost));
-		if (strchr(aconf->host, '/'))		/* 1.2.3.0/24 */
-		    {
-			if (match_ipmask(aconf->host, cptr, 1))
-				continue;
-                } else if (match(aconf->host, uhost))	/* 1.2.3.* */
+		{
+			/* Try another I:line. */
 			continue;
-		if (*aconf->name == '\0' && hp)
-		    {
-			strncpyzt(uhost, hp->h_name, sizeof(uhost));
-			add_local_domain(uhost, sizeof(uhost) - strlen(uhost));
-		    }
-attach_iline:
+		}
+
+		/* If anything in aconf->name... */
+		if (*aconf->name)
+		{
+			int	namematched = 0;
+
+			if (hp)
+			{
+				if (!UHConfMatch(aconf->name, uhost, ulen))
+				{
+					namematched = 1;
+				}
+			}
+			/* Note: here we could do else (!hp) and try to
+			** check if aconf->name is '*' or '*@*' and
+			** if so, allow the client. But not doing so
+			** gives us nice opportunity to distinguish
+			** between '*' in aconf->name (requires DNS)
+			** and empty aconf->name (matches any). --B. */
+
+			/* Require name to match before checking addr fields. */
+			if (namematched == 0)
+			{
+				/* Try another I:line. */
+				continue;
+			}
+		} /* else empty aconf->name, match any hostname. */
+
+		if (*aconf->host)
+		{
+			if (strchr(aconf->host, '/'))	/* 1.2.3.0/24 */
+			{
+				
+				/* match_ipmask takes care of checking
+				** possible username if aconf->host has '@' */
+				if (match_ipmask(aconf->host, cptr, 1))
+				{
+					/* Try another I:line. */
+					continue;
+				}
+			}
+			else	/* 1.2.3.* */
+			{
+				if (UHConfMatch(aconf->host, uaddr, ulen))
+				{
+					/* Try another I:line. */
+					continue;
+				}
+			}
+		} /* else empty aconf->host, match any ipaddr */
+
+		/* Password check, if I:line has it. If 'F' flag, try another
+		** I:line, otherwise bail out and reject client. */
 		if (!BadPtr(aconf->passwd) &&
 			!StrEq(cptr->passwd, aconf->passwd))
 		{
@@ -315,40 +365,40 @@ attach_iline:
 			{
 				sendto_one(cptr, replies[ERR_PASSWDMISMATCH],
 					ME, BadTo(cptr->name));
-				return -8;
+				retval = -8; /* EXITC_BADPASS */
+				break;
 			}
 		}
 
-		if (aconf->status & CONF_RCLIENT)
+		/* Various cases of +r. */
+		if (IsConfRestricted(aconf) ||
+			(!hp && IsConfRNoDNS(aconf)) ||
+			(!(cptr->flags & FLAGS_GOTID) && IsConfRNoIdent(aconf)))
 		{
 			SetRestricted(cptr);
 		}
-		
-		if (IsConfRestricted(aconf))
-		{
-			SetRestricted(cptr);
-		}
-		
-		if (!hp && IsConfRNoDNS(aconf))
-		{
-			SetRestricted(cptr);
-		}
-		
 		if (IsConfKlineExempt(aconf))
 		{
 			SetKlineExempt(cptr);
 		}
-		if (!(cptr->flags & FLAGS_GOTID) && IsConfRNoIdent(aconf))
+
+		/* Copy uhost (hostname) over sockhost, if conf flag permits. */
+		if (hp && !IsConfNoResolve(aconf))
 		{
-			SetRestricted(cptr);
+			get_sockhost(cptr, uhost+ulen);
 		}
-		get_sockhost(cptr, uhost);
-		if ((i = attach_conf(cptr, aconf)) < -1)
+		/* Note that attach_conf() should not return -2. */
+		if ((retval = attach_conf(cptr, aconf)) < -1)
+		{
 			find_bounce(cptr, ConfClass(aconf), -1);
-		return i;
-	    }
-	find_bounce(cptr, 0, -2);
-	return -2; /* used in register_user() */
+		}
+		break;
+	}
+	if (retval == -2)
+	{
+		find_bounce(cptr, 0, -2);
+	}
+	return retval;
 }
 
 /*
@@ -447,6 +497,7 @@ static	int	is_attached(aConfItem *aconf, aClient *cptr)
 **	client (this is the one which used in accepting the
 **	connection). Note, that this automaticly changes the
 **	attachment if there was an old one...
+**	Non-zero return value is used in register_user().
 */
 int	attach_conf(aClient *cptr, aConfItem *aconf)
 {
@@ -455,16 +506,15 @@ int	attach_conf(aClient *cptr, aConfItem *aconf)
 	if (is_attached(aconf, cptr))
 		return 1;
 	if (IsIllegal(aconf))
-		return -1;
-	if ((aconf->status & (CONF_LOCOP | CONF_OPERATOR | CONF_CLIENT |
-			      CONF_RCLIENT)))
+		return -1; /* EXITC_FAILURE, hmm */
+	if ((aconf->status & (CONF_LOCOP | CONF_OPERATOR | CONF_CLIENT )))
 	    {
 		if (aconf->clients >= ConfMaxLinks(aconf) &&
 		    ConfMaxLinks(aconf) > 0)
-			return -3;    /* Use this for printing error message */
+			return -3;    /* EXITC_YLINEMAX */
 	    }
 
-	if ((aconf->status & (CONF_CLIENT | CONF_RCLIENT)))
+	if ((aconf->status & CONF_CLIENT))
 	{
 		int hcnt = 0, ucnt = 0;
 		int ghcnt = 0, gucnt = 0;
@@ -507,23 +557,23 @@ int	attach_conf(aClient *cptr, aConfItem *aconf)
 					if (ConfMaxUHLocal(aconf) > 0 &&
 					    ucnt >= ConfMaxUHLocal(aconf))
 					{
-						return -5;
+						return -5; /* EXITC_LUHMAX */
 					}
 	
 					if (ConfMaxHLocal(aconf) > 0 &&
 					    hcnt >= ConfMaxHLocal(aconf))
 					{
-						return -4;
+						return -4; /* EXITC_LHMAX */
 					}
 					if (ConfMaxUHGlobal(aconf) > 0 &&
 					    gucnt >= ConfMaxUHGlobal(aconf))
 					{
-						return -7;
+						return -7; /* EXITC_GUHMAX */
 					}
 					if (ConfMaxHGlobal(aconf) > 0 &&
 					     ghcnt >= ConfMaxHGlobal(aconf))
 					{
-						return -6;
+						return -6; /* EXITC_GHMAX */
 					}
 				}
 			}
@@ -903,7 +953,7 @@ int	rehash(aClient *cptr, aClient *sptr, int sig)
 			** that it will be deleted when the last client
 			** exits...
 			*/
-			if (!(tmp2->status & (CONF_LISTEN_PORT|CONF_CLIENT|CONF_RCLIENT)))
+			if (!(tmp2->status & (CONF_LISTEN_PORT|CONF_CLIENT)))
 			    {
 				*tmp = tmp2->next;
 				tmp2->next = NULL;
@@ -1012,7 +1062,7 @@ int	openconf(void)
 		 * goes out with report_error.  Could be dangerous,
 		 * two servers running with the same fd's >:-) -avalon
 		 */
-		(void)execlp("m4", "m4", IRCDM4_PATH, configfile, 0);
+		(void)execlp(M4_PATH, "m4", IRCDM4_PATH, configfile, 0);
 		if (serverbooting)
 		{
 			fprintf(stderr,"Fatal Error: Error executing m4 (%s)",
@@ -1214,12 +1264,10 @@ int 	initconf(int opt)
 			case 'h':
 				aconf->status = CONF_HUB;
 				break;
-			case 'I': /* Just plain normal irc client trying  */
-			          /* to connect me */
-				aconf->status = CONF_CLIENT;
-				break;
 			case 'i' : /* Restricted client */
-				aconf->status = CONF_RCLIENT;
+				aconf->flags |= CFLAG_RESTRICTED;
+			case 'I':
+				aconf->status = CONF_CLIENT;
 				break;
 			case 'K': /* Kill user line on irc.conf           */
 				aconf->status = CONF_KILL;
@@ -1285,7 +1333,7 @@ int 	initconf(int opt)
 #ifdef	INET6
 			if (aconf->status & 
 				(CONF_CONNECT_SERVER|CONF_ZCONNECT_SERVER
-				|CONF_CLIENT|CONF_RCLIENT|CONF_KILL
+				|CONF_CLIENT|CONF_KILL
 				|CONF_OTHERKILL|CONF_NOCONNECT_SERVER
 				|CONF_OPERATOR|CONF_LOCOP|CONF_LISTEN_PORT
 				|CONF_SERVICE))
@@ -1359,7 +1407,7 @@ int 	initconf(int opt)
 			if (MaxLinks(Class(aconf)) < 0)
 				Class(aconf) = find_class(0);
 		    }
-		if (aconf->status & (CONF_LISTEN_PORT|CONF_CLIENT|CONF_RCLIENT))
+		if (aconf->status & (CONF_LISTEN_PORT|CONF_CLIENT))
 		    {
 			aConfItem *bconf;
 			if ((bconf = find_conf_entry(aconf, aconf->status)))
@@ -1379,16 +1427,12 @@ int 	initconf(int opt)
 				 aconf->status == CONF_LISTEN_PORT)
 				(void)add_listener(aconf);
 		    }
-		if ((aconf->status & (CONF_CLIENT|CONF_RCLIENT)))
+		if ((aconf->status & CONF_CLIENT))
 		{
 			/* Parse I-line flags */
 			if (tmp3)
 			{
-				aconf->flags = iline_flags_parse(tmp3);
-			}
-			else
-			{
-				aconf->flags = 0L;
+				aconf->flags |= iline_flags_parse(tmp3);
 			}
 		}
 		

@@ -17,7 +17,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: hash.c,v 1.34 2003/10/22 19:10:14 jv Exp $";
+static  char rcsid[] = "@(#)$Id: hash.c,v 1.38 2004/03/05 23:38:12 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -114,8 +114,8 @@ static	u_int	hash_uid(char *uid, u_int *store)
 
 	for (; (ch = *uid); uid++)
 	{
-		hash <<= 1;
-		hash += hashtab[(int)ch];
+		hash <<= 4;
+		hash ^= hashtab[(int)ch];
 	}
 	if (store)
 	{
@@ -135,7 +135,7 @@ static	u_int	hash_sid(char *sid, u_int *store)
 
 	for (; (ch = *sid); sid++)
 	{
-		hash <<= 1;
+		hash <<= 4;
 		hash += hashtab[(int)ch];
 	}
 	if (store)
@@ -322,8 +322,7 @@ void	inithashtables()
 	Reg int i;
 
 	clear_client_hash_table((_HASHSIZE) ? _HASHSIZE : HASHSIZE);
-	_UIDSIZE = _HASHSIZE;
-	clear_uid_hash_table(_UIDSIZE);
+	clear_uid_hash_table((_UIDSIZE) ? _UIDSIZE : UIDSIZE);
 	clear_channel_hash_table((_CHANNELHASHSIZE) ? _CHANNELHASHSIZE
                                  : CHANNELHASHSIZE);
 	clear_server_hash_table((_SERVERSIZE) ? _SERVERSIZE : SERVERSIZE);
@@ -419,7 +418,7 @@ static	void	bigger_hash_table(int *size, aHashEntry *table, int new)
 			if (cptr->user)
 				cptr->user->uhnext = NULL;
 		for (cptr = client; cptr; cptr = cptr->next)
-			if (cptr->user)
+			if (HasUID(cptr))
 				add_to_uid_hash_table(cptr->user->uid, cptr);
 		MyFree(otab);
 	    }

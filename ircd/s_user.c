@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.177 2004/02/22 19:27:49 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.187 2004/03/06 00:01:35 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -250,7 +250,7 @@ int	do_nick_name(char *nick, int server)
 	if (isdigit(*nick) && !server) /* first character in [0..9] */
 		return 0;
 
-	if (!strcasecmp(nick, "anonymous"))
+	if (strcasecmp(nick, "anonymous") == 0)
 		return 0;
 
 	for (ch = nick; *ch && (ch - nick) < (server?NICKLEN:ONICKLEN); ch++)
@@ -557,9 +557,24 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 
 		aconf = sptr->confs->value.aconf;
 		if (IsUnixSocket(sptr))
+		{
 			strncpyzt(user->host, me.sockhost, HOSTLEN+1);
+		}
 		else
-			strncpyzt(user->host, sptr->sockhost, HOSTLEN+1);
+		{
+			if (IsConfNoResolveMatch(aconf))
+			{
+				/* sockhost contains resolved hostname (if any),
+				 * which we'll use in match_modeid to match. */
+				strncpyzt(user->host, user->sip,
+					HOSTLEN+1);
+			}
+			else
+			{
+				strncpyzt(user->host, sptr->sockhost,
+					HOSTLEN+1);
+			}
+		}
 
 		/* hmpf, why that? --B. */
 		bzero(sptr->passwd, sizeof(sptr->passwd));
@@ -659,6 +674,7 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		{
 			strncpyzt(nick, sptr->user->uid, UIDLEN + 1);
 			(void)strcpy(sptr->name, nick);
+			(void)add_to_client_hash_table(nick, sptr);
 		}
 		sprintf(buf, "%s!%s@%s", nick, user->username, user->host);
 		add_to_uid_hash_table(sptr->user->uid, sptr);
@@ -685,6 +701,19 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		(void)m_motd(sptr, sptr, 1, parv);
 		if (IsRestricted(sptr))
 			sendto_one(sptr, replies[ERR_RESTRICTED], ME, BadTo(nick));
+		if (IsConfNoResolve(sptr->confs->value.aconf))
+		{
+			sendto_one(sptr, ":%s NOTICE %s :Due to an administrative"
+				" decision, your hostname is not shown.",
+				ME, nick);
+		}
+		else if (IsConfNoResolveMatch(sptr->confs->value.aconf))
+		{
+			sendto_one(sptr, ":%s NOTICE %s :Due to an administrative"
+				" decision, your hostname is not shown,"
+				" but still matches channel MODEs.",
+				ME, nick);
+		}
 		send_umode(sptr, sptr, 0, ALL_UMODES, buf);
 		nextping = timeofday;
 		
@@ -778,7 +807,8 @@ int	m_nick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	    }
 	if (MyConnect(sptr) && (s = (char *)index(parv[1], '~')))
 		*s = '\0';
-	strncpyzt(nick, parv[1], NICKLEN+1);
+	/* local clients' nick size can be ONICKLEN max */
+	strncpyzt(nick, parv[1], (MyConnect(sptr) ? ONICKLEN : NICKLEN)+1);
 
 	if (cptr->serv)	/* we later use 'IsServer(sptr), why not here? --B. */
 	{
@@ -834,13 +864,6 @@ badparamcountkills:
 	if (MyConnect(sptr) && IsUnknown(sptr)
 		&& nick[0] == '0' && nick[1] == '\0')
 	{
-		if (!sptr->user)
-		{
-			/* Sorry, too much fuss with client hash tables
-			** about making "NICK 0" work before USER --B. */
-			sendto_one(sptr, replies[ERR_NOTREGISTERED], ME, "*");
-			return 1;
-		}
 		/* Allow registering with nick "0", this will be
 		** overwritten in register_user() */
 		goto nickkilldone;
@@ -1071,6 +1094,7 @@ badparamcountkills:
 		save_user(NULL, sptr, path);
 
 		/* Everything is done */
+		ircstp->is_save++;
 		return 2;
 	}
 
@@ -1195,6 +1219,7 @@ nickkilldone:
 		/* This had to be copied here to avoid problems.. */
 		(void)strcpy(sptr->name, nick);
 		if (sptr->user)
+		{
 			/*
 			** USER already received, now we have NICK.
 			** *NOTE* For servers "NICK" *must* precede the
@@ -1207,9 +1232,31 @@ nickkilldone:
 					  sptr->user->username)
 			    == FLUSH_BUFFER)
 				return FLUSH_BUFFER;
+		}
+		/* If we returned from register_user, then the user registered
+		** and sptr->name is not "0" anymore; add_to_client_hash_table
+		** (few lines down) would be called second time for that client
+		** because register_user does that for "NICK 0" after copying
+		** UID onto client nick.
+		** OTOH, if no USER was yet received, isdigit is true only for
+		** client trying to register with "NICK 0". As we would have
+		** returned without adding "0" to client hash table anyway,
+		** we can safely return here. --B. */
+		if (isdigit(sptr->name[0]))
+		{
+			return 3;
+		}
 	    }
-	/* Finally set new nick name. */
-	(void)add_to_client_hash_table(nick, sptr);
+	/* Registered client doing "NICK 0" already has UID in sptr->name.
+	** If sptr->name is "0" here, it means there was no "USER" (thanks
+	** to that fiction's "isdigit" check above after register_user), so
+	** do not add_to_client_hash_table with nick "0", let register_user
+	** fill in UID first and add that to client hash table. --B. */
+	if (sptr->name[0] != '0' || sptr->name[1] != '\0')
+	{
+		/* Finally set new nick name. */
+		(void)add_to_client_hash_table(nick, sptr);
+	}
 	if (lp)
 		return 15;
 	else
@@ -1251,8 +1298,7 @@ int	m_unick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	 * creation) then reject it. If from a server and we reject it,
 	 * and KILL it. -avalon 4/4/92
 	 */
-	do_nick_name(nick, 1);
-	if (strcmp(nick, parv[1]))
+	if (do_nick_name(nick, 1) == 0 || strcmp(nick, parv[1]))
 	{
 		sendto_one(sptr, replies[ERR_ERRONEOUSNICKNAME], ME, BadTo(parv[0]),
 			parv[1]);
@@ -1337,6 +1383,7 @@ int	m_unick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 			/* Just introduce him with the uid to the rest. */
 			strcpy(nick, uid);
+			ircstp->is_save++;
 		    }
 		else
 		    {
@@ -2435,6 +2482,14 @@ user_finish:
 	return 2;
 }
 
+/* Fear www proxy abusers... aliased to QUIT, muhaha --B. */
+int	m_post(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+	sendto_flag(SCH_LOCAL, "Denied http-post connection from %s.",
+		cptr->sockhost);
+	return m_quit(cptr, sptr, parc, parv);
+}
+
 /*
 ** m_quit
 **	parv[0] = sender prefix
@@ -3506,6 +3561,7 @@ int	m_save(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (acptr && strcasecmp(acptr->name, acptr->user->uid))
 	{
 		save_user(cptr, acptr, path);
+		ircstp->is_save++;
 	}
 
 	return 0;

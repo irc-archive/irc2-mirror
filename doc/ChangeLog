@@ -1,3 +1,62 @@
+2004-03-05  Piotr Kucharski
+
+	* res.c/proc_answer(), get_res(): fix CNAMEs resolving; now we use the
+	  the name that client IP has "IN PTR" to, not the name that "IN A" 
+	  points to client IP (patch from BitKoenig).
+	* list.c/make_conf(): initialize flags to 0L.
+	* struct_def.h, chkconf.c, s_conf.c, s_serv.c: got rid of CONF_RCLIENT
+	  internally -- it's CONF_CLIENT with 'R' flag set.
+	* s_conf.c/iline_flags_to_string(): return '-' when no flags.
+	* s_serv.c/report_configured_links(): iline_flags_to_string() now
+	  returns '-' for no flags, no need to check it here.
+	* ircd.c/ircd_readtune(), ircd_writetune(), hash.c/inithashtables(),
+	  hash_def.h: introduce UIDSIZE (instead of using HASHSIZE).
+	* channel.c/m_kick(): don't send KICKs one by one to other servers,
+	  use one KICK per channel; also put UIDs where appropriate.
+	* struct_def.h, chkconf.c, s_conf.c: CONF_NORESOLVEMATCH ('M') I:line
+	  flag: does not show clients hostname, but allows it to match in beIR.
+	* s_user.c/register_user(): use IP for user->host, if 'M' I: flag.
+	* channel.c/match_modeid(): try to match sockhost, if 'M' I: flag.
+	* hash.c/hash_uid(): little, but still improvement.
+	* s_user.c/register_user(): send a notice about disabled host resolving.
+
+2004-03-04  Piotr Kucharski
+
+	* s_conf.c/attach_Iline(): rewritten, now it requires both addr and name
+	  to match (if you want old behaviour of "put x in name to disable 
+	  clients resolve", just use 'N' flag).
+	* s_conf.c/attach_Iline(): 'N' flag working now.
+	* s_conf.c/attach_Iline(): moved strcpy/strcat out of aconf loop, that
+	  should make it significantly faster.
+	* s_conf.c/attach_Iline(): no longer match aconf->name to each alias
+	  of a host, use only its hostname.
+
+2004-02-29  Piotr Kucharski
+
+	* s_serv.c/m_squit(): squit without comment bug (noted by Marcin Krol).
+	* hash.c/bigger_hash_table(): uid hash table bug (endless loop).
+	* s_user.c/m_nick(): another try, this time "NICK 0" seems to work
+	  before USER (with help from fiction).
+	* s_user.c/register_user(): add_to_client_hash_table() when registering
+	  after "NICK 0".
+	* struct_def.h, s_misc.c, s_user.c: is_save statistics.
+	* channel.c/send_channel_members(): SID as source if ST_UID server.
+	* channel.c/m_join(): not only send SID as source where appropriate,
+	  but also client joining as UID, if it has one.
+
+2004-02-27  Piotr Kucharski
+
+	* s_bsd.c/add_unixconnection(): return value.
+	* s_bsd.c/read_listener(): send notice on client connect.
+	* s_user.c/m_unick(): check return value of do_nick_name().
+	* s_user.c/m_nick(): don't copy more than ONICKLEN to nick for local
+	  clients.
+
+2004-02-24  Piotr Kucharski
+
+	* parse.c, msg_def.h: add "POST" command being alias for "QUIT"
+	  to cut w3cache abuse (idea from ircu).
+
 2004-02-23  Piotr Kucharski
 
 	* s_serv.c/m_squit(): do not send compatibility sids in SQUIT.
