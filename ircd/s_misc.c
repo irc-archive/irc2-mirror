@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_misc.c,v 1.91 2004/06/29 23:56:59 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_misc.c,v 1.94 2004/08/04 14:04:32 jv Exp $";
 #endif
 
 #include "os.h"
@@ -778,6 +778,8 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 						  sptr->from);
 		del_from_sid_hash_table(sptr->serv);
 		remove_server_from_tree(sptr);
+		/* remove server from svrtop */
+		unregister_server(sptr);
 	}
 	else if (!IsPerson(sptr) && !IsService(sptr))
 	{
@@ -912,7 +914,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 
 			/* Add user to history */
 #ifndef BETTER_NDELAY
-			add_history(sptr, (sptr->flags & FLAGS_QUIT) ? 
+			add_history(sptr, (sptr->flags & FLAGS_QUIT) ?
 				    &me : NULL);
 #else
 			add_history(sptr, (sptr == cptr) ? &me : NULL);
@@ -1132,6 +1134,7 @@ void	read_motd(char *filename)
 	    }
 	if (Sb.st_mtime <= motd_mtime)
 	{
+		close(fd);
 		return;
 	}
 	motd_mtime = Sb.st_mtime;

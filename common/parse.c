@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: parse.c,v 1.77 2004/06/24 15:44:51 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: parse.c,v 1.79 2004/08/13 01:23:03 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -103,7 +103,7 @@ struct Message msgtab[] = {
 { "TKLINE",   3, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_tkline, m_tkline, m_unreg } },
 { "UNTKLINE", 1, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_untkline, m_untkline, m_unreg } },
 #endif
-{ NULL,       0,    0, 0, 0, 0L,   NULL, NULL, NULL, NULL, NULL }
+{ NULL,       0,    0, 0, 0, 0L, { NULL, NULL, NULL, NULL, NULL } }
 };
 
 /*
@@ -680,7 +680,8 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 		mptr->bytes += i;
 		if (!(IsServer(cptr) || IsService(cptr)))
 		    {	/* Flood control partly migrated into penalty */
-			if (bootopt & BOOT_PROT)
+			if ((bootopt & BOOT_PROT) &&
+				is_allowed(cptr, ACL_NOPENALTY))
 				cptr->since += (1 + i / 100);
 			else
 				cptr->since = timeofday;
@@ -785,7 +786,8 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
         ** Add penalty score for sucessfully parsed command if issued by
 	** a LOCAL user client.
 	*/
-	if ((ret > 0) && IsRegisteredUser(cptr) && (bootopt & BOOT_PROT))
+	if ((ret > 0) && IsRegisteredUser(cptr) && (bootopt & BOOT_PROT)
+		&& is_allowed(cptr, ACL_NOPENALTY))
 	    {
 		cptr->since += ret;
 /* only to lurk

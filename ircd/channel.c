@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.218 2004/06/30 13:04:21 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.225 2004/08/13 21:36:12 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -281,7 +281,7 @@ static	int	del_modeid(int type, aChannel *chptr, aListItem *modeid)
         for (mode = &(chptr->mlist); *mode; mode = &((*mode)->next))
 	{
 		if (type == (*mode)->flags &&
-			modeid == NULL ? 1 : BanExact(modeid, (*mode)->value.alist))
+			(modeid == NULL ? 1 : BanExact(modeid, (*mode)->value.alist)))
 		{
 			tmp = *mode;
 			*mode = tmp->next;
@@ -348,7 +348,22 @@ static	Link	*match_modeid(int type, aClient *cptr, aChannel *chptr)
 			/* perhaps we could relax it and check remotes too? */
 			if (MyConnect(cptr))
 			{
-				if (IsConfNoResolveMatch(cptr->confs->value.aconf))
+				Link *acf = cptr->confs;
+
+				/* scroll acf to I:line */
+				if (IsAnOper(cptr))
+				{
+					acf = acf->next;
+				/* above is faster but will fail if we introduce
+				** something that will attach another conf for
+				** client -- the following will have to be used:
+					for (; acf; acf = acf->next)
+					if (acf->value.aconf->status & CONF_CLIENT)
+					break;
+				*/
+				}
+
+				if (IsConfNoResolveMatch(acf->value.aconf))
 				{
 					/* user->host contains IP and was just
 					 * checked; try sockhost, it may have
@@ -1599,6 +1614,10 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				if ((host = rindex(user ? user : cp, '@')))
 					*host++ = '\0';
 				lp->value.alist = make_bei(cp, user, host);
+				if (user)
+					user[-1] = '!';
+				if (host)
+					host[-1] = '@';
 				break;
 			case MODE_KEY :
 				c = 'k';
@@ -1733,7 +1752,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 							LDELAYCHASETIMELIMIT;
 					}
 					/* XXX: fix this in 2.11.1 */
-					if (MyClient(sptr))
+					if (MyConnect(sptr) && !IsAnOper(sptr))
 					{
 						break;
 					}
@@ -2370,8 +2389,7 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				sendto_channel_butserv(chptr, sptr,
 						PartFmt,
 						parv[0], chptr->chname,
-						IsAnonymous(chptr) ? "None" :
-						(key ? key : parv[0]));
+						key ? key : "");
 				remove_user_from_channel(sptr, chptr);
 			    }
 			sendto_match_servs(NULL, cptr, ":%s JOIN 0 :%s",
@@ -3040,7 +3058,29 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				}
 				strcat(obuf, who->name);
 
-				remove_user_from_channel(who,chptr);
+				/* kicking last one out may destroy chptr */
+				if (chptr->users == 1)
+				{
+					if (*nbuf)
+					{
+						sendto_match_servs_v(chptr, 
+							cptr, SV_UID,
+							":%s KICK %s %s :%s",
+							sender, name,
+							nbuf, comment);
+						nbuf[0] = '\0';
+					}
+					if (*obuf)
+					{
+						sendto_match_servs_notv(chptr,
+							cptr, SV_UID,
+							":%s KICK %s %s :%s",
+							sptr->name, name,
+							obuf, comment);
+						obuf[0] = '\0';
+					}
+				}
+				remove_user_from_channel(who, chptr);
 				penalty += 2;
 				if (MyPerson(sptr) &&
 					/* penalties, obvious */
@@ -3193,6 +3233,11 @@ int	m_invite(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (*parv[2] == '&' && !MyClient(acptr))
 		return 1;
 	chptr = find_channel(parv[2], NullChn);
+	if (!chptr && parv[2][0] == '!')
+	{
+		/* Try to find !channel using shortname */
+		chptr = hash_find_channels(parv[2] + 1, NULL);
+	}
 
 	if (!chptr)
 	    {

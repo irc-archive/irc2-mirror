@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.221 2004/06/30 20:05:30 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.229 2004/08/13 01:23:04 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -37,7 +37,6 @@ static	int	check_link (aClient *);
 static	int	get_version (char *, char *);
 static	void	trace_one (aClient *, aClient *);
 static	void	report_listeners(aClient *, char *);
-static	void	report_class_usage(aClient *, char *);
 static	void	count_servers_users(aClient *, int *, int *);
 const	char	*check_servername_errors[3][2] = {
 	{ "too long", "Bogus servername - too long" },
@@ -190,8 +189,18 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			/* remote server is closing it's link */
 			rsquit = 1;
 		}
-		acptr = cptr;
-		server = cptr->sockhost;
+		if (IsServer(cptr))
+		{
+			acptr = cptr;
+			server = cptr->sockhost;
+		}
+		else
+		{
+			sendto_one(cptr, ":%s NOTICE %s :You can QUIT, "
+				"but you cannot SQUIT me.",
+				ME, cptr->name);
+			return 1;
+		}
 	}
 
 	/*
@@ -603,6 +612,7 @@ int    m_smask(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 	/* We add this server to client list, but *only* to SID hash. */
 	add_client_to_list(acptr);
+	register_server(acptr);
 
 	if (*parv[1] == '$')
 	{
@@ -898,6 +908,7 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		SetServer(acptr);
 		istat.is_serv++;
 		add_client_to_list(acptr);
+		register_server(acptr);
 		add_server_to_tree(acptr);
 		(void)add_to_client_hash_table(acptr->name, acptr);
 		if (ST_NOTUID(acptr))
@@ -1325,6 +1336,7 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 	}
 
 	cptr->flags |= FLAGS_CBURST;
+	register_server(cptr);
 	add_server_to_tree(cptr);
 	/* why no add_client_to_list() here? --B. */
 	if (ST_NOTUID(cptr))
@@ -1744,9 +1756,6 @@ static	void	report_myservers(aClient *sptr, char *to)
 	int i;
 	int timeconnected;
 	aClient *acptr;
-#ifdef	HUB
-	aServer *asptr;
-#endif
 	int users, servers;
 
 	for (i = fdas.highest; i >= 0; i--)
@@ -2112,8 +2121,8 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			    {
 				if (!(acptr = local[i]))
 					continue;
-				if (IsPerson(acptr) && !(MyConnect(sptr)
-				    && IsAnOper(sptr)) && acptr != sptr)
+				if (IsPerson(acptr) && (!MyConnect(sptr)
+				    || is_allowed(sptr, ACL_TRACE)) && acptr != sptr)
 					continue;
 				if (wilds && match(cm, acptr->name))
 					continue;
@@ -2906,7 +2915,8 @@ int	m_trace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 						     * trace is person */
 			    && !(a2cptr == sptr)    /* but not user self */
 			    && !(IsAnOper(a2cptr))  /* nor some oper */
-			    && !(IsAnOper(sptr) && MyConnect(sptr))
+			    && (!MyConnect(sptr) ||
+				is_allowed(sptr, ACL_TRACE))
 						    /* nor it is my oper
 						     * doing trace */
 			   )
@@ -3757,14 +3767,9 @@ static void report_listeners(aClient *sptr, char *to)
 {
 	aConfItem *tmp;
 	aClient	*acptr;
-	int	i;
 
-	for (i = 0; i <= highest_fd; i++)
+	for (acptr = ListenerLL; acptr; acptr = acptr->next)
 	{
-		if (!(acptr = local[i]))
-			continue;
-		if (!IsListener(acptr))
-			continue;
 		tmp = acptr->confs->value.aconf;
 		sendto_one(sptr, ":%s %d %s %d %s %s %u %lu %llu %lu %llu %u"
 				 " %u %s",
@@ -3776,6 +3781,7 @@ static void report_listeners(aClient *sptr, char *to)
 			acptr->receiveM, acptr->receiveB,
 			timeofday - acptr->firsttime,
 			acptr->confs->value.aconf->clients,
+			IsIllegal(acptr->confs->value.aconf) ? "dead" :
 			IsListenerInactive(acptr) ? "inactive" : "active" );
 	}
 }
@@ -3789,5 +3795,47 @@ int	m_encap(aClient *cptr, aClient *sptr, int parc, char *parv[])
 /* announces server DIE */
 int	m_sdie(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
+	sendto_serv_v(cptr, SV_UID, ":%s SDIE", sptr->serv->sid);
+	return 0;
+}
+
+/* Register server to the network.
+ *
+ * to be called whenever server associates client struct.
+ * Also registers the server in global svrtop list.
+ */
+int	register_server(aClient *cptr)
+{
+
+	if (svrtop)
+	{
+		svrtop->prevs = cptr->serv;
+		cptr->serv->nexts = svrtop;
+	}
+	svrtop = cptr->serv;
+		
+	return 0;
+}
+
+/* Unregister server from the network.
+ *
+ * to be called when a server loses associated client struct.
+ * Also removes given server from global svrtop list.
+ */
+int	unregister_server(aClient *cptr)
+{
+	if (cptr->serv->nexts)
+		cptr->serv->nexts->prevs = cptr->serv->prevs;
+	
+	if (cptr->serv->prevs)
+		cptr->serv->prevs->nexts = cptr->serv->nexts;
+			
+	if (svrtop == cptr->serv)
+		svrtop = cptr->serv->nexts;
+		
+	cptr->serv->prevs = NULL;
+	cptr->serv->nexts = NULL;
+	cptr->serv->bcptr = NULL;
+	
 	return 0;
 }

@@ -1,5 +1,5 @@
 This is INSTALL.info, produced by makeinfo version 4.6 from
-/tmp/linuxdoc-dir-30467/sgmltmp.INSTALL.info.2.
+/tmp/linuxdoc-dir-2806/sgmltmp.INSTALL.info.2.
 
    \input texinfo
 
@@ -10,7 +10,7 @@ Installing IRC - The Internet Relay Chat Program
 ************************************************
 
      SGML version by Christophe Kalt, updated by Piotr Kucharski
-     $Id: INSTALL.info,v 1.66 2004/07/02 15:22:58 chopin Exp $
+     $Id: INSTALL.info,v 1.68 2004/07/13 23:15:15 chopin Exp $
 
    This document describes how to install, and configure IRC 2.11.0
 
@@ -924,37 +924,43 @@ How to become the IRC administrator on your site
      define privileges of an operator.
         * L - local operator (disables all remote functions)
 
-        * A - enables all flags (except local operator)
+        * P - removes penalty
 
-        * K - allows KILL (local and remote)
+        * p - allows flooding
 
-        * k - allows only local KILL
+        * & - allows joining &CLIENTS
 
-        * S - allows SQUIT (local and remote)
+        * A - enables all flags below
 
-        * s - allows only local SQUIT
+        * C - allows local and remote CONNECT
 
-        * C - allows CONNECT (local and remote)
-
-        * c - allows only local CONNECT
-
-        * l - allows CLOSE
-
-        * h - allows HAZH
-
-        * d - allows DNS
-
-        * r - allows REHASH
-
-        * R - allows RESTART
+        * c - allows local CONNECT
 
         * D - allows DIE
 
+        * d - allows DNS
+
         * e - allows SET
+
+        * h - allows HAZH
+
+        * K - allows local and remote KILL
+
+        * k - allows local KILL
+
+        * l - allows CLOSE
+
+        * R - allows RESTART
+
+        * r - allows REHASH
+
+        * S - allows local and remote SQUIT
+
+        * s - allows local SQUIT
 
         * T - allows TKLINE
 
-        * & - allows joining &CLIENTS
+        * t - enables full TRACE and STATS L
 
      "L" flag cannot be overridden by other flags.  If <Flags> field is
      left empty, no privileges will be granted.
@@ -968,6 +974,10 @@ How to become the IRC administrator on your site
 
 `Note'
      Host NAME accepts IP bitmasks.
+
+`Note'
+     Some privileges may be disabled during compilation time in
+     config.h.
 
 
 
@@ -1768,42 +1778,42 @@ reviewed and forwarded to the appropriate mailing list.
 
 
 Tag Table:
-Node: Top128
-Node: Installing IRC-651
-Node: The configure script876
-Node: Notes for Cygwin32 users3162
-Node: Notes concerning IPv6 support3895
-Node: The config-h file4326
-Node: DEBUGMODE4872
-Node: CHROOTDIR5449
-Node: ENABLE_SUMMON ENABLE_USERS5818
-Node: NO_DEFAULT_INVISIBLE6329
-Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY6670
-Node: ZIP_LINKS ZIP_LEVEL7309
-Node: SLOW_ACCEPT8337
-Node: CLONE_CHECK8967
-Node: Other #define's9330
-Node: Editing the Makefile and compiling9652
-Node: The ircd-conf file10637
-Node: Machine information13062
-Node: Administrative info15677
-Node: Port connections17828
-Node: Connection Classes19977
-Node: Client connections25104
-Node: Operator priviliges30886
-Node: Excluded accounts34032
-Node: X Excluded accounts37945
-Node: Server connections39235
-Node: Deny auto-connections47865
-Node: Hub connections49434
-Node: Leaf connections50922
-Node: Version limitations53006
-Node: Excluded machines54764
-Node: Service connections56069
-Node: Bounce server57663
-Node: Related resources59524
-Node: Reporting a bug60563
-Node: How to report a bug60820
-Node: Where to send a bug report61831
+Node: Top127
+Node: Installing IRC-650
+Node: The configure script875
+Node: Notes for Cygwin32 users3161
+Node: Notes concerning IPv6 support3894
+Node: The config-h file4325
+Node: DEBUGMODE4871
+Node: CHROOTDIR5448
+Node: ENABLE_SUMMON ENABLE_USERS5817
+Node: NO_DEFAULT_INVISIBLE6328
+Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY6669
+Node: ZIP_LINKS ZIP_LEVEL7308
+Node: SLOW_ACCEPT8336
+Node: CLONE_CHECK8966
+Node: Other #define's9329
+Node: Editing the Makefile and compiling9651
+Node: The ircd-conf file10636
+Node: Machine information13061
+Node: Administrative info15676
+Node: Port connections17827
+Node: Connection Classes19976
+Node: Client connections25103
+Node: Operator priviliges30885
+Node: Excluded accounts34187
+Node: X Excluded accounts38100
+Node: Server connections39390
+Node: Deny auto-connections48020
+Node: Hub connections49589
+Node: Leaf connections51077
+Node: Version limitations53161
+Node: Excluded machines54919
+Node: Service connections56224
+Node: Bounce server57818
+Node: Related resources59679
+Node: Reporting a bug60718
+Node: How to report a bug60975
+Node: Where to send a bug report61986
 
 End Tag Table

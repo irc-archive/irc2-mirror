@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.125 2004/07/02 10:07:17 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.134 2004/08/13 01:23:04 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -259,6 +259,12 @@ char	*oline_flags_to_string(long flags)
 	if (flags & ACL_CLIENTS)
 		*s++ ='&';
 #endif
+	if (flags & ACL_NOPENALTY)
+		*s++ = 'P';
+	if (flags & ACL_CANFLOOD)
+		*s++ = 'p';
+	if (flags & ACL_TRACE)
+		*s++ = 't';
 	if (s == ofsbuf)
 		*s++ = '-';
 	*s++ = '\0';
@@ -275,7 +281,9 @@ long	oline_flags_parse(char *string)
 		switch(*s)
 		{
 		case 'L': tmp |= ACL_LOCOP; break;
-		case 'A': tmp |= (ACL_ALL & ~ACL_LOCOP); break;
+		case 'A': tmp |= (ACL_ALL & 
+			~(ACL_LOCOP|ACL_CLIENTS|ACL_NOPENALTY|ACL_CANFLOOD));
+			break;
 		case 'K': tmp |= ACL_KILL; break;
 		case 'k': tmp |= ACL_KILLLOCAL; break;
 		case 'S': tmp |= ACL_SQUIT; break;
@@ -293,8 +301,41 @@ long	oline_flags_parse(char *string)
 #ifdef CLIENTS_CHANNEL
 		case '&': tmp |= ACL_CLIENTS; break;
 #endif
+		case 'P': tmp |= ACL_NOPENALTY; break;
+		case 'p': tmp |= ACL_CANFLOOD; break;
+		case 't': tmp |= ACL_TRACE; break;
 		}
 	}
+	if (tmp & ACL_LOCOP)
+		tmp &= ~ACL_ALL_REMOTE;
+#ifdef OPER_KILL
+# ifdef LOCAL_KILL_ONLY
+	tmp &= ~ACL_KILLREMOTE;
+# endif
+#else
+	tmp &= ~ACL_KILL;
+#endif
+#ifndef OPER_REHASH
+	tmp &= ~ACL_REHASH;
+#endif
+#ifndef OPER_SQUIT
+	tmp &= ~ACL_SQUIT;
+#endif
+#ifndef OPER_CONNECT
+	tmp &= ~ACL_CONNECT;
+#endif
+#ifndef OPER_RESTART
+	tmp &= ~ACL_RESTART;
+#endif
+#ifndef OPER_DIE
+	tmp &= ~ACL_DIE;
+#endif
+#ifndef OPER_SET
+	tmp &= ~ACL_SET;
+#endif
+#ifndef OPER_TKLINE
+	tmp &= ~ACL_TKLINE;
+#endif
 	return tmp;
 }
 /*
@@ -609,7 +650,7 @@ int	detach_conf(aClient *cptr, aConfItem *aconf)
 					Class(aconf) = NULL;
 				    }
 			     }
-			if (aconf && !--aconf->clients && IsIllegal(aconf))
+			if (aconf && --aconf->clients <= 0 && IsIllegal(aconf))
 			{
 				/* Remove the conf entry from the Conf linked list */
 				for (aconf2 = &conf; (aconf3 = *aconf2); )
@@ -1148,12 +1189,13 @@ int	rehash(aClient *cptr, aClient *sptr, int sig)
 #endif
 	(void) initconf(0);
 	close_listeners();
+	reopen_listeners();
 
 	/*
 	 * Flush *unused* config entries.
 	 */
 	for (tmp = &conf; (tmp2 = *tmp); )
-		if (!(tmp2->status & CONF_ILLEGAL) || tmp2->clients)
+		if (!(tmp2->status & CONF_ILLEGAL) || (tmp2->clients > 0))
 			tmp = &tmp2->next;
 		else
 		{
@@ -1332,7 +1374,7 @@ int 	initconf(int opt)
 	aConfItem *aconf = NULL;
 #if defined(CONFIG_DIRECTIVE_INCLUDE)
 	char	*line;
-	aConfig	*ConfigTop, *p, *p2;
+	aConfig	*ConfigTop, *p;
 #else
 	char	line[512], c[80];
 #endif
@@ -1346,7 +1388,7 @@ int 	initconf(int opt)
 		return -1;
 	    }
 #if defined(CONFIG_DIRECTIVE_INCLUDE)
-	ConfigTop = config_read(fd, 0);
+	ConfigTop = config_read(fd, 0, new_config_file(configfile, NULL, 0));
 	for(p = ConfigTop; p; p = p->next)
 #else
 	(void)dgets(-1, NULL, 0); /* make sure buffer is at empty pos */
@@ -1666,36 +1708,6 @@ int 	initconf(int opt)
 		if (tmp3 && (aconf->status & CONF_OPERATOR))
 		{
 			aconf->flags |= oline_flags_parse(tmp3);
-			if (aconf->flags & ACL_LOCOP)
-				aconf->flags &= ~ACL_ALL_REMOTE;
-#ifdef OPER_KILL
-# ifdef LOCAL_KILL_ONLY
-			aconf->flags &= ~ACL_KILLREMOTE;
-# endif
-#else
-			aconf->flags &= ~ACL_KILL;
-#endif
-#ifndef OPER_REHASH
-			aconf->flags &= ~ACL_REHASH;
-#endif
-#ifndef OPER_SQUIT
-			aconf->flags &= ~ACL_SQUIT;
-#endif
-#ifndef OPER_CONNECT
-			aconf->flags &= ~ACL_CONNECT;
-#endif
-#ifndef OPER_RESTART
-			aconf->flags &= ~ACL_RESTART;
-#endif
-#ifndef OPER_DIE
-			aconf->flags &= ~ACL_DIE;
-#endif
-#ifndef OPER_SET
-			aconf->flags &= ~ACL_SET;
-#endif
-#ifndef OPER_TKLINE
-			aconf->flags &= ~ACL_TKLINE;
-#endif
 		}
 		if (aconf->status & CONF_SERVER_MASK)
 		    {
@@ -1866,10 +1878,10 @@ int	find_kill(aClient *cptr, int timedklines, char **comment)
 {
 #ifdef TIMEDKLINES
 	static char	reply[256];
+	int		now = 0;
 #endif
 	char		*host, *ip, *name, *ident, *check;
 	aConfItem	*tmp;
-	int		now = 0;
 #ifdef TKLINE
 	int		tklines = 1;
 #endif
@@ -2269,7 +2281,6 @@ int	m_tkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 {
 	int	time, status = CONF_TKILL;
 	char	*user, *host, *reason, *s;
-	aConfItem	*tmp;
 
 	if (is_allowed(sptr, ACL_TKLINE))
 		return m_nopriv(cptr, sptr, parc, parv);
@@ -2303,7 +2314,7 @@ int	m_tkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 	if (*user == '=')
 	{
 		status = CONF_TOTHERKILL;
-		*user++;
+		user++;
 	}
 	*host++ = '\0';
 	reason = parv[3];
@@ -2364,9 +2375,9 @@ void do_tkline(char *who, int time, char *user, char *host, char *reason, int st
 			aconf->next = tkconf;
 		}
 		tkconf = aconf;
-		sendto_flag(SCH_NOTICE, "TKLINE %s@%s (%d) by %s",
-			aconf->name, aconf->host, time, who);
 	}
+	sendto_flag(SCH_NOTICE, "TKLINE %s@%s (%d) by %s",
+		aconf->name, aconf->host, time, who);
 
 	/* get rid of tklined clients */
 	for (i = highest_fd; i >= 0; i--)
@@ -2480,7 +2491,7 @@ int	m_untkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 	}
 	if (*user == '=')
 	{
-		*user++;
+		user++;
 	}
 	*host++ = '\0';
 
@@ -2516,7 +2527,7 @@ time_t	tkline_expire(int all)
 	while ((tmp = tmp2))
 	{
 		tmp2 = tmp->next;
-		if (all || tmp->hold < timeofday)
+		if (all || tmp->hold <= timeofday)
 		{
 			if (tmp == tkconf)
 				tkconf = tmp->next;
@@ -2525,7 +2536,7 @@ time_t	tkline_expire(int all)
 			free_conf(tmp);
 			continue;
 		}
-		if (tmp->hold < min)
+		if (min == 0 || tmp->hold < min)
 		{
 			min = tmp->hold;
 		}

@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.146 2004/06/29 21:23:04 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.157 2004/08/10 22:23:24 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -315,7 +315,6 @@ int	inetport(aClient *cptr, char *ip, char *ipmask, int port, int dolisten)
 #endif
 	cptr->port = port;
 	local[cptr->fd] = cptr;
-
 	if (dolisten)
 	{
 		listen(cptr->fd, LISTENQUEUE);
@@ -333,7 +332,6 @@ int	inetport(aClient *cptr, char *ip, char *ipmask, int port, int dolisten)
 int	add_listener(aConfItem *aconf)
 {
 	aClient	*cptr;
-	int dolisten = 1;
 
 	cptr = make_client(NULL);
 	cptr->flags = FLAGS_LISTEN;
@@ -342,38 +340,22 @@ int	add_listener(aConfItem *aconf)
 	cptr->firsttime = time(NULL);
 	cptr->name = ME;
 	SetMe(cptr);
-#ifdef	UNIXPORT
-	if (*aconf->host == '/')
-	    {
-		if (unixport(cptr, aconf->host, aconf->port))
-			cptr->fd = -2;
-	    }
-	else
-#endif
-	{
-		if (IsConfDelayed(aconf) && !firstrejoindone)
-		{
-			dolisten = 0;
-			SetListenerInactive(cptr);
-		}
-		if (inetport(cptr, aconf->host, aconf->name, aconf->port,
-				dolisten))
-		{
-			cptr->fd = -2;
-		}
-	}
+	
+	
+	cptr->confs = make_link();
+	cptr->confs->next = NULL;
+	cptr->confs->value.aconf = aconf;
 
-	if (cptr->fd >= 0)
-	    {
-		cptr->confs = make_link();
-		cptr->confs->next = NULL;
-		cptr->confs->value.aconf = aconf;
-		add_fd(cptr->fd, &fdas);
-		add_fd(cptr->fd, &fdall);
-		set_non_blocking(cptr->fd, cptr);
-	    }
-	else
-		free_client(cptr);
+	open_listener(cptr);
+	/* Add to linked list */
+	if (ListenerLL)
+	{
+		ListenerLL->prev = cptr;
+	}
+	cptr->next = ListenerLL;
+	cptr->prev = NULL;
+	ListenerLL = cptr;
+	
 	return 0;
 }
 
@@ -446,56 +428,116 @@ int	unixport(aClient *cptr, char *path, int port)
  */
 void	close_listeners(void)
 {
-	Reg	aClient	*cptr;
-	Reg	int	i;
-	Reg	aConfItem *aconf;
+	aClient	*acptr, *bcptr;
+	aConfItem *aconf;
 
 	/*
 	 * close all 'extra' listening ports we have and unlink the file
 	 * name if it was a unix socket.
 	 */
-	for (i = highest_fd; i >= 0; i--)
-	    {
-		if (!(cptr = local[i]))
-			continue;
-		if (cptr == &me || !IsListener(cptr))
-			continue;
-		aconf = cptr->confs->value.aconf;
+	for (acptr = ListenerLL; acptr; acptr = bcptr)
+	{
+		aconf = acptr->confs->value.aconf;
+		bcptr = acptr->next; /* might get deleted by close_connection
+				      */
 
-		if (IsIllegal(aconf) && aconf->clients == 0)
-		    {
+		if (IsIllegal(aconf))
+		{
 #ifdef	UNIXPORT
-			if (IsUnixSocket(cptr))
-			    {
+			if (IsUnixSocket(acptr))
+			{
 				sprintf(unixpath, "%s/%d",
 					aconf->host, aconf->port);
 				(void)unlink(unixpath);
-			    }
+			}
 #endif
-			close_connection(cptr);
-		    }
-	    }
-}
-void	activate_delayed_listeners(void)
-{
-	int i;
-	int cnt = 0;
-	aClient *cptr;
-	
-	for (i = highest_fd; i >= 0; i--)
-	{
-		if (!(cptr = local[i]))
-			continue;
-		if (cptr == &me || !IsListener(cptr))
-			continue;
-
-		if (IsListenerInactive(cptr))
-		{
-			listen(cptr->fd, LISTENQUEUE);
-			cnt++;
-			ClearListenerInactive(cptr);
+			if (aconf->clients > 0)
+			{
+				close_client_fd(acptr);
+			}
+			else
+			{
+				close_connection(acptr);
+			}
 		}
 	}
+}
+
+/* Opens listening socket on given listener */
+void	open_listener(aClient *cptr)
+{
+	aConfItem *aconf;
+	int dolisten = 1;
+
+	aconf = cptr->confs->value.aconf;
+	
+	if (!IsListener(cptr) || cptr->fd > 0)
+	{
+		return;
+	}
+	
+#ifdef	UNIXPORT
+	if (*aconf->host == '/')
+	{
+		if (unixport(cptr, aconf->host, aconf->port))
+		{
+			cptr->fd = -1;
+		}
+	}
+	else
+#endif
+	{
+		if (IsConfDelayed(aconf) && !firstrejoindone)
+		{
+			dolisten = 0;
+			SetListenerInactive(cptr);
+		}
+		if (inetport(cptr, aconf->host, aconf->name, aconf->port,
+			dolisten))
+		{
+			/* to allow further inetport calls */
+			cptr->fd = -1;
+		}
+	}
+
+	if (cptr->fd >= 0)
+	{
+		add_fd(cptr->fd, &fdas);
+		add_fd(cptr->fd, &fdall);
+		set_non_blocking(cptr->fd, cptr);
+	}
+}
+
+/* Reopens listening sockets on all listeners */
+void	reopen_listeners()
+{
+	aClient *acptr;
+	aConfItem *aconf;
+	for (acptr = ListenerLL; acptr; acptr = acptr->next)
+	{
+		aconf = acptr->confs->value.aconf;
+		if (!IsIllegal(aconf) && acptr->fd < 0)
+		{
+			open_listener(acptr);
+		}
+	}
+}
+
+void	activate_delayed_listeners(void)
+{
+	int cnt = 0;
+	aClient *acptr;
+
+	for (acptr = ListenerLL; acptr; acptr = acptr->next)
+	{
+		if (IsListenerInactive(acptr))
+		{
+			listen(acptr->fd, LISTENQUEUE);
+			ClearListenerInactive(acptr);
+			cnt++;
+		}
+	}
+
 	if (cnt > 0)
 	{
 		sendto_flag(SCH_NOTICE, "%d listeners activated", cnt);
@@ -1123,9 +1165,9 @@ check_serverback:
 	/*
 	 * attach the C and N lines to the client structure for later use.
 	 */
+	(void)attach_confs(cptr, name, CONF_HUB|CONF_LEAF);
 	(void)attach_conf(cptr, n_conf);
 	(void)attach_conf(cptr, c_conf);
-	(void)attach_confs(cptr, name, CONF_HUB|CONF_LEAF);
 	if (IsIllegal(n_conf) || IsIllegal(c_conf))
 	{
 		sendto_flag(SCH_DEBUG, "Illegal class!");
@@ -1219,36 +1261,94 @@ static	int completed_connection(aClient *cptr)
 }
 
 /*
-** close_connection
-**	Close the physical connection. This function must make
-**	MyConnect(cptr) == FALSE, and set cptr->from == NULL.
-*/
-void	close_connection(aClient *cptr)
+ * Closes FD in aClient structures.
+ */
+void close_client_fd(aClient *cptr)
 {
-	Reg	aConfItem *aconf;
-	Reg	int	i;
+	int i;
+	
 #ifdef SO_LINGER
 	struct 	linger	sockling;
 
 	sockling.l_onoff = 0;
 #endif
 
+	if (cptr->authfd >= 0)
+	{
+#ifdef	SO_LINGER
+		if (cptr->exitc == EXITC_PING)
+			if (SETSOCKOPT(cptr->authfd, SOL_SOCKET, SO_LINGER,
+				       &sockling, sockling))
+				report_error("setsockopt(SO_LINGER) %s:%s",
+					     cptr);
+#endif
+		(void)close(cptr->authfd);
+
+		cptr->authfd = -1;
+	}
+
+	if ((i = cptr->fd) >= 0)
+	{
+		flush_connections(i);
+		if (IsServer(cptr) || IsListener(cptr))
+		{	
+			del_fd(i, &fdas);
+#ifdef	ZIP_LINKS
+			/*
+			** the connection might have zip data (even if
+			** FLAGS_ZIP is not set)
+			*/
+			zip_free(cptr);
+#endif
+		}
+		else if (IsClient(cptr))
+		{
+#ifdef	SO_LINGER
+			if (cptr->exitc == EXITC_PING)
+				if (SETSOCKOPT(i, SOL_SOCKET, SO_LINGER,
+					       &sockling, sockling))
+					report_error("setsockopt(SO_LINGER) %s:%s",
+						     cptr);
+#endif
+		 }
+		del_fd(i, &fdall);
+		local[i] = NULL;
+		(void)close(i);
+
+		cptr->fd = -1;
+		DBufClear(&cptr->sendQ);
+		DBufClear(&cptr->recvQ);
+		bzero(cptr->passwd, sizeof(cptr->passwd));
+	}
+}
+
+/*
+** close_connection
+**	Close the physical connection. This function must make
+**	MyConnect(cptr) == FALSE, and set cptr->from == NULL.
+*/
+void	close_connection(aClient *cptr)
+{
+	aConfItem *aconf;
+
 	if (IsServer(cptr))
-	    {
+	{
 		ircstp->is_sv++;
 		ircstp->is_sbs += cptr->sendB;
 		ircstp->is_sbr += cptr->receiveB;
 		ircstp->is_sti += timeofday - cptr->firsttime;
-	    }
+	}
 	else if (IsClient(cptr))
-	    {
+	{
 		ircstp->is_cl++;
 		ircstp->is_cbs += cptr->sendB;
 		ircstp->is_cbr += cptr->receiveB;
 		ircstp->is_cti += timeofday - cptr->firsttime;
-	    }
+	}
 	else
+	{
 		ircstp->is_ni++;
+	}
 
 	/*
 	 * remove outstanding DNS queries.
@@ -1261,7 +1361,7 @@ void	close_connection(aClient *cptr)
 	if (IsServer(cptr) &&
 		(aconf = find_conf_exact(cptr->name, cptr->username,
 		cptr->sockhost, CFLAG)))
-	    {
+	{
 		/*
 		 * Reschedule a faster reconnect, if this was a automatically
 		 * connected configuration entry. (Note that if we have had
@@ -1273,73 +1373,68 @@ void	close_connection(aClient *cptr)
 				HANGONRETRYDELAY : ConfConFreq(aconf);
 		/* nextconnect could be 0 */
 		if (nextconnect > aconf->hold || nextconnect == 0)
+		{
 			nextconnect = aconf->hold;
-	    }
+		}
+	}
+	
 	if (nextconnect == 0 && (IsHandshake(cptr) || IsConnecting(cptr)))
 	{
 		nextconnect = timeofday + HANGONRETRYDELAY;
 	}
 
-	if (cptr->authfd >= 0)
-	    {
-#ifdef	SO_LINGER
-		if (cptr->exitc == EXITC_PING)
-			if (SETSOCKOPT(cptr->authfd, SOL_SOCKET, SO_LINGER,
-				       &sockling, sockling))
-				report_error("setsockopt(SO_LINGER) %s:%s",
-					     cptr);
-#endif
-		(void)close(cptr->authfd);
-	    }
-
-	if ((i = cptr->fd) >= 0)
-	    {
+	if (cptr->fd >= 0)
+	{
 #if defined(USE_IAUTH)
-		sendto_iauth("%d D", cptr->fd);
+		if (!IsListener(cptr) && !IsConnecting(cptr))
+		{
+			/* iauth doesn't know about listening FD nor
+			 * cancelled outgoing connections.
+			 */
+			sendto_iauth("%d D", cptr->fd);
+		}
 #endif
-		flush_connections(i);
-		if (IsServer(cptr) || IsListener(cptr))
-		    {
-			del_fd(i, &fdas);
-#ifdef	ZIP_LINKS
-			/*
-			** the connection might have zip data (even if
-			** FLAGS_ZIP is not set)
-			*/
-			zip_free(cptr);
-#endif
-		    }
-		else if (IsClient(cptr))
-		    {
-#ifdef	SO_LINGER
-			if (cptr->exitc == EXITC_PING)
-				if (SETSOCKOPT(i, SOL_SOCKET, SO_LINGER,
-					       &sockling, sockling))
-					report_error("setsockopt(SO_LINGER) %s:%s",
-						     cptr);
-#endif
-		    }
-		del_fd(i, &fdall);
-		local[i] = NULL;
-		(void)close(i);
-
-		cptr->fd = -2;
-		DBufClear(&cptr->sendQ);
-		DBufClear(&cptr->recvQ);
-		bzero(cptr->passwd, sizeof(cptr->passwd));
 		/*
 		 * clean up extra sockets from P-lines which have been
 		 * discarded.
 		 */
-		if (cptr->acpt != &me)
-		    {
+		if ((cptr->acpt != &me) && !(IsListener(cptr)))
+		{
 			aconf = cptr->acpt->confs->value.aconf;
+			
 			if (aconf->clients > 0)
+			{
 				aconf->clients--;
+			}
+			
 			if (!aconf->clients && IsIllegal(aconf))
+			{
 				close_connection(cptr->acpt);
-		    }
-	    }
+			}
+		}
+	}
+	
+	close_client_fd(cptr);
+
+	/* Remove from Listener Linked list */
+	if (IsListener(cptr) && cptr->confs && cptr->confs->value.aconf &&
+		IsIllegal(cptr->confs->value.aconf) &&
+		cptr->confs->value.aconf->clients <= 0)
+	{
+		if (cptr->prev)
+		{
+			cptr->prev->next = cptr->next;
+		}
+		else
+		{
+			/* we were 1st */
+			ListenerLL = cptr->next;
+		}
+		if (cptr->next)
+		{
+			cptr->next->prev = cptr->prev;
+		}
+	}
 
 	det_confs_butmask(cptr, 0);
 	cptr->from = NULL; /* ...this should catch them! >:) --msa */
@@ -1915,7 +2010,8 @@ static	int	read_packet(aClient *cptr, int msg_ready)
 			return exit_client(cptr, cptr, &me, "dbuf_put fail");
 
 		if (IsPerson(cptr) &&
-		    DBufLength(&cptr->recvQ) > CLIENT_FLOOD)
+		    DBufLength(&cptr->recvQ) > CLIENT_FLOOD
+		    && is_allowed(cptr, ACL_CANFLOOD))
 		    {
 			cptr->exitc = EXITC_FLOOD;
 			return exit_client(cptr, cptr, &me, "Excess Flood");
@@ -2451,7 +2547,7 @@ free_server:
 		if (cptr->fd >= 0)
 			(void)close(cptr->fd);
 		cptr->fd = -2;
-		free_server(cptr->serv, cptr);
+		free_server(cptr->serv);
 		free_client(cptr);
 		return -1;
 	    }

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: ircd.c,v 1.137 2004/06/19 18:05:46 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: ircd.c,v 1.143 2004/08/13 00:00:47 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -69,8 +69,11 @@ time_t	nextpreference = 1;	/* time for next calculate_preference call */
 time_t	nexttkexpire = 0;	/* time for next tkline_expire call */
 #endif
 
+aClient *ListenerLL = NULL;	/* Listeners linked list */
+
 RETSIGTYPE s_die(int s)
 {
+	sendto_serv_v(NULL, SV_UID, ":%s SDIE", me.serv->sid);
 #ifdef	USE_SYSLOG
 	(void)syslog(LOG_CRIT, "Server Killed By SIGTERM");
 	(void)closelog();
@@ -212,6 +215,7 @@ static	time_t	try_connections(time_t currenttime)
 	aClass	*cltmp;
 	aConfItem *con_conf = NULL;
 	int	allheld = 1;
+	int	i;
 
 	Debug((DEBUG_NOTICE,"Connection check at   : %s",
 		myctime(currenttime)));
@@ -258,6 +262,40 @@ static	time_t	try_connections(time_t currenttime)
 		if (find_denied(aconf->name, Class(cltmp)))
 			continue;
 
+#ifdef DISABLE_DOUBLE_CONNECTS
+		/* Much better would be traversing only unknown
+		** connections, but this requires another global
+		** variable, adding and removing from there in
+		** proper places etc. Some day. --B. */
+		for (i = highest_fd; i >= 0; i--)
+		{
+			if (!(cptr = local[i]) ||
+				cptr->status > STAT_UNKNOWN)
+			{
+				continue;
+			}
+			/* an unknown traveller we have */
+			if (
+#ifndef INET6
+				cptr->ip.s_addr == aconf->ipnum.s_addr
+#else
+				!memcmp(cptr->ip.s6_addr,
+					aconf->ipnum.s6_addr, 16)
+#endif
+			)
+			{
+				/* IP the same. Coincidence? Maybe.
+				** Do not cause havoc with double connect. */
+				break;
+			}
+			cptr = NULL;
+		}
+		if (cptr)
+		{
+			sendto_flag(SCH_SERVER, "AC to %s postponed", aconf->name);
+			continue;
+		}
+#endif
 		/* we have a candidate! */
 
 		/* choose the best. */
@@ -740,6 +778,7 @@ int	main(int argc, char *argv[])
 	bzero((char *)&me, sizeof(me));
 
 	make_server(&me);
+	register_server(&me);
 
 	version = make_version();	/* Generate readable version string */
 
@@ -847,6 +886,11 @@ int	main(int argc, char *argv[])
 		    }
 	    }
 
+	if (strlen(tunefile) > 1023 || strlen(mybasename(tunefile)) > 42)
+	{
+		fprintf(stderr, "Too long tune filename\n");
+		exit(-1);
+	}
 	if (argc > 0)
 		bad_command(); /* This exits out */
 
@@ -1012,6 +1056,7 @@ int	main(int argc, char *argv[])
 
 		tmp = make_client(NULL);
 		make_server(tmp);
+		register_server(tmp);
 
 		tmp->fd = 0;
 		tmp->flags = FLAGS_LISTEN;

@@ -43,6 +43,8 @@ EXTERN int inetport (aClient *cptr, char *ip, char *ipmask, int port,
 		int dolisten);
 EXTERN int add_listener (aConfItem *aconf);
 EXTERN void close_listeners(void);
+EXTERN void open_listener(aClient *cptr);
+EXTERN void reopen_listeners();
 EXTERN void activate_delayed_listeners(void);
 EXTERN void start_iauth (int);
 EXTERN void init_sys(void);
@@ -53,6 +55,7 @@ EXTERN int check_server_init (aClient *cptr);
 EXTERN int check_server (aClient *cptr, Reg struct hostent *hp,
 			     Reg aConfItem *c_conf, Reg aConfItem *n_conf);
 EXTERN void close_connection (aClient *cptr);
+EXTERN void close_client_fd(aClient *cptr);
 EXTERN int get_sockerr (aClient *cptr);
 EXTERN void set_non_blocking (int fd, aClient *cptr);
 EXTERN aClient *add_connection (aClient *cptr, int fd);
