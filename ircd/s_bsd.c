@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.127 2004/03/11 02:08:31 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.137 2004/03/22 14:15:14 jv Exp $";
 #endif
 
 #include "os.h"
@@ -206,7 +206,7 @@ void	report_error(char *text, aClient *cptr)
  * Connections are accepted to this socket depending on the IP# mask given
  * by 'ipmask'.  Returns the fd of the socket created or -1 on error.
  */
-int	inetport(aClient *cptr, char *ip, char *ipmask, int port)
+int	inetport(aClient *cptr, char *ip, char *ipmask, int port, int dolisten)
 {
 	static	struct SOCKADDR_IN server;
 	int	ad[4];
@@ -310,7 +310,11 @@ int	inetport(aClient *cptr, char *ip, char *ipmask, int port)
 	cptr->ip.s_addr = server.sin_addr.s_addr; /* broken on linux at least*/
 #endif
 	cptr->port = port;
-	(void)listen(cptr->fd, LISTENQUEUE);
+
+	if (dolisten)
+	{
+		listen(cptr->fd, LISTENQUEUE);
+	}
 
 	return 0;
 }
@@ -324,6 +328,7 @@ int	inetport(aClient *cptr, char *ip, char *ipmask, int port)
 int	add_listener(aConfItem *aconf)
 {
 	aClient	*cptr;
+	int dolisten = 1;
 
 	cptr = make_client(NULL);
 	cptr->flags = FLAGS_LISTEN;
@@ -340,8 +345,18 @@ int	add_listener(aConfItem *aconf)
 	    }
 	else
 #endif
-		if (inetport(cptr, aconf->host, aconf->name, aconf->port))
+	{
+		if (IsConfDelayed(aconf) && !firstrejoindone)
+		{
+			dolisten = 0;
+			SetListenerInactive(cptr);
+		}
+		if (inetport(cptr, aconf->host, aconf->name, aconf->port,
+				dolisten))
+		{
 			cptr->fd = -2;
+		}
+	}
 
 	if (cptr->fd >= 0)
 	    {
@@ -371,6 +386,7 @@ int	add_listener(aConfItem *aconf)
 int	unixport(aClient *cptr, char *path, int port)
 {
 	struct sockaddr_un un;
+	struct stat buf;
 
 	if ((cptr->fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
 	    {
@@ -388,10 +404,15 @@ int	unixport(aClient *cptr, char *path, int port)
 	un.sun_family = AF_UNIX;
 	(void)mkdir(path, 0755);
 	sprintf(unixpath, "%s/%d", path, port);
-	(void)unlink(unixpath);
+	get_sockhost(cptr, unixpath);
+	if (stat(unixpath, &buf)==0)
+	{
+		report_error("unix domain socket %s:%s", cptr);
+		(void)close(cptr->fd);
+		return -1;
+	}
 	strncpyzt(un.sun_path, unixpath, sizeof(un.sun_path));
 	errno = 0;
-	get_sockhost(cptr, unixpath);
 
 	if (bind(cptr->fd, (SAP)&un, strlen(unixpath)+2) == -1)
 	    {
@@ -404,7 +425,7 @@ int	unixport(aClient *cptr, char *path, int port)
 	(void)listen(cptr->fd, LISTENQUEUE);
 	(void)chmod(path, 0755);
 	(void)chmod(unixpath, 0777);
-	cptr->flags |= FLAGS_UNIX;
+	SetUnixSock(cptr);
 	cptr->port = 0;
 
 	return 0;
@@ -449,6 +470,31 @@ void	close_listeners(void)
 			close_connection(cptr);
 		    }
 	    }
+}
+void	activate_delayed_listeners(void)
+{
+	int i;
+	int cnt = 0;
+	aClient *cptr;
+	
+	for (i = highest_fd; i >= 0; i--)
+	{
+		if (!(cptr = listeners[i]))
+			continue;
+		if (cptr == &me)
+			continue;
+
+		if (IsListenerInactive(cptr))
+		{
+			listen(cptr->fd, LISTENQUEUE);
+			cnt++;
+			ClearListenerInactive(cptr);
+		}
+	}
+	if (cnt > 0)
+	{
+		sendto_flag(SCH_NOTICE, "%d listeners activated", cnt);
+	}
 }
 
 void	start_iauth(int rcvdsig)
@@ -726,14 +772,6 @@ static	int	check_init(aClient *cptr, char *sockn)
 #else
 	(void)strcpy(sockn, (char *)inetntoa((char *)&sk.sin_addr));
 #endif
-#ifdef INET6
-	if (IN6_IS_ADDR_LOOPBACK(&sk.SIN_ADDR))
-#else
-	if (inetnetof(sk.SIN_ADDR) == IN_LOOPBACKNET)
-#endif
-	    {
-		cptr->hostp = me.hostp;
-	    }
 	bcopy((char *)&sk.SIN_ADDR, (char *)&cptr->ip, sizeof(struct IN_ADDR));
 	cptr->port = ntohs(sk.SIN_PORT);
 
@@ -765,15 +803,15 @@ int	check_client(aClient *cptr)
 	if (check_init(cptr, sockname))
 		return -1;
 
+#ifdef UNIXPORT
 	if (!IsUnixSocket(cptr))
+#endif
 		hp = cptr->hostp;
 	/*
 	 * Verify that the host to ip mapping is correct both ways and that
 	 * the ip#(s) for the socket is listed for the host.
-	 * We shouldn't check it for localhost, because hp is fake in that
-	 * case. -Toor
 	 */
-	if (hp && (hp != me.hostp))
+	if (hp)
 	    {
 		for (i = 0; hp->h_addr_list[i]; i++)
 			if (!bcmp(hp->h_addr_list[i], (char *)&cptr->ip,
@@ -809,22 +847,26 @@ int	check_client(aClient *cptr)
 	Debug((DEBUG_DNS, "ch_cl: access ok: %s[%s]",
 		cptr->name, sockname));
 
-#ifdef INET6
-	if (IN6_IS_ADDR_LOOPBACK(&cptr->ip) || IsUnixSocket(cptr) ||
-	    !memcmp(cptr->ip.s6_addr, mysk.sin6_addr.s6_addr, 8) 
-/* ||
-	    IN6_ARE_ADDR_SAMEPREFIX(&cptr->ip, &mysk.SIN_ADDR))
- about the same, I think              NOT */
-                                                              )
-#else
-        if (inetnetof(cptr->ip) == IN_LOOPBACKNET || IsUnixSocket(cptr) ||
-            inetnetof(cptr->ip) == inetnetof(mysk.SIN_ADDR))
+#ifdef NO_OPER_REMOTE
+	if (
+#ifdef UNIXPORT
+		IsUnixSocket(cptr) ||
 #endif
-	    {
-
+#ifdef INET6
+		IN6_IS_ADDR_LOOPBACK(&cptr->ip) ||
+		/* If s6_addr32 was standard, we could just compare them,
+		 * not memcmp. --B. */
+		!memcmp(cptr->ip.s6_addr, mysk.sin6_addr.s6_addr, 16)
+#else
+		inetnetof(cptr->ip) == IN_LOOPBACKNET ||
+		cptr->ip.S_ADDR == mysk.SIN_ADDR.S_ADDR
+#endif
+		)
+	{
 		ircstp->is_loc++;
 		cptr->flags |= FLAGS_LOCAL;
-	    }
+	}
+#endif /* NO_OPER_REMOTE */
 	return 0;
 }
 
@@ -888,7 +930,11 @@ int	check_server_init(aClient *cptr)
 	** real name, then check with it as the host. Use gethostbyname()
 	** to check for servername as hostname.
 	*/
-	if (!IsUnixSocket(cptr) && !cptr->hostp)
+	if (!cptr->hostp
+#ifdef UNIXPORT
+		&& !IsUnixSocket(cptr)
+#endif
+		)
 	    {
 		Reg	aConfItem *aconf;
 
@@ -1056,14 +1102,23 @@ check_serverback:
 		return -2;
 	}
 
+	if (
 #ifdef INET6
-	if ((AND16(c_conf->ipnum.s6_addr) == 255) && !IsUnixSocket(cptr))
+		AND16(c_conf->ipnum.s6_addr) == 255
 #else
-	if ((c_conf->ipnum.s_addr == -1) && !IsUnixSocket(cptr))
+		c_conf->ipnum.s_addr == -1
 #endif
+#ifdef UNIXPORT
+		&& !IsUnixSocket(cptr)
+#endif
+		)
+	{
 		bcopy((char *)&cptr->ip, (char *)&c_conf->ipnum,
 			sizeof(struct IN_ADDR));
+	}
+#ifdef UNIXPORT
 	if (!IsUnixSocket(cptr))
+#endif
 		get_sockhost(cptr, c_conf->host);
 
 	Debug((DEBUG_DNS,"sv_cl: access ok: %s[%s]",
@@ -1323,7 +1378,11 @@ static	int	set_sock_opts(int fd, aClient *cptr)
 	 * Method borrowed from Wietse Venema's TCP wrapper.
 	 */
 	{
-	    if (!IsUnixSocket(cptr) && !IsListening(cptr))
+	    if (!IsListening(cptr)
+#ifdef UNIXPORT
+		&& !IsUnixSocket(cptr)
+#endif
+		)
 		{
 		    u_char	opbuf[256], *t = opbuf;
 		    char	*s = readbuf;
@@ -2820,7 +2879,7 @@ void	get_my_name(aClient *cptr, char *name, int len)
 			strncpyzt(name, hp->h_name, len);
 		else
 			strncpyzt(name, tmp, len);
-		if (!aconf->passwd)
+		if (BadPtr(aconf->passwd))
 			bcopy(hp->h_addr, (char *)&mysk.SIN_ADDR,
 			      sizeof(struct IN_ADDR));
 		Debug((DEBUG_DEBUG,"local name is %s",

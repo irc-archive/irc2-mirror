@@ -17,7 +17,7 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *   $Id: struct_def.h,v 1.90 2004/03/10 15:28:26 chopin Exp $
+ *   $Id: struct_def.h,v 1.96 2004/03/22 14:03:51 jv Exp $
  */
 
 typedef	struct	ConfItem aConfItem;
@@ -33,9 +33,7 @@ typedef	struct	SMode	Mode;
 typedef	struct	fdarray	FdAry;
 typedef	struct	CPing	aCPing;
 typedef	struct	Zdata	aZdata;
-#if defined(CACHED_MOTD)
 typedef struct        LineItem aMotd;
-#endif
 #if defined(USE_IAUTH)
 typedef struct        LineItem aExtCf;
 typedef struct        LineItem aExtData;
@@ -145,7 +143,9 @@ typedef struct        LineItem aExtData;
 #define	FLAGS_DEADSOCK	0x0000002 /* Local socket is dead--Exiting soon */
 #define	FLAGS_KILLED	0x0000004 /* Prevents "QUIT" from being sent for this */
 #define	FLAGS_BLOCKED	0x0000008 /* socket is in blocked condition [unused] */
+#ifdef UNIXPORT
 #define	FLAGS_UNIX	0x0000010 /* socket is in the unix domain, not inet */
+#endif
 #define	FLAGS_CLOSING	0x0000020 /* set when closing to suppress errors */
 #define	FLAGS_LISTEN	0x0000040 /* used to mark clients which we listen() on */
 #define	FLAGS_XAUTHDONE	0x0000080 /* iauth is finished with this client */
@@ -171,7 +171,8 @@ typedef struct        LineItem aExtData;
 				  ** server, so we know we have to send
 				  ** a SQUIT. */
 #define	FLAGS_EOB	0x4000000 /* EOB received */
-
+#define FLAGS_LISTENINACTIVE 0x8000000 /* Listener does not listen() */
+	
 #define	FLAGS_OPER	0x0001 /* operator */
 #define	FLAGS_LOCOP	0x0002 /* local operator -- SRB */
 #define	FLAGS_WALLOP	0x0004 /* send wallops to them */
@@ -196,8 +197,11 @@ typedef struct        LineItem aExtData;
 #define	IsPerson(x)		((x)->user && IsClient(x))
 #define	IsPrivileged(x)		(IsServer(x) || IsAnOper(x))
 #define	SendWallops(x)		((x)->user->flags & FLAGS_WALLOP)
+#ifdef UNIXPORT
 #define	IsUnixSocket(x)		((x)->flags & FLAGS_UNIX)
+#endif
 #define	IsListening(x)		((x)->flags & FLAGS_LISTEN)
+#define IsListenerInactive(x)	((x)->flags & FLAGS_LISTENINACTIVE)
 #define	IsLocal(x)		(MyConnect(x) && (x)->flags & FLAGS_LOCAL)
 #define	IsDead(x)		((x)->flags & FLAGS_DEADSOCK)
 #define	IsBursting(x)		(!((x)->flags & FLAGS_EOB))
@@ -210,10 +214,13 @@ typedef struct        LineItem aExtData;
 #define	SetInvisible(x)		((x)->user->flags |= FLAGS_INVISIBLE)
 #define SetRestricted(x)	((x)->user->flags |= FLAGS_RESTRICT)
 #define	SetWallops(x)		((x)->user->flags |= FLAGS_WALLOP)
+#ifdef UNIXPORT
 #define	SetUnixSock(x)		((x)->flags |= FLAGS_UNIX)
+#endif
 #define	SetDNS(x)		((x)->flags |= FLAGS_DOINGDNS)
 #define	SetDoneXAuth(x)		((x)->flags |= FLAGS_XAUTHDONE)
 #define	SetEOB(x)		((x)->flags |= FLAGS_EOB)
+#define SetListenerInactive(x)	((x)->flags |= FLAGS_LISTENINACTIVE)
 #define SetKlineExempt(x)	((x)->user->flags |= FLAGS_EXEMPT)
 
 #define	DoingDNS(x)		((x)->flags & FLAGS_DOINGDNS)
@@ -231,6 +238,7 @@ typedef struct        LineItem aExtData;
 #define	ClearAuth(x)		((x)->flags &= ~FLAGS_AUTH)
 #define	ClearXAuth(x)		((x)->flags &= ~FLAGS_XAUTH)
 #define	ClearWXAuth(x)		((x)->flags &= ~FLAGS_WXAUTH)
+#define ClearListenerInactive(x) ((x)->flags &= ~FLAGS_LISTENINACTIVE)
 
 /*
  * defined debugging levels
@@ -337,6 +345,12 @@ struct	ListItem	{
 #define IsConfNoResolve(x)	((x)->flags & CFLAG_NORESOLVE)
 #define IsConfNoResolveMatch(x)	((x)->flags & CFLAG_NORESOLVEMATCH)
 #define IsConfFallThrough(x)	((x)->flags & CFLAG_FALL)
+
+#define PFLAG_DELAYED		0x00001
+#define PFLAG_SERVERONLY	0x00002
+
+#define IsConfDelayed(x)	((x)->flags & PFLAG_DELAYED)
+#define IsConfServeronly(x)	((x)->flags & PFLAG_SERVERONLY)
 
 #define	IsIllegal(x)	((x)->status & CONF_ILLEGAL)
 

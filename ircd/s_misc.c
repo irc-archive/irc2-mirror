@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_misc.c,v 1.75 2004/03/10 15:28:27 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_misc.c,v 1.83 2004/03/24 09:44:05 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -179,6 +179,7 @@ char	*get_client_name(aClient *sptr, int showip)
 
 	if (MyConnect(sptr))
 	    {
+#ifdef UNIXPORT
 		if (IsUnixSocket(sptr))
 		    {
 			if (showip)
@@ -189,6 +190,7 @@ char	*get_client_name(aClient *sptr, int showip)
 					sptr->name, me.sockhost);
 		    }
 		else
+#endif
 		    {
 			if (showip)
 				(void)sprintf(nbuf, "%s[%.*s@%s]",
@@ -231,9 +233,11 @@ char	*get_client_host(aClient *cptr)
 		return cptr->name;
 	if (!cptr->hostp)
 		return get_client_name(cptr, FALSE);
+#ifdef UNIXPORT
 	if (IsUnixSocket(cptr))
 		sprintf(nbuf, "%s[%s]", cptr->name, ME);
 	else
+#endif
 		(void)sprintf(nbuf, "%s[%-.*s@%-.*s]",
 			cptr->name, USERLEN,
 			(!(cptr->flags & FLAGS_GOTID)) ? "" : cptr->auth,
@@ -476,7 +480,9 @@ int	exit_client(aClient *cptr, aClient *sptr, aClient *from,
 			sendto_flog(sptr, sptr->exitc,
 				    sptr->user && sptr->user->username ?
 				    sptr->user->username : "",
+#ifdef UNIXPORT
 				    (IsUnixSocket(sptr)) ? me.sockhost :
+#endif
 				    ((sptr->hostp) ? sptr->hostp->h_name :
 				     sptr->sockhost));
 # endif
@@ -990,6 +996,7 @@ void	initruntimeconf(void)
 {
 	memset((char *)&iconf, 0, sizeof(iconf));
 	iconf.aconnect = 1; /* default to ON */
+	iconf.split = 1; /* ircd starts in split-mode */
 
 	/* Defaults set in config.h */
 	iconf.split_minservers = SPLIT_SERVERS;
@@ -1084,13 +1091,12 @@ void	tstats(aClient *cptr, char *name)
 #endif
 }
 
-#ifdef CACHED_MOTD
 aMotd		*motd = NULL;
-struct tm	motd_tm;
+time_t		motd_mtime;
 
 void	read_motd(char *filename)
 {
-	int fd;
+	int fd, len;
 	register aMotd *temp, *last;
 	struct stat Sb;
 	char line[80];
@@ -1103,21 +1109,27 @@ void	read_motd(char *filename)
 		close(fd);
 		return;
 	    }
+	if (Sb.st_mtime <= motd_mtime)
+	{
+		return;
+	}
+	motd_mtime = Sb.st_mtime;
 	for(;motd != NULL;motd=last)
 	    {
 		last = motd->next;
 		MyFree(motd->line);
 		MyFree(motd);
 	    }
-	motd_tm = *localtime(&Sb.st_mtime);
 	(void)dgets(-1, NULL, 0); /* make sure buffer is at empty pos */
 	last = NULL;
-	while (dgets(fd, line, sizeof(line)-1) > 0)
+	while ((len=dgets(fd, line, sizeof(line)-1)) > 0)
 	    {
 		if ((tmp = strchr(line, '\n')) != NULL)
 			*tmp = (char) 0;
-		if ((tmp = strchr(line, '\r')) != NULL)
+		else if ((tmp = strchr(line, '\r')) != NULL)
 			*tmp = (char) 0;
+		else
+			line[len] = '\0';
 		temp = (aMotd *)MyMalloc(sizeof(aMotd));
 		if (!temp)
 			outofmemory();
@@ -1132,7 +1144,6 @@ void	read_motd(char *filename)
 	(void)dgets(-1, NULL, 0); /* make sure buffer is at empty pos */
 	close(fd);
 }
-#endif
 
 void	check_split(void)
 {
@@ -1155,6 +1166,11 @@ void	check_split(void)
 			sendto_flag(SCH_NOTICE,
 				"Network rejoined, split mode deactivated");
 			iconf.split = 0;
+			if (!firstrejoindone)
+			{
+				firstrejoindone = 1;
+				activate_delayed_listeners();
+			}
 		}
 	}
 }

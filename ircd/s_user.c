@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.196 2004/03/11 02:38:51 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.198 2004/03/21 00:52:39 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -555,11 +555,13 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 #endif
 
 		aconf = sptr->confs->value.aconf;
+#ifdef UNIXPORT
 		if (IsUnixSocket(sptr))
 		{
 			strncpyzt(user->host, me.sockhost, HOSTLEN+1);
 		}
 		else
+#endif
 		{
 			if (IsConfNoResolveMatch(aconf))
 			{
@@ -820,6 +822,14 @@ int	m_nick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Link	*lp = NULL;
 	int	donickname;
 
+	if (MyConnect(cptr) && IsUnknown(cptr) &&
+		IsConfServeronly(cptr->acpt->confs->value.aconf))
+	{
+		sendto_flag(SCH_LOCAL, "User connection to server-only P-line "
+			"from %s", get_client_host(cptr));
+		find_bounce(cptr, -1, -1);
+		return exit_client(NULL, cptr, &me, "Server only port");
+	}
 	if (IsService(sptr))
    	    {
 		sendto_one(sptr, replies[ERR_ALREADYREGISTRED], ME, BadTo(parv[0]));
@@ -2330,6 +2340,14 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	int	what,i;
 	char 	*s;
 
+	if (MyConnect(cptr) && IsUnknown(cptr) &&
+		IsConfServeronly(cptr->acpt->confs->value.aconf))
+	{
+		sendto_flag(SCH_LOCAL, "User connection to server-only P-line "
+			"from %s", get_client_host(cptr));
+		find_bounce(cptr, -1, -1);
+		return exit_client(NULL, cptr, &me, "Server only port");
+	}
 	/* Reject new USER */
 	if (IsServer(sptr) || IsService(sptr) || sptr->user)
 	    {
@@ -2636,9 +2654,11 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		**	...!operhost!oper
 		**	...!operhost!oper (comment)
 		*/
+#ifdef UNIXPORT
 		if (IsUnixSocket(cptr)) /* Don't use get_client_name syntax */
 			inpath = ME;
 		else
+#endif
 			inpath = cptr->sockhost;
 		if (!BadPtr(path))
 		    {
@@ -3042,7 +3062,10 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		syslog(LOG_INFO, "%sOPER (%s) by (%s!%s@%s) [%s@%s]",
 			logstring,
 			name, parv[0], sptr->user->username, sptr->user->host,
-		       sptr->auth, IsUnixSocket(sptr) ? sptr->sockhost :
+			sptr->auth,
+#ifdef UNIXPORT
+			IsUnixSocket(sptr) ? sptr->sockhost :
+#endif
 #ifdef INET6
                        inet_ntop(AF_INET6, (char *)&sptr->ip, mydummy,
 			       MYDUMMY_SIZE)
@@ -3076,7 +3099,9 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				name, parv[0],
 				sptr->user->username, sptr->user->host,
 				sptr->auth,
+#ifdef UNIXPORT
 				IsUnixSocket(sptr) ? sptr->sockhost :
+#endif
 #ifdef INET6
 				inetntop(AF_INET6, (char *)&sptr->ip,
 					mydummy, MYDUMMY_SIZE)

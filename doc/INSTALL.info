@@ -1,5 +1,5 @@
 This is INSTALL.info, produced by makeinfo version 4.6 from
-/tmp/linuxdoc-dir-2462/sgmltmp.INSTALL.info.2.
+/tmp/linuxdoc-dir-16816/sgmltmp.INSTALL.info.2.
 
    \input texinfo
 
@@ -10,7 +10,7 @@ Installing IRC - The Internet Relay Chat Program
 ************************************************
 
      SGML version by Christophe Kalt, updated by Piotr Kucharski
-     $Id: INSTALL.info,v 1.52 2004/03/06 02:04:49 chopin Exp $
+     $Id: INSTALL.info,v 1.56 2004/03/24 18:59:54 chopin Exp $
 
    This document describes how to install, and configure IRC 2.11.0.
 
@@ -127,11 +127,7 @@ File: INSTALL.info,  Node: Notes concerning IPv6 support,  Prev: Notes for Cygwi
 Notes concerning IPv6 support
 =============================
 
-The only part of the software that doesn't use IPv6 is the server
-internal resolver.  It relies on the name servers defined in
-"/etc/resolv.conf" to be IPv4 addresses.
-
-   This version was tested on the following IPv6 systems: BSD/OS+KAME,
+This version was tested on the following IPv6 systems: BSD/OS+KAME,
 Digital Unix, FreeBSD+KAME, Linux, NetBSD+INRIA.
 
    Because IPv6 numeric addresses contain ":" characters, `the default
@@ -150,7 +146,6 @@ This is done by editing the "config.h" file and changing the various
 * Menu:
 
 * DEBUGMODE::
-* CACHED_MOTD::
 * CHROOTDIR::
 * ENABLE_SUMMON ENABLE_USERS::
 * SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE::
@@ -161,7 +156,7 @@ This is done by editing the "config.h" file and changing the various
 * Other #define's::
 
 
-File: INSTALL.info,  Node: DEBUGMODE,  Next: CACHED_MOTD,  Up: The config-h file
+File: INSTALL.info,  Node: DEBUGMODE,  Next: CHROOTDIR,  Up: The config-h file
 
 DEBUGMODE
 =========
@@ -177,21 +172,7 @@ this induces a large overhead for the server as it does a large amount
 of self diagnostics whilst running.
 
 
-File: INSTALL.info,  Node: CACHED_MOTD,  Next: CHROOTDIR,  Prev: DEBUGMODE,  Up: The config-h file
-
-CACHED_MOTD
-===========
-
-The server sends the "motd" to every client connecting.  Every time, it
-reads it from the disk.  This is quite intensive and can be undesirable
-for busy servers.
-
-   Defining CACHED_MOTD will make the server store the "motd" in
-memory, and only read it again from the disk when rehashing if the file
-has changed.
-
-
-File: INSTALL.info,  Node: CHROOTDIR,  Next: ENABLE_SUMMON ENABLE_USERS,  Prev: CACHED_MOTD,  Up: The config-h file
+File: INSTALL.info,  Node: CHROOTDIR,  Next: ENABLE_SUMMON ENABLE_USERS,  Prev: DEBUGMODE,  Up: The config-h file
 
 CHROOTDIR
 =========
@@ -452,6 +433,11 @@ Machine information
      This line reads: My Hosts name is "orion.cair.du.edu", my site is
      located in "Denver Colorado, USA" and my SID is "00PS".
 
+`Note'
+     Using "*" as <Your Internet IP> allows OS to choose best outgoing
+     source IP. See also `Server Connections' section for configuring
+     source IP of outgoing connections.
+
 
 
 File: INSTALL.info,  Node: Administrative info,  Next: Port connections,  Prev: Machine information,  Up: The ircd-conf file
@@ -525,7 +511,8 @@ Port connections
      connections on as well as extra internet ports.
 
 `Format'
-     P:<Internet IP#>:<*>::<Port>: P:<Directory>:<*>:<*>:<Port>:
+     P:<Internet IP#>:<*>::<Port>:<Flags>:
+     P:<Directory>:<*>:<*>:<Port>:<Flags>:
 
 
    * Internet Ports
@@ -537,11 +524,15 @@ Port connections
           configuration' and `Server Connections' sections to properly
           configure outgoing connections.
 
-          P:192.168.1.194:::6664:
-
     `Port'
           The port number field tells the server which port number it
           should listen on for incoming connections.
+
+    `Example'
+          P:192.168.1.194:::6664:
+
+          Listens for incoming connections on IP 192.168.1.194, port
+          6664.
 
 
    *  Unix Socket Ports.
@@ -563,8 +554,15 @@ Port connections
           "6667". The unix socket (file) must be a numerical.
 
 
+`Flags'
+     Flags changing behaviour of a given P-line. It can be empty or one
+     of:
+        * D - delayed accept (not active until first netjoin)
+
+        * S - server-only (user connections are rejected)
+
 `Note'
-     You need at least one P line or server won't start.  (Unless you
+     You need at least one P-line or server won't start.  (Unless you
      run it from inetd.)
 
 
@@ -1113,11 +1111,10 @@ to 3. This is because of two main reasons:
 `Source IP'
      This field specifies source IP to use for connects to this server.
 
-`NEW!!!'
-     As of the 2.9.3 version of the server, server connections can be
-     compressed with the zlib library.  To define a compressed
-     connection, you must have compiled the server with ZIP_LINKS
-     defined, and use a _lowercase_ C line.
+`Compressed links'
+     Server connections can be compressed with the zlib library.  To
+     define a compressed connection, you must have compiled the server
+     with ZIP_LINKS defined, and use a _lowercase_ C line.
 
 `NEW!!!'
      As of the 2.11.0 version of the server, `Source IP' field has been
@@ -1554,6 +1551,10 @@ Bounce server
      the client's host name, or class number.  For these cases, this
      field must be empty.
 
+`Note'
+     Class number "-1" is used for rejecting clients that use wrong
+     (server-only) port.
+
 `Server Name'
      This specifies the IRC server hostname that the client should use.
 
@@ -1576,6 +1577,11 @@ Bounce server
 
      When the server is completely full, clients should use the
      secondary server.
+
+     B:-1::our.server.example:6667:
+
+     Clients that connected to server-only port should really use port
+     6667.
 
 
 
@@ -1668,42 +1674,41 @@ reviewed and forwarded to the appropriate mailing list.
 
 
 Tag Table:
-Node: Top127
-Node: Installing IRC-651
-Node: The configure script876
-Node: Notes for Cygwin32 users3162
-Node: Notes concerning IPv6 support3895
-Node: The config-h file4498
-Node: DEBUGMODE5082
-Node: CACHED_MOTD5661
-Node: CHROOTDIR6102
-Node: ENABLE_SUMMON ENABLE_USERS6473
-Node: SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE7006
-Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY7695
-Node: ZIP_LINKS ZIP_LEVEL8356
-Node: SLOW_ACCEPT9384
-Node: CLONE_CHECK10014
-Node: Other #define's10377
-Node: Editing the Makefile and compiling10699
-Node: The ircd-conf file11684
-Node: Machine information13533
-Node: Administrative info15959
-Node: Port connections18110
-Node: Connection Classes19941
-Node: Client connections25068
-Node: Operator priviliges30802
-Node: Excluded accounts32975
-Node: Server connections36887
-Node: Deny auto-connections45549
-Node: Hub connections46923
-Node: Leaf connections48411
-Node: Version limitations50495
-Node: Excluded machines52253
-Node: Service connections53558
-Node: Bounce server55152
-Node: Related resources56792
-Node: Reporting a bug57831
-Node: How to report a bug58088
-Node: Where to send a bug report59099
+Node: Top128
+Node: Installing IRC-652
+Node: The configure script877
+Node: Notes for Cygwin32 users3163
+Node: Notes concerning IPv6 support3896
+Node: The config-h file4327
+Node: DEBUGMODE4895
+Node: CHROOTDIR5472
+Node: ENABLE_SUMMON ENABLE_USERS5841
+Node: SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE6374
+Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY7063
+Node: ZIP_LINKS ZIP_LEVEL7724
+Node: SLOW_ACCEPT8752
+Node: CLONE_CHECK9382
+Node: Other #define's9745
+Node: Editing the Makefile and compiling10067
+Node: The ircd-conf file11052
+Node: Machine information12901
+Node: Administrative info15516
+Node: Port connections17667
+Node: Connection Classes19830
+Node: Client connections24957
+Node: Operator priviliges30691
+Node: Excluded accounts32864
+Node: Server connections36776
+Node: Deny auto-connections45404
+Node: Hub connections46778
+Node: Leaf connections48266
+Node: Version limitations50350
+Node: Excluded machines52108
+Node: Service connections53413
+Node: Bounce server55007
+Node: Related resources56868
+Node: Reporting a bug57907
+Node: How to report a bug58164
+Node: Where to send a bug report59175
 
 End Tag Table

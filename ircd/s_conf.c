@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.97 2004/03/07 02:47:51 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.105 2004/03/21 18:19:06 jv Exp $";
 #endif
 
 #include "os.h"
@@ -157,7 +157,48 @@ char	*iline_flags_to_string(long flags)
 	
 	return ifsbuf;
 }
+/* Convert P-line flags from string
+ * D - delayed port
+ * S - server only port
+ */
+long pline_flags_parse(char *string)
+{
+	long tmp = 0;
+	if (index(string, 'D'))
+	{
+		tmp |= PFLAG_DELAYED;
+	}
+	if (index(string, 'S'))
+	{
+		tmp |= PFLAG_SERVERONLY;
+	}
+	return tmp;
+}
+/* Convert P-line flags from integer to string
+ */
+char *pline_flags_to_string(long flags)
+{
+	static char pfsbuf[BUFSIZE];
+	char *s = pfsbuf;
+	
+	if (flags & PFLAG_DELAYED)
+	{
+		*s++ = 'D';
+	}
+			
+	if (flags & PFLAG_SERVERONLY)
+	{
+		*s++ = 'S';
+	}
+	
+	if (s == pfsbuf)
+	{
+		*s++ = '-';
+	}
 
+	*s++ = '\0';
+	return pfsbuf;
+}
 /*
  * remove all conf entries from the client except those which match
  * the status field mask.
@@ -1011,9 +1052,7 @@ int	rehash(aClient *cptr, aClient *sptr, int sig)
 			free_conf(tmp2);
 		}
 	
-#ifdef CACHED_MOTD
 	read_motd(IRCDMOTD_PATH);
-#endif
 	if (rehashed == 1)
 	{
 		/* queue another rehash for later */
@@ -1373,9 +1412,10 @@ int 	initconf(int opt)
 			if ((tmp = getfield(NULL)) == NULL)
 				break;
 			Class(aconf) = find_class(atoi(tmp));
-			/* the following are only used for Y: */
+			/* used in Y: local limits and I: and P: flags */
 			if ((tmp3 = getfield(NULL)) == NULL)
 				break;
+			/* used in Y: global limits */
 			tmp4 = getfield(NULL);
 			break;
 		    }
@@ -1419,34 +1459,53 @@ int 	initconf(int opt)
 				Class(aconf) = find_class(0);
 		    }
 		if (aconf->status & (CONF_LISTEN_PORT|CONF_CLIENT))
-		    {
+		{
 			aConfItem *bconf;
+			
+			/* any flags in this line? */
+			if (tmp3)
+			{
+				aconf->flags |=
+					((aconf->status == CONF_CLIENT) ?
+					iline_flags_parse(tmp3) :
+					pline_flags_parse(tmp3));
+			}
+
+			/* trying to find exact conf line in already existing
+			 * conf, so we don't delete old one, just update it */
 			if ((bconf = find_conf_entry(aconf, aconf->status)))
-			    {
+			{
+				/* we remove bconf (already existing) from conf
+				 * so that we can add it back uniformly at the
+				 * end of while(dgets) loop. --B. */
 				delist_conf(bconf);
 				bconf->status &= ~CONF_ILLEGAL;
-				if (aconf->status == CONF_CLIENT)
-				    {
+				/* aconf is a new item, it can contain +r flag
+				 * (from lowercase i:lines). In any case we
+				 * don't want old flags to remain. --B. */
+				bconf->flags = aconf->flags;
+				/* in case class was changed */
+				if (aconf->status == CONF_CLIENT &&
+					aconf->class != bconf->class)
+				{
 					bconf->class->links -= bconf->clients;
 					bconf->class = aconf->class;
 					bconf->class->links += bconf->clients;
-				    }
+				}
+				/* free new one, assign old one to aconf */
 				free_conf(aconf);
 				aconf = bconf;
-			    }
-			else if (aconf->host &&
-				 aconf->status == CONF_LISTEN_PORT)
-				(void)add_listener(aconf);
-		    }
-		if ((aconf->status & CONF_CLIENT))
-		{
-			/* Parse I-line flags */
-			if (tmp3)
+			}
+			else	/* no such conf line was found */
 			{
-				aconf->flags |= iline_flags_parse(tmp3);
+				if (aconf->host &&
+					aconf->status == CONF_LISTEN_PORT)
+				{
+					(void)add_listener(aconf);
+				}
 			}
 		}
-		
+
 		if (aconf->status & CONF_SERVICE)
 			aconf->port &= SERVICE_MASK_ALL;
 		if (aconf->status & (CONF_SERVER_MASK|CONF_SERVICE))
@@ -1873,6 +1932,12 @@ void	find_bounce(aClient *cptr, int class, int fd)
 {
 	Reg	aConfItem	*aconf;
 
+	if (fd < 0 && cptr == NULL)
+	{
+		/* nowhere to send error to */
+		return;
+	}
+
 	for (aconf = conf; aconf; aconf = aconf->next)
 	{
 		if (aconf->status != CONF_BOUNCE)
@@ -1913,7 +1978,8 @@ void	find_bounce(aClient *cptr, int class, int fd)
 		** and if it is for a hostname.
 		*/
 		if (fd != -2 &&
-		    !strchr(aconf->host, '.') && isdigit(*aconf->host))
+		    !strchr(aconf->host, '.') &&
+			(isdigit(*aconf->host) || *aconf->host == '-'))
 		{
 			if (class != atoi(aconf->host))
 			{

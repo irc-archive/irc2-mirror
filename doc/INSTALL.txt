@@ -1,6 +1,6 @@
   Installing IRC - The Internet Relay Chat Program
   SGML version by Christophe Kalt, updated by Piotr Kucharski
-  $Id: INSTALL.txt,v 1.52 2004/03/06 02:04:50 chopin Exp $
+  $Id: INSTALL.txt,v 1.56 2004/03/24 18:59:55 chopin Exp $
 
   This document describes how to install, and configure IRC 2.11.0.
 
@@ -88,10 +88,6 @@
 
   11..33..  NNootteess ccoonncceerrnniinngg IIPPvv66 ssuuppppoorrtt
 
-  The only part of the software that doesn't use IPv6 is the server
-  internal resolver.  It relies on the name servers defined in
-  ``/etc/resolv.conf'' to be IPv4 addresses.
-
   This version was tested on the following IPv6 systems: BSD/OS+KAME,
   Digital Unix, FreeBSD+KAME, Linux, NetBSD+INRIA.
 
@@ -119,18 +115,7 @@
   of self diagnostics whilst running.
 
 
-  22..22..  CCAACCHHEEDD__MMOOTTDD
-
-  The server sends the ``motd'' to every client connecting.  Every time,
-  it reads it from the disk.  This is quite intensive and can be
-  undesirable for busy servers.
-
-  Defining CACHED_MOTD will make the server store the ``motd'' in
-  memory, and only read it again from the disk when rehashing if the
-  file has changed.
-
-
-  22..33..  CCHHRROOOOTTDDIIRR
+  22..22..  CCHHRROOOOTTDDIIRR
 
   To use the CHROOTDIR feature, make sure it is #define'd and that the
   server is being run as root. Better use some other (external) way of
@@ -138,16 +123,14 @@
   requiring to run as root.
 
 
-  22..44..  EENNAABBLLEE__SSUUMMMMOONN,, EENNAABBLLEE__UUSSEERRSS
+  22..33..  EENNAABBLLEE__SSUUMMMMOONN,, EENNAABBLLEE__UUSSEERRSS
 
   For security conscious server admins, they may wish to leave
   ENABLE_USERS undefined, disabling the USERS command which can be used
   to glean information the same as finger can.  ENABLE_SUMMON toggles
   whether the server will attempt to summon local users to irc by
   writing a message similar to that from talk(1) to a user's tty.
-
-
-  22..55..  SSHHOOWW__IINNVVIISSIIBBLLEE__LLUUSSEERRSS,, NNOO__DDEEFFAAUULLTT__IINNVVIISSIIBBLLEE
+  22..44..  SSHHOOWW__IINNVVIISSIIBBLLEE__LLUUSSEERRSS,, NNOO__DDEEFFAAUULLTT__IINNVVIISSIIBBLLEE
 
   On large IRC networks, the number of invisible users is likely to be
   large and reporting that number cause no pain.  To aid and effect
@@ -157,7 +140,7 @@
   clients are automatically made invisible when they register.
 
 
-  22..66..  OOPPEERR__KKIILLLL,, OOPPEERR__RREEHHAASSHH,, OOPPEERR__RREESSTTAARRTT,, OOPPEERR__SSEETT,, LLOOCCAALL__KKIILLLL__OONNLLYY
+  22..55..  OOPPEERR__KKIILLLL,, OOPPEERR__RREEHHAASSHH,, OOPPEERR__RREESSTTAARRTT,, OOPPEERR__SSEETT,, LLOOCCAALL__KKIILLLL__OONNLLYY
 
   The three operator only commands, KILL, REHASH, RESTART and SET, may
   all be disabled to ensure that an operator who does not have the
@@ -167,7 +150,7 @@
   to be KILLed.
 
 
-  22..77..  ZZIIPP__LLIINNKKSS,, ZZIIPP__LLEEVVEELL
+  22..66..  ZZIIPP__LLIINNKKSS,, ZZIIPP__LLEEVVEELL
 
   As of the 2.9.3 version of the server, server-server connections may
   be compressed using the zlib.  In order to compile the server with
@@ -185,7 +168,7 @@
   (deflate format) and rfc1952.txt (gzip format).
 
 
-  22..88..  SSLLOOWW__AACCCCEEPPTT
+  22..77..  SSLLOOWW__AACCCCEEPPTT
 
   This option is undefined by default, however is needed on some OSes.
   It creates an artificial delay in processing incoming connections.  On
@@ -196,7 +179,9 @@
   it can which can cause problems on some OSes (such as SunOS) and be
   abused (fast massive join of clonebots..), for these reasons, if you
   decide to keep SLOW_ACCEPT undefined you MUST define CLONE_CHECK.
-  22..99..  CCLLOONNEE__CCHHEECCKK
+
+
+  22..88..  CCLLOONNEE__CCHHEECCKK
 
   This option is defined by default and acts as a wrapper, by checking
   incoming connections early before starting ident query.  By default,
@@ -204,7 +189,7 @@
   within 2 seconds.
 
 
-  22..1100..  OOtthheerr ##ddeeffiinnee''ss
+  22..99..  OOtthheerr ##ddeeffiinnee''ss
 
   The rest of the user changable #define's should be pretty much self
   explanatory in the config.h file.  It is *NOT* recommended that any of
@@ -351,6 +336,11 @@
         This line reads: My Hosts name is ``orion.cair.du.edu'', my site
         is located in ``Denver Colorado, USA'' and my SID is ``00PS''.
 
+     NNoottee
+        Using ``*'' as <Your Internet IP> allows OS to choose best
+        outgoing source IP. See also SSeerrvveerr CCoonnnneeccttiioonnss section for
+        configuring source IP of outgoing connections.
+
 
 
   44..22..  AAddmmiinniissttrraattiivvee iinnffoo
@@ -423,8 +413,8 @@
 
      FFoorrmmaatt
 
-        P:<Internet IP#>:<*>::<Port>:
-        P:<Directory>:<*>:<*>:<Port>:
+        P:<Internet IP#>:<*>::<Port>:<Flags>:
+        P:<Directory>:<*>:<*>:<Port>:<Flags>:
 
 
 
@@ -438,11 +428,14 @@
         SSeerrvveerr CCoonnnneeccttiioonnss sections to properly configure outgoing
         connections.
 
-        P:192.168.1.194:::6664:
-
      PPoorrtt
         The port number field tells the server which port number it
         should listen on for incoming connections.
+
+     EExxaammppllee
+        P:192.168.1.194:::6664:
+
+        Listens for incoming connections on IP 192.168.1.194, port 6664.
 
   +o  Unix Socket Ports.
 
@@ -459,12 +452,21 @@
 
      EExxaammppllee
         P:/tmp/.ircd:::6667:
+
         Creates a unix socket in the /tmp/.ircd directory called
         ``6667''. The unix socket (file) must be a numerical.
 
 
+     FFllaaggss
+        Flags changing behaviour of a given P-line. It can be empty or
+        one of:
+
+        +o  D - delayed accept (not active until first netjoin)
+
+        +o  S - server-only (user connections are rejected)
+
      NNoottee
-        You need at least one P line or server won't start.  (Unless you
+        You need at least one P-line or server won't start.  (Unless you
         run it from inetd.)
 
 
@@ -523,8 +525,6 @@
      SSeennddQQ
         This field defines the ``SendQ'' value for this class.  If this
         field is not present, the default (from config.h) is assigned.
-
-
      LLooccaall lliimmiitt
         This field is used to limit the number of local concurrent
         connections.  The format is <x>.<y>
@@ -1031,11 +1031,10 @@
         This field specifies source IP to use for connects to this
         server.
 
-     NNEEWW!!!!!!
-        As of the 2.9.3 version of the server, server connections can be
-        compressed with the zlib library.  To define a compressed
-        connection, you must have compiled the server with ZIP_LINKS
-        defined, and use a _lowercase_ C line.
+     CCoommpprreesssseedd lliinnkkss
+        Server connections can be compressed with the zlib library.  To
+        define a compressed connection, you must have compiled the
+        server with ZIP_LINKS defined, and use a _lowercase_ C line.
 
      NNEEWW!!!!!!
         As of the 2.11.0 version of the server, SSoouurrccee IIPP field has been
@@ -1120,7 +1119,6 @@
         The password of the other host.  A password must always be
         present for the line to be recognized. If CRYPT_LINK_PASSWORD is
         defined in config.h, this password must be crypted.
-
      TTAARRGGEETT HHoosstt NNAAMMEE
         The full hostname of the target machine. This is the name that
         the TARGET server will identify itself with when you connect to
@@ -1183,6 +1181,7 @@
      FFoorrmmaatt
 
         D:<Denied Server Mask>:Denied Class:<Server Name>:Server Class:
+
 
 
      DDeenniieedd SSeerrvveerr MMaasskk
@@ -1490,6 +1489,10 @@
         the client's host name, or class number.  For these cases, this
         field must be empty.
 
+     NNoottee
+        Class number ``-1'' is used for rejecting clients that use wrong
+        (server-only) port.
+
      SSeerrvveerr NNaammee
         This specifies the IRC server hostname that the client should
         use.
@@ -1510,9 +1513,14 @@
         anymore.
 
         B:::irc2.stealth.net:6667:
-
         When the server is completely full, clients should use the
         secondary server.
+
+        B:-1::our.server.example:6667:
+
+        Clients that connected to server-only port should really use
+        port 6667.
+
 
   55..  RReellaatteedd rreessoouurrcceess
 
@@ -1575,7 +1583,6 @@
 
      FFiixx
         If you have a fix, don't forget to include it.
-
 
 
   66..22..  WWhheerree ttoo sseenndd aa bbuugg rreeppoorrtt

@@ -1,3 +1,99 @@
+2004-03-24  Piotr Kucharski
+
+	* s_serv.c/m_trace(): code reporting classes usage moved out to
+	  separate, new function report_class().
+	* s_serv.c/m_stats(): stats C is used to call report_class().
+	* s_serv.c/report_configured_links(): show password (reason) field
+	  of Q-line.
+	* s_serv.c/m_stats(): stats Z behave the same as stats z for non-opers
+	  even in debug mode.
+
+2004-03-23  Piotr Kucharski
+
+	* res.c/init_resolver(): a hack to allow resolving inside FreeBSD
+	  jail (patch from Gerhard Gonter).
+
+2004-03-22  Jakub Vlasek
+
+	* struct_def.h, s_bsd.c, s_serv.c: Rename IsListeningInactive and
+	  SetListeningInactive macros to IsListenerInactive and
+	  SetListenerInactive.
+	* s_bsd.c, s_bsd_ext.h: Added activate_delayed_listeners().
+	* s_misc.c/check_split(): Activate delayed listeners when the server
+	  rejoins the network for first time.
+
+2004-03-21  Jakub Vlasek
+	
+	* ircd.c, ircd_ext.h, s_misc.c/check_split(): Added firstrejoindone
+	  variable. Set to 0 between server start and first network rejoin.
+	* s_bsd.c/inetport(): Added dolisten parameter to make possible
+	  making listeners without calling listen() on them.
+	* struct_def.h: Added IsListeningInactive(), SetListeningInactive(),
+	  ClearListenerInactive().
+
+2004-03-20  Piotr Kucharski
+
+	* s_conf.c/find_bounce(): allow negative classes in B:lines.
+	* s_user.c/m_nick(), m_user(): reject user when it connects to
+	  server-only P-line; use B:-1 for redirecting, if available.
+
+2004-03-20  Jakub Vlasek
+
+	* struct_def.h: Added PFLAG_DELAYED, PFLAG_SERVERONLY,
+	  IsConfDelayed(), IsConfServeronly().
+	* s_serv.c/report_listeners(): Report P-line flags.
+	* s_conf.c: Added pline_flags_parse() and pline_flags_to_string().
+	* s_conf.c/initconf(): Parse P-line flags.
+
+2004-03-19  Jakub Vlasek
+
+	* s_serv.c/m_server_estab(): Introduce services to 2.11 using new
+	  protocol.
+	* s_service.c/m_service.c(): Changed SERVICE protocol to send source
+	  server as a prefix. Removed server token and hopcount parameters.
+
+2004-03-18  Piotr Kucharski
+
+	* s_conf.c/initconf(): update flags of I:lines in use to the new ones.
+
+2004-03-17  Piotr Kucharski
+
+	* channel.c/m_join(), m_njoin(): send "Fake" notice to &CHANNEL, when
+	  member of channel joins it again; when NJOIN, do it when not bursting
+	  otherwise keep sending NJOIN protocol error.
+	* s_bsd.c/check_init(): don't set fake hostp for localhost clients.
+	* ircd.s/setup_me(): no need for me.hostp
+	* s_bsd.c/check_client(): no more fake me.hostp, no need to check.
+	* s_bsd.c/unixport(): do not unlink unix socket, only report error
+	  (other ircd may be using it).
+	* send.c, s_bsd.c, s_misc.c, s_user.c, struct_def.h: guard all unix
+	  socket uses by #ifdef UNIXPORT
+
+2004-03-16  Piotr Kucharski
+
+	* s_serv.c/m_server_estab(): moves related to namebuf change made
+	  server name appear much earlier, thus making find_name() return
+	  this, just introduced, server; this caused wrong "Server Exists".
+
+2004-03-15  Piotr Kucharski
+
+	* res_init.c/ircd_res_init(), res.c/init_resolver(), send_res_msg(),
+	  get_res(), resolv_def.h: IPv6 nameservers.
+
+2004-03-14  Piotr Kucharski
+
+	* s_bsd.c/get_my_name(): mysk.s_addr was not initialized when M: ip
+	  address field was empty.
+	* s_bsd.c/check_client(): narrowed the scope of "local" (used in stats
+	  t "local connections" and with NO_OPER_REMOTE); now this covers only
+	  clients from 127/8, unixsocket or the same IP as in M-line; it works
+	  now only when NO_OPER_REMOTE is defined.
+	* s_misc.c/read_motd(): correctly parse motd file without ending \n.
+	* c_numeric.c: removed RPL_TRACELOG from client.
+	* config.h.dist, struct_def.h, ircd.c, s_conf.c, s_misc.c, s_misc_ext.h,
+	  s_serv.c: removed CACHE_MOTD, it's default and not possible to turn
+	  off; also fixed tiny bug of always reloading motd, not when changed.
+
 2004-03-10  Piotr Kucharski
 
 	* s_bsd.c, s_bsd_ext.h: added delay_close() function.
@@ -58,6 +154,8 @@
 	  listeners[] table (preparation for better handling).
 	* s_serv.c/report_listeners(): as stats l/L is not returning
 	  listeners anymore, show them detailed in stats P.
+	* ircd.c, s_bsd.c, s_debug.c, s_err.c, s_serv.c, numeric_def.h,
+	  struct_def.h: removed ancient STAT_LOG (and RPL_TRACELOG).
 
 2004-03-05  Piotr Kucharski
 

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: ircd.c,v 1.120 2004/03/10 15:28:27 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: ircd.c,v 1.125 2004/03/21 18:24:38 jv Exp $";
 #endif
 
 #include "os.h"
@@ -46,6 +46,8 @@ char	*configfile = IRCDCONF_PATH;	/* Server configuration file */
 int	debuglevel = -1;		/* Server debug level */
 int	bootopt = BOOT_PROT|BOOT_STRICTPROT;	/* Server boot option flags */
 int	serverbooting = 1;
+int	firstrejoindone = 0;		/* Server rejoined the network after
+					   start */
 char	*debugmode = "";		/*  -"-    -"-   -"-   -"- */
 char	*sbrk0;				/* initial sbrk(0) */
 char	*tunefile = IRCDTUNE_PATH;
@@ -587,31 +589,8 @@ static	void	setup_me(aClient *mp)
 	strncpyzt(mp->username, (p) ? p->pw_name : "unknown",
 		  sizeof(mp->username));
 	(void)get_my_name(mp, mp->sockhost, sizeof(mp->sockhost)-1);
-
-	/* Setup hostp - fake record to resolve localhost. -Toor */
-	mp->hostp = (struct hostent *)MyMalloc(sizeof(struct hostent));
-	mp->hostp->h_name = MyMalloc(strlen(me.sockhost)+1);
-	strcpy(mp->hostp->h_name, mp->sockhost);
-	mp->hostp->h_aliases = (char **)MyMalloc(sizeof(char *));
-	*mp->hostp->h_aliases = NULL;
-	mp->hostp->h_addrtype = AFINET;
-	mp->hostp->h_length = 
-#ifdef	INET6
-				IN6ADDRSZ;
-#else
-				sizeof(long);
-#endif
-	mp->hostp->h_addr_list = (char **)MyMalloc(2*sizeof(char *));
-#ifdef	INET6
-	mp->hostp->h_addr_list[0] = (void *)MyMalloc(mp->hostp->h_length);
-	memcpy(mp->hostp->h_addr_list[0], &in6addr_loopback,
-		mp->hostp->h_length);
-#else
-	mp->hostp->h_addr_list[0] = (void *)MyMalloc(mp->hostp->h_length);
-	*(long *)(mp->hostp->h_addr_list[0]) = IN_LOOPBACKNET;
-#endif
-	mp->hostp->h_addr_list[1] = NULL ;
-
+	/* I think we need no hostp, especially fake one --B.  */
+	mp->hostp = NULL;
 	if (mp->serv->namebuf[0] == '\0')
 		strncpyzt(mp->serv->namebuf, mp->sockhost, sizeof(mp->serv->namebuf));
 	if (me.info == DefInfo)
@@ -902,10 +881,8 @@ int	main(int argc, char *argv[])
 	initstats();
 	initruntimeconf();
 	ircd_readtune(tunefile);
-#ifdef	CACHED_MOTD
 	motd = NULL;
 	read_motd(IRCDMOTD_PATH);
-#endif
 	inithashtables();
 	initlists();
 	initclass();
@@ -1002,7 +979,7 @@ int	main(int argc, char *argv[])
 
                 (void)strcpy(tmp->serv->namebuf, "*");
 
-                if (inetport(tmp, 0, "0.0.0.0", 0))
+                if (inetport(tmp, 0, "0.0.0.0", 0, 1))
                         tmp->fd = -1;
 		if (tmp->fd == 0) 
 		    {

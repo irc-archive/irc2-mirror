@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.171 2004/03/11 02:42:31 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.181 2004/03/24 23:25:02 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -34,9 +34,10 @@ static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.171 2004/03/11 02:42:31 chopin Exp
 static	char	buf[BUFSIZE];
 
 static	int	check_link (aClient *);
-static	int	get_version (char *version, char *id);
-static	void	trace_one (aClient *sptr, aClient *acptr);
-static	void	report_listeners(aClient *sptr, char *to);
+static	int	get_version (char *, char *);
+static	void	trace_one (aClient *, aClient *);
+static	void	report_listeners(aClient *, char *);
+static	void	report_class(aClient *, char *);
 const	char	*check_servername_errors[3][2] = {
 	{ "too long", "Bogus servername - too long" },
 	{ "invalid", "Bogus servername - invalid hostname" },
@@ -1173,8 +1174,8 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 		** Remove existing link only if it has been linked for longer
 		** and has sendq higher than a threshold. -Vesa
 		*/
-		if ((acptr = find_name(host, NULL))
-		    || (acptr = find_mask(host, NULL)))
+		if (((acptr = find_name(host, NULL))
+		    || (acptr = find_mask(host, NULL))) && IsServer(acptr))
 		    {
 			if (MyConnect(acptr) &&
 			    DBufLength(&acptr->sendQ) > CHREPLLEN &&
@@ -1344,6 +1345,7 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 
 	cptr->flags |= FLAGS_CBURST;
 	add_server_to_tree(cptr);
+	/* why no add_client_to_list() here? --B. */
 	if (ST_NOTUID(cptr))
 	{
 		(void) add_to_server_hash_table(cptr->serv, cptr);
@@ -1418,17 +1420,36 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 		    }
 		else if (IsService(acptr) &&
 			 match(acptr->service->dist, cptr->name) == 0)
-		    {
-			if (ST_NOTUID(cptr) && *mlname == '*' &&
-			    match(mlname, acptr->service->server) == 0)
-				stok = me.serv->tok;
+		{
+			if (ST_UID(cptr))
+			{
+				sendto_one(cptr, ":%s SERVICE %s %s %d :%s",
+						acptr->service->servp->sid,
+						acptr->name,
+						acptr->service->dist,
+						acptr->service->type,
+				   		acptr->info);
+			}
 			else
-				stok = acptr->service->servp->tok;
-			sendto_one(cptr, "SERVICE %s %s %s %d %d :%s",
-				   acptr->name, stok, acptr->service->dist,
-				   acptr->service->type, acptr->hopcount + 1,
-				   acptr->info);
-		    }
+			{
+				if (*mlname == '*' &&
+			    	    match(mlname, acptr->service->server) == 0)
+				{
+					stok = me.serv->tok;
+				}
+				else
+				{
+					stok = acptr->service->servp->maskedby->serv->tok;
+				}
+				
+				sendto_one(cptr, "SERVICE %s %s %s %d %d :%s",
+				   		acptr->name, stok,
+						acptr->service->dist,
+						acptr->service->type,
+						acptr->hopcount + 1,
+						acptr->info);
+			}
+		}
 		/* the previous if does NOT catch all services.. ! */
 	    }
 
@@ -1866,6 +1887,7 @@ static	void	report_configured_links(aClient *sptr, char *to, int mask)
 			if (tmp->status == CONF_KILL
 			    || tmp->status == CONF_OTHERKILL
 			    || tmp->status == CONF_HUB
+			    || tmp->status == CONF_QUARANTINED_SERVER
 			    || tmp->status == CONF_VER)
 			{
 				sendto_one(sptr, replies[p[1]], ME, BadTo(to),
@@ -1973,7 +1995,7 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		/* These are available with no penalty for opers. */
 		/* Although I have no idea, why only for opers. --B. */
 		case 'o': case 'O':	/* O:lines */
-		case 'c': case 'C':	/* C:/N: lines */
+		case 'c': 		/* C:/N: lines */
 		case 'h': case 'H':	/* H:/D: lines */
 		case 'a': case 'A':	/* iauth conf */
 		case 'b': case 'B':	/* B:lines */
@@ -2101,7 +2123,10 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	case 'B' : case 'b' : /* B conf lines */
 		report_configured_links(cptr, parv[0], CONF_BOUNCE);
 		break;
-	case 'c' : case 'C' : /* C and N conf lines */
+	case 'C': /* class usage stats */
+		report_class(cptr, BadTo(parv[0]));
+		break;
+	case 'c': /* C and N conf lines */
 		report_configured_links(cptr, parv[0], CONF_CONNECT_SERVER|
 					CONF_ZCONNECT_SERVER|
 					CONF_NOCONNECT_SERVER);
@@ -2161,22 +2186,20 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	case 'V' : case 'v' : /* V conf lines */
 		report_configured_links(cptr, parv[0], CONF_VER);
 		break;
-	case 'X' : case 'x' : /* lists */
 #ifdef	DEBUGMODE
+	case 'X' : case 'x' : /* lists */
 		send_listinfo(cptr, parv[0]);
-#endif
 		break;
+#endif
 	case 'Y' : case 'y' : /* Y lines */
 		report_classes(cptr, parv[0]);
 		break;
 	case 'Z':
 #ifdef DEBUGMODE
-		 /* memory use (OPER only) */
+		/* memory use (OPER only) */
 		if (MyOper(sptr))
 			count_memory(cptr, parv[0], 1);
 		else
-			sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, BadTo(parv[0]));
-		break;
 #endif
 	case 'z' :	      /* memory use */
 		count_memory(cptr, parv[0], 0);
@@ -2921,22 +2944,6 @@ int	m_trace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			}
 			trace_one(sptr, a2cptr);	
 		}
-		
-		/* Report Class usage */
-		if (IsPerson(sptr) && SendWallops(sptr))
-		{
-			aClass  *tmp;
-		    	for (tmp = FirstClass(); tmp; tmp = NextClass(tmp))
-		    	{
-				if (Links(tmp) > 0)
-				{
-					sendto_one(sptr,
-						   replies[RPL_TRACECLASS],
-						   ME, BadTo(parv[0]),
-					   	   Class(tmp), Links(tmp));
-				}
-	   		}
-		}
 	}
 	sendto_one(sptr, replies[RPL_TRACEEND], ME, BadTo(parv[0]),
 		   showsid ? me.serv->sid : acptr->name, version, debugmode);
@@ -2951,16 +2958,8 @@ int	m_trace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 */
 int	m_motd(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
-#ifdef	CACHED_MOTD
 	register aMotd *temp;
 	struct tm *tm;
-#else
-	int	fd;
-	char	line[80];
-	Reg	char	 *tmp;
-	struct	stat	sb;
-	struct	tm	*tm;
-#endif
 
 	if (check_link(cptr))
 	    {
@@ -2969,8 +2968,7 @@ int	m_motd(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	    }
 	if (hunt_server(cptr, sptr, ":%s MOTD :%s", 1,parc,parv)!=HUNTED_ISME)
 		return 5;
-#ifdef CACHED_MOTD
-	tm = &motd_tm;
+	tm = localtime(&motd_mtime);
 	if (motd == NULL)
 	    {
 		sendto_one(sptr, replies[ERR_NOMOTD], ME, BadTo(parv[0]));
@@ -2985,39 +2983,6 @@ int	m_motd(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		sendto_one(sptr, replies[RPL_MOTD], ME, BadTo(parv[0]), temp->line);
 	sendto_one(sptr, replies[RPL_ENDOFMOTD], ME, BadTo(parv[0]));
 	return 2;
-#else
-	/*
-	 * stop NFS hangs...most systems should be able to open a file in
-	 * 3 seconds. -avalon (curtesy of wumpus)
-	 */
-	(void)alarm(3);
-	fd = open(IRCDMOTD_PATH, O_RDONLY);
-	(void)alarm(0);
-	if (fd == -1)
-	    {
-		sendto_one(sptr, replies[ERR_NOMOTD], ME, BadTo(parv[0]));
-		return 1;
-	    }
-	(void)fstat(fd, &sb);
-	sendto_one(sptr, replies[RPL_MOTDSTART], ME, BadTo(parv[0]), ME);
-	tm = localtime(&sb.st_mtime);
-	sendto_one(sptr, ":%s %d %s :- %d/%d/%d %d:%02d", ME, RPL_MOTD,
-		   parv[0], tm->tm_mday, tm->tm_mon + 1, 1900 + tm->tm_year,
-		   tm->tm_hour, tm->tm_min);
-	(void)dgets(-1, NULL, 0); /* make sure buffer is at empty pos */
-	while (dgets(fd, line, sizeof(line)-1) > 0)
-	    {
-		if ((tmp = (char *)index(line,'\n')))
-			*tmp = '\0';
-		if ((tmp = (char *)index(line,'\r')))
-			*tmp = '\0';
-		sendto_one(sptr, replies[RPL_MOTD], ME, BadTo(parv[0]), line);
-	    }
-	(void)dgets(-1, NULL, 0); /* make sure buffer is at empty pos */
-	sendto_one(sptr, replies[RPL_ENDOFMOTD], ME, BadTo(parv[0]));
-	(void)close(fd);
-	return 2;
-#endif	/* CACHED_MOTD */
 }
 
 /*
@@ -3796,13 +3761,34 @@ static void report_listeners(aClient *sptr, char *to)
 		if (!(acptr = listeners[i]))
 			continue;
 		tmp = acptr->confs->value.aconf;
-		sendto_one(sptr, ":%s %d %s %d %s %u %lu %llu %lu %llu %u %u",
+		sendto_one(sptr, ":%s %d %s %d %s %s %u %lu %llu %lu %llu %u"
+				 " %u %s",
 			ME, RPL_STATSLINKINFO, to,
 			tmp->port, BadTo(tmp->host),
+			pline_flags_to_string(tmp->flags),
 			(uint)DBufLength(&acptr->sendQ),
 			acptr->sendM, acptr->sendB,
 			acptr->receiveM, acptr->receiveB,
 			timeofday - acptr->firsttime,
-			acptr->confs->value.aconf->clients);
+			acptr->confs->value.aconf->clients,
+			IsListenerInactive(acptr) ? "inactive" : "active" );
+	}
+}
+
+static void report_class(aClient *sptr, char *to)
+{
+	/* Report Class usage */
+	if (IsPerson(sptr))
+	{
+		aClass  *tmp;
+
+	    	for (tmp = FirstClass(); tmp; tmp = NextClass(tmp))
+	    	{
+			if (Links(tmp) > 0)
+			{
+				sendto_one(sptr, replies[RPL_TRACECLASS],
+					ME, to, Class(tmp), Links(tmp));
+			}
+   		}
 	}
 }
