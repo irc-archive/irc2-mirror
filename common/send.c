@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: send.c,v 1.39.2.10 2001/07/07 13:19:59 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: send.c,v 1.39.2.13 2001/10/18 21:43:05 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -182,28 +182,23 @@ int	len;
 			istat.is_dbufmore++;
 		}
 		else
+# endif
 		{
-			if (IsServer(to) || IsService(to))
+			char ebuf[BUFSIZE];
+
+			ebuf[0] = '\0';
+			if (IsService(to) || IsServer(to))
 			{
-				sendto_flag(SCH_ERROR,
-					"Max SendQ limit exceeded for %s: %d > %d",
+				SPRINTF(ebuf,
+				"Max SendQ limit exceeded for %s: %d > %d",
 					get_client_name(to, FALSE),
 					DBufLength(&to->sendQ), get_sendq(to));
 			}
 			to->exitc = EXITC_SENDQ;
-			return dead_link(to, "Max Sendq exceeded");
+			return dead_link(to, ebuf[0] ? ebuf :
+				"Max Sendq exceeded");
 		}
-# else /* HUB */
-		if (IsService(to) || IsServer(to))
-			sendto_flag(SCH_ERROR,
-				"Max SendQ limit exceeded for %s: %d > %d",
-			   	get_client_name(to, FALSE),
-				DBufLength(&to->sendQ), get_sendq(to));
-		to->exitc = EXITC_SENDQ;
-		return dead_link(to, "Max Sendq exceeded");
-# endif /* HUB */
 	}
-tryagain:
 # ifdef	ZIP_LINKS
 	/*
 	** data is first stored in to->zip->outbuf until
@@ -214,8 +209,10 @@ tryagain:
 	if (to->flags & FLAGS_ZIP)
 		msg = zip_buffer(to, msg, &len, 0);
 
+tryagain:
 	if (len && (i = dbuf_put(&to->sendQ, msg, len)) < 0)
 # else 	/* ZIP_LINKS */
+tryagain:
 	if ((i = dbuf_put(&to->sendQ, msg, len)) < 0)
 # endif	/* ZIP_LINKS */
 	{
@@ -1559,7 +1556,7 @@ char	*msg, *username, *hostname;
 		cptr->receiveM, cptr->receiveK);
 
 #if defined(USE_SYSLOG) && (defined(SYSLOG_USERS) || defined(SYSLOG_CONN))
-	syslog(LOG_NOTICE, linebuf);
+	syslog(LOG_NOTICE, "%s", linebuf);
 #endif
 
 #ifdef	USE_SERVICES
