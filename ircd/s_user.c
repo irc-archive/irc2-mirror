@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.202 2004/05/12 16:33:18 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.221 2004/06/26 12:57:46 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1329,13 +1329,6 @@ int	m_unick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	aClient *acptr;
 	char	*uid, nick[NICKLEN+2], *user, *host, *realname;
 
-	if (parc < 8)
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),
-			   "UNICK");
-		return 1;
-	    }
-
 	strncpyzt(nick, parv[1], NICKLEN+1);
 	uid = parv[2];
 	user = parv[3];
@@ -1367,9 +1360,9 @@ int	m_unick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (!check_uid(uid, sptr->serv->sid))
 	{
 		/* This is so bad, that I really don't want to deal with it! */
-		sendto_ops_butone(NULL, &me,
-			":%s WALLOPS :Bad UID (%s) from %s",
-			ME, uid, get_client_name(cptr, FALSE));
+		sendto_ops_butone(NULL, ME,
+			"Bad UID (%s) from %s",
+			uid, get_client_name(cptr, FALSE));
 		return exit_client(cptr, cptr, &me, "Bad UID");
 	}
 
@@ -1381,9 +1374,9 @@ int	m_unick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (acptr)
 	{
 		/* This is so bad, that I really don't want to deal with it! */
-		sendto_ops_butone(NULL, &me,
-			":%s WALLOPS :UID collision for %s from %s",
-			ME, uid, get_client_name(cptr, FALSE));
+		sendto_ops_butone(NULL, ME,
+			"UID collision for %s from %s",
+			uid, get_client_name(cptr, FALSE));
 		return exit_client(cptr, cptr, &me, "UID collision");
 	}
 
@@ -1544,19 +1537,7 @@ static	int	m_message(aClient *cptr, aClient *sptr, int parc,
 	char	*nick, *server, *p, *cmd, *user, *host;
 	int	count = 0, penalty = 0, syntax = 0;
 
-	cmd = notice ? MSG_NOTICE : MSG_PRIVATE;
-
-	if (parc < 2 || *parv[1] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NORECIPIENT], ME, BadTo(parv[0]), cmd);
-		return 1;
-	    }
-
-	if (parc < 3 || *parv[2] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NOTEXTTOSEND], ME, BadTo(parv[0]));
-		return 1;
-	    }
+	cmd = notice ? "NOTICE" : "PRIVMSG";
 
 	if (MyConnect(sptr))
 		parv[1] = canonize(parv[1]);
@@ -2363,6 +2344,8 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (parc < 5 || *parv[1] == '\0' || *parv[2] == '\0' ||
 	    *parv[3] == '\0' || *parv[4] == '\0')
 	    {
+		/* this may come from internal m_user call (from m_nick), so we
+		** have to deal with it here; will be gone in next version --B. */
 		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "USER");
 		if (IsServer(cptr))
 		    {
@@ -2458,17 +2441,21 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	SetInvisible(sptr);
 #endif
 	/* parse desired user modes sent in USER */
-	/* old behaviour - bits */
-	if ((i = atoi(host)))
+	/* rfc behaviour - bits */
+	if (isdigit(*host))
 	{
-		/* allows only umodes specified in UFLAGS - see above */
-		sptr->user->flags |= (UFLAGS & atoi(host));
+		for (s = host+1; *s; s++)
+			if (!isdigit(*s))
+				break;
+		if (*s == '\0')
+			/* allows only umodes specified in UFLAGS - see above */
+			sptr->user->flags |= (UFLAGS & atoi(host));
 	}
-	else
+	else	/* new behaviour */
 	{
 		/* 0 here is intentional. User MUST specify + or -,
-		 * as we don't want to restrict clients which send
-		 * their hostname in host field (and happen to have r there).
+		 * as we don't want to restrict (broken) clients which send
+		 * their hostname in mode field (and happen to have r there).
 		 * - jv
 		 */
 		what = 0;
@@ -2485,6 +2472,9 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				default:
 					break;
 			}
+			/* If mode does not start with - or +, don't bother. */
+			if (what == 0)
+				break;
 			for (i = 0; umodes_arr[i].umode != '\0'; i++)
 			{
 				if (*s == umodes_arr[i].umode)
@@ -2501,9 +2491,7 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					}
 				}
 			}
-
 		}
-		
 	}
 	strncpyzt(user->host, host, sizeof(user->host));
 	user->server = find_server_string(me.serv->snum);
@@ -2582,26 +2570,14 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	*user, *path, *killer;
 	int	chasing = 0;
 
-	if (parc < 2 || *parv[1] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "KILL");
-		return 1;
-	    }
+	if (is_allowed(sptr, ACL_KILL))
+		return m_nopriv(cptr, sptr, parc, parv);
 
 	user = parv[1];
-	path = parv[2]; /* Either defined or NULL (parc >= 2!!) */
+	path = parv[2];
 
-	if (IsAnOper(cptr))
-	    {
-		if (BadPtr(path))
-		    {
-			sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),
-				   "KILL");
-			return 1;
-		    }
-		if (strlen(path) > (size_t) TOPICLEN)
-			path[TOPICLEN] = '\0';
-	    }
+	if (IsAnOper(cptr) && strlen(path) > (size_t) TOPICLEN)
+		path[TOPICLEN] = '\0';
 
 	/* first, _if coming from a server_ check for kill on UID */
 	if (IsServer(cptr))
@@ -2626,10 +2602,9 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			   ME, parv[0], user, acptr->name);
 		chasing = 1;
 	    }
-	if (!MyConnect(acptr) && IsLocOp(cptr))
+	if (!MyConnect(acptr) && is_allowed(cptr, ACL_KILLREMOTE))
 	    {
-		sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, BadTo(parv[0]));
-		return 1;
+		return m_nopriv(cptr, sptr, parc, parv);
 	    }
 	if (IsServer(acptr) || IsMe(acptr))
 	    {
@@ -2639,15 +2614,6 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			   acptr->name);
 		return 1;
 	    }
-
-#ifdef	LOCAL_KILL_ONLY
-	if (MyOper(sptr) && !MyConnect(acptr))
-	    {
-		sendto_one(sptr, ":%s NOTICE %s :Nick %s isnt on your server",
-			   ME, parv[0], acptr->name);
-		return 1;
-	    }
-#endif
 	if (!IsServer(cptr))
 	    {
 		/*
@@ -2664,17 +2630,10 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		else
 #endif
 			inpath = cptr->sockhost;
-		if (!BadPtr(path))
-		    {
-			sprintf(buf, "%s%s (%s)",
-				cptr->name, IsOper(sptr) ? "" : "(L)", path);
-			path = buf;
-		    }
-		else
-			path = cptr->name;
+		sprintf(buf, "%s%s (%s)",
+			cptr->name, IsOper(sptr) ? "" : "(L)", path);
+		path = buf;
 	    }
-	else if (BadPtr(path))
-		 path = "*no-path*"; /* Bogus server sending??? */
 	/*
 	** Notify all *local* opers about the KILL (this includes the one
 	** originating the kill, if from this server--the special numeric
@@ -2683,11 +2642,6 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	** Note: "acptr->name" is used instead of "user" because we may
 	**	 have changed the target because of the nickname change.
 	*/
-	if (IsLocOp(sptr) && !MyConnect(acptr))
-	    {
-		sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, BadTo(parv[0]));
-		return 1;
-	    }
 	sendto_flag(SCH_KILL,
 		    "Received KILL message for %s!%s@%s[%s/%s]. From %s Path: %s!%s",
 		    acptr->name, acptr->user->username, acptr->user->host,
@@ -2744,8 +2698,7 @@ int	m_kill(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (MyConnect(acptr) && MyConnect(sptr) && IsAnOper(sptr))
 	    {
 		acptr->exitc = EXITC_KILL;
-		sprintf(buf2, "Local Kill by %s (%s)", sptr->name,
-			BadPtr(parv[2]) ? sptr->name : parv[2]);
+		sprintf(buf2, "Local Kill by %s (%s)", sptr->name, parv[2]);
 	    }
 	else
 	    {
@@ -2959,32 +2912,10 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	*name, *password, *encr;
 	char	*logstring = NULL;
 
-	name = parc > 1 ? parv[1] : NULL;
-	password = parc > 2 ? parv[2] : NULL;
+	name = parv[1];
+	password = parv[2];
 
-	if (!IsServer(cptr) && (BadPtr(name) || BadPtr(password)))
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "OPER");
-		return 1;
-	    }
-	
-	/* if message arrived from server, trust it, and set to oper */
-	    
-	if ((IsServer(cptr) || IsMe(cptr)) && !IsOper(sptr))
-	    {
-		/* we never get here, do we?? (counters!) -krys */
-		sptr->user->flags |= FLAGS_OPER;
-		sendto_serv_butone(cptr, ":%s MODE %s :+o", parv[0], parv[0]);
-		if (IsMe(cptr))
-			sendto_one(sptr, replies[RPL_YOUREOPER], ME, BadTo(parv[0]));
-#ifdef	USE_SERVICES
-		check_services_butone(SERVICE_WANT_OPER, sptr->user->server, 
-				      sptr, ":%s MODE %s :+o", parv[0], 
-				      parv[0]);
-#endif
-		return 1;
-	    }
-	else if (IsAnOper(sptr))
+	if (IsAnOper(sptr))
 	    {
 		if (MyConnect(sptr))
 			sendto_one(sptr, replies[RPL_YOUREOPER], ME, BadTo(parv[0]));
@@ -3025,10 +2956,10 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		s = index(aconf->host, '@');
 		*s++ = '\0';
 #ifndef	NO_OPER_REMOTE
-		if (aconf->status == CONF_LOCOP)
+		if (aconf->flags & ACL_LOCOP)
 #else
 		if ((match(s,me.sockhost) && !IsLocal(sptr)) ||
-		    aconf->status == CONF_LOCOP)
+		    aconf->flags & ACL_LOCOP)
 #endif
 			SetLocOp(sptr);
 		else
@@ -3144,13 +3075,8 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 */
 int	m_pass(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
-	char *password = parc > 1 ? parv[1] : NULL;
+	char *password = parv[1];
 
-	if (BadPtr(password))
-	    {
-		sendto_one(cptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "PASS");
-		return 1;
-	    }
 	strncpyzt(cptr->passwd, password, sizeof(cptr->passwd));
 	if (cptr->user || cptr->service)
 	{
@@ -3194,13 +3120,6 @@ int	m_userhost(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	char	*s;
 	Reg	int	i, len;
 	int	idx = 1;
-
-	if (parc < 2)
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),
-			   "USERHOST");
-		return 1;
-	    }
 
 	(void)sprintf(buf, replies[RPL_USERHOST], ME, BadTo(parv[0]));
 	len = strlen(buf);
@@ -3255,12 +3174,6 @@ int	m_ison(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	int	len = 0, i;
 	char	*p = NULL;
 
-	if (parc < 2)
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "ISON");
-		return 1;
-	    }
-
 	(void)sprintf(buf, replies[RPL_ISON], ME, BadTo(*parv));
 	len = strlen(buf);
 
@@ -3297,12 +3210,6 @@ int	m_umode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 	what = MODE_ADD;
 
-	if (parc < 2)
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "MODE");
-		return 1;
-	    }
-
 	if (cptr && !(acptr = find_person(parv[1], NULL)))
 	    {
 		if (MyConnect(sptr))
@@ -3318,9 +3225,8 @@ int	m_umode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	    ((IsServer(sptr) || sptr != acptr || acptr->from != sptr->from)))
 	    {
 		if (IsServer(cptr))
-			sendto_ops_butone(NULL, &me,
-				  ":%s WALLOPS :MODE for User %s From %s!%s",
-				  ME, parv[1],
+			sendto_ops_butone(NULL, ME,
+				  "MODE for User %s From %s!%s", parv[1],
 				  get_client_name(cptr, FALSE), sptr->name);
 		else
 			sendto_one(sptr, replies[ERR_USERSDONTMATCH], ME, BadTo(parv[0]));
@@ -3405,16 +3311,16 @@ int	m_umode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 						ME, BadTo(parv[0]), *m);
 				break;
 			}
-	/*
-	 * stop users making themselves operators too easily
-	 */
 	if (cptr)
 	    {
+		/* stop users making themselves operators too easily */
 		if (!(setflags & FLAGS_OPER) && IsOper(sptr) &&
 		    !IsServer(cptr))
 			ClearOper(sptr);
 		if (!(setflags & FLAGS_LOCOP) && IsLocOp(sptr))
-			sptr->user->flags &= ~FLAGS_LOCOP;
+			ClearLocOp(sptr);
+		/* but once they are, set their status */
+		SetClient(sptr);
 		if ((setflags & FLAGS_RESTRICT) &&
 		    !IsRestricted(sptr))
 		    {
@@ -3632,3 +3538,32 @@ int	m_save(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	return 0;
 }
 
+/*
+** Given client cptr and function decide access.
+** Return 0 for OK, 1 for forbidden.
+*/
+
+int	is_allowed(aClient *cptr, long function)
+{
+	Link	*tmp;
+
+	/* We cannot judge not our users. Yet. */
+	if (!MyClient(cptr))
+		return 0;
+
+	for (tmp = cptr->confs; tmp; tmp->next)
+	{
+		if (tmp->value.aconf->status & CONF_OPERATOR)
+			break;
+	}
+
+	/* no O: conf found */
+	if (!tmp)
+		return 1;
+
+	/* check access */
+	if ((tmp->value.aconf->flags & function))
+		return 0;
+
+	return 1;
+}

@@ -1,5 +1,5 @@
 This is INSTALL.info, produced by makeinfo version 4.6 from
-/tmp/linuxdoc-dir-22769/sgmltmp.INSTALL.info.2.
+/tmp/linuxdoc-dir-4588/sgmltmp.INSTALL.info.2.
 
    \input texinfo
 
@@ -10,9 +10,9 @@ Installing IRC - The Internet Relay Chat Program
 ************************************************
 
      SGML version by Christophe Kalt, updated by Piotr Kucharski
-     $Id: INSTALL.info,v 1.58 2004/05/12 17:29:35 chopin Exp $
+     $Id: INSTALL.info,v 1.62 2004/06/24 18:28:02 chopin Exp $
 
-   This document describes how to install, and configure IRC 2.11.0.
+   This document describes how to install, and configure IRC 2.11.0
 
 * Menu:
 
@@ -148,7 +148,7 @@ This is done by editing the "config.h" file and changing the various
 * DEBUGMODE::
 * CHROOTDIR::
 * ENABLE_SUMMON ENABLE_USERS::
-* SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE::
+* NO_DEFAULT_INVISIBLE::
 * OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY::
 * ZIP_LINKS ZIP_LEVEL::
 * SLOW_ACCEPT::
@@ -183,7 +183,7 @@ setting up chroot environment for ircd and run it from there, not
 requiring to run as root.
 
 
-File: INSTALL.info,  Node: ENABLE_SUMMON ENABLE_USERS,  Next: SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE,  Prev: CHROOTDIR,  Up: The config-h file
+File: INSTALL.info,  Node: ENABLE_SUMMON ENABLE_USERS,  Next: NO_DEFAULT_INVISIBLE,  Prev: CHROOTDIR,  Up: The config-h file
 
 ENABLE_SUMMON ENABLE_USERS
 ==========================
@@ -195,20 +195,16 @@ whether the server will attempt to summon local users to irc by writing
 a message similar to that from talk(1) to a user's tty.
 
 
-File: INSTALL.info,  Node: SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE,  Next: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY,  Prev: ENABLE_SUMMON ENABLE_USERS,  Up: The config-h file
+File: INSTALL.info,  Node: NO_DEFAULT_INVISIBLE,  Next: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY,  Prev: ENABLE_SUMMON ENABLE_USERS,  Up: The config-h file
 
-SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE
-==========================================
+NO_DEFAULT_INVISIBLE
+====================
 
-On large IRC networks, the number of invisible users is likely to be
-large and reporting that number cause no pain.  To aid and effect this,
-SHOW_INVISIBLE_LUSERS is provided to cause the LUSERS command to report
-the number of invisible users to all people and not just operators.  The
-NO_DEFAULT_INVISIBLE define is used to toggle whether clients are
+The NO_DEFAULT_INVISIBLE define is used to toggle whether clients are
 automatically made invisible when they register.
 
 
-File: INSTALL.info,  Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY,  Next: ZIP_LINKS ZIP_LEVEL,  Prev: SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE,  Up: The config-h file
+File: INSTALL.info,  Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY,  Next: ZIP_LINKS ZIP_LEVEL,  Prev: NO_DEFAULT_INVISIBLE,  Up: The config-h file
 
 OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY
 ===========================================================
@@ -350,6 +346,17 @@ records of the same type.  In some cases, you can have concurrent
 records.  `It is important to note that the last matching record will
 be used'.  This is especially useful when setting up I records (client
 connections).
+
+`NEW!!!'
+     As of the 2.11.0 version of the server, if the server has been
+     compiled with #define CONFIG_DIRECTIVE_INCLUDE, you will be able
+     to use #include directive in ircd.conf to include files without
+     the need of M4.  #include "filename" Note that syntax is very
+     strict, it must be followed to the letter.  If filename does not
+     start with slash, ircd config directory is prepended.  Also note
+     that chkconf will follow such includes, giving however wrong line
+     numbers in output.
+
 
 * Menu:
 
@@ -866,16 +873,16 @@ How to become the IRC administrator on your site
      become an operator and what their "Nickname" and "Password" is.
 
 `Format'
-     O:<TARGET Host NAME>:<Password>:<Nickname>:<Port>:<Class>
+     O:<TARGET Host NAME>:<Password>:<Nickname>:<Port>:<Class>:<Flags>
 
 `O'
      Specifies Operator record.
 
 `Note'
-     If you use small letter ("o") in it, it specifies a global
-     operator. Capital letter ("O") specifies a local operator.  Local
-     operator has basically the same rights except global operator with
-     some restrictions.
+     If you use small letter ("o") in it, it specifies a local
+     operator. This is deprecated behaviour, use O:line flags.
+     Operator rights can be specified in config.h and fine-tuned in
+     ircd.conf.
 
 `TARGET Host NAME'
      Tells IRC which host you have the privileges FROM.  This means
@@ -905,6 +912,42 @@ How to become the IRC administrator on your site
      having a lower number than that for the relevant I-line) and
      determines the maximum number of simultaneous uses of the O-line
      allowable through the max. links field in the Y-line.
+
+`Flags'
+     This field contains flags of an O:line; flags are one character in
+     size, can be combined and their order does not matter.  They
+     define privileges of an operator.
+        * L - local operator (disables all remote functions)
+
+        * A - enables all flags (except local operator)
+
+        * K - allows KILL (local and remote)
+
+        * k - allows only local KILL
+
+        * S - allows SQUIT (local and remote)
+
+        * s - allows only local SQUIT
+
+        * C - allows CONNECT (local and remote)
+
+        * c - allows only local CONNECT
+
+        * l - allows CLOSE
+
+        * h - allows HAZH
+
+        * d - allows DNS
+
+        * r - allows REHASH
+
+        * R - allows RESTART
+
+        * D - allows DIE
+
+        * e - allows SET
+
+        * T - allows TKLINE
 
 `Example'
      o:orion.cair.du.edu:pyunxc:Jeff::1
@@ -1673,41 +1716,41 @@ reviewed and forwarded to the appropriate mailing list.
 
 
 Tag Table:
-Node: Top128
-Node: Installing IRC-652
-Node: The configure script877
-Node: Notes for Cygwin32 users3163
-Node: Notes concerning IPv6 support3896
-Node: The config-h file4327
-Node: DEBUGMODE4895
-Node: CHROOTDIR5472
-Node: ENABLE_SUMMON ENABLE_USERS5841
-Node: SHOW_INVISIBLE_LUSERS NO_DEFAULT_INVISIBLE6374
-Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY7063
-Node: ZIP_LINKS ZIP_LEVEL7724
-Node: SLOW_ACCEPT8752
-Node: CLONE_CHECK9382
-Node: Other #define's9745
-Node: Editing the Makefile and compiling10067
-Node: The ircd-conf file11052
-Node: Machine information12901
-Node: Administrative info15516
-Node: Port connections17667
-Node: Connection Classes19816
-Node: Client connections24943
-Node: Operator priviliges30677
-Node: Excluded accounts32850
-Node: Server connections36762
-Node: Deny auto-connections45390
-Node: Hub connections46764
-Node: Leaf connections48252
-Node: Version limitations50336
-Node: Excluded machines52094
-Node: Service connections53399
-Node: Bounce server54993
-Node: Related resources56854
-Node: Reporting a bug57893
-Node: How to report a bug58150
-Node: Where to send a bug report59161
+Node: Top127
+Node: Installing IRC-650
+Node: The configure script875
+Node: Notes for Cygwin32 users3161
+Node: Notes concerning IPv6 support3894
+Node: The config-h file4325
+Node: DEBUGMODE4871
+Node: CHROOTDIR5448
+Node: ENABLE_SUMMON ENABLE_USERS5817
+Node: NO_DEFAULT_INVISIBLE6328
+Node: OPER_KILL OPER_REHASH OPER_RESTART OPER_SET LOCAL_KILL_ONLY6669
+Node: ZIP_LINKS ZIP_LEVEL7308
+Node: SLOW_ACCEPT8336
+Node: CLONE_CHECK8966
+Node: Other #define's9329
+Node: Editing the Makefile and compiling9651
+Node: The ircd-conf file10636
+Node: Machine information13005
+Node: Administrative info15620
+Node: Port connections17771
+Node: Connection Classes19920
+Node: Client connections25047
+Node: Operator priviliges30781
+Node: Excluded accounts33726
+Node: Server connections37638
+Node: Deny auto-connections46266
+Node: Hub connections47640
+Node: Leaf connections49128
+Node: Version limitations51212
+Node: Excluded machines52970
+Node: Service connections54275
+Node: Bounce server55869
+Node: Related resources57730
+Node: Reporting a bug58769
+Node: How to report a bug59026
+Node: Where to send a bug report60037
 
 End Tag Table

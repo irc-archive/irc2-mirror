@@ -18,21 +18,13 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: match.c,v 1.11 2003/10/18 15:31:28 q Exp $";
+static  char rcsid[] = "@(#)$Id: match.c,v 1.13 2004/06/11 18:00:59 chopin Exp $";
 #endif
 
 #include "os.h"
-#ifndef CLIENT_COMPILE
-# include "s_defines.h"
-#else
-# include "c_defines.h"
-#endif
+#include "s_defines.h"
 #define MATCH_C
-#ifndef CLIENT_COMPILE
-# include "s_externs.h"
-#else
-# include "c_externs.h"
-#endif
+#include "s_externs.h"
 #undef MATCH_C
 
 unsigned char tolowertab[] =
@@ -363,8 +355,8 @@ int	isvalidusername(char *username)
 		}
 	}
 	/* we require at least one alphanum and no more than
-	   one nonalphanum */
-	if (nan > 1 || an == 0)
+	   two nonalphanum */
+	if (nan > 2 || an == 0)
 	{
 		return 0;
 	}

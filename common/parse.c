@@ -19,141 +19,101 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: parse.c,v 1.62 2004/05/14 22:31:48 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: parse.c,v 1.77 2004/06/24 15:44:51 chopin Exp $";
 #endif
 
 #include "os.h"
-#ifndef CLIENT_COMPILE
-# include "s_defines.h"
-#else
-# include "c_defines.h"
-#endif
+#include "s_defines.h"
 #define PARSE_C
-#ifndef CLIENT_COMPILE
-# include "s_externs.h"
-#else
-# include "c_externs.h"
-#endif
+#include "s_externs.h"
 #undef PARSE_C
 
+/* max parameters accepted */
+#define MPAR 15
+
+/* commands should be sorted by their average usage count */
+/* handlers are for: server, client, oper, service, unregistered */
 struct Message msgtab[] = {
-  { MSG_PRIVATE, m_private,  MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-#ifndef CLIENT_COMPILE
-  { MSG_NJOIN,   m_njoin,    MAXPARA, MSG_LAG|MSG_REG|MSG_NOU, 0, 0, 0L},
-#endif
-  { MSG_JOIN,    m_join,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_MODE,    m_mode,     MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-#ifndef CLIENT_COMPILE
-  { MSG_UNICK,   m_unick,    MAXPARA, MSG_LAG|MSG_REG|MSG_NOU, 0, 0, 0L},
-#endif
-  { MSG_NICK,    m_nick,     MAXPARA, MSG_LAG, 0, 0, 0L},
-  { MSG_PART,    m_part,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_QUIT,    m_quit,     MAXPARA, MSG_LAG, 0, 0, 0L},
-  { MSG_NOTICE,  m_notice,   MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_KICK,    m_kick,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_SERVER,  m_server,   MAXPARA, MSG_LAG|MSG_NOU, 0, 0, 0L},
-#ifndef CLIENT_COMPILE
-  { MSG_SMASK,   m_smask,    MAXPARA, MSG_LAG|MSG_REG|MSG_NOU, 0, 0, 0L},
-  { MSG_TRACE,   m_trace,    MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-#endif
-  { MSG_TOPIC,   m_topic,    MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_INVITE,  m_invite,   MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_WALLOPS, m_wallops,  MAXPARA, MSG_LAG|MSG_REG|MSG_NOU, 0, 0, 0L},
-  { MSG_PING,    m_ping,     MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_PONG,    m_pong,     MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_ERROR,   m_error,    MAXPARA, MSG_LAG|MSG_REG|MSG_NOU, 0, 0, 0L},
-#ifdef	OPER_KILL
-  { MSG_KILL,    m_kill,     MAXPARA, MSG_LAG|MSG_REG|MSG_OP|MSG_LOP, 0,0, 0L},
-#else
-  { MSG_KILL,    m_kill,     MAXPARA, MSG_LAG|MSG_REG|MSG_NOU, 0, 0, 0L},
-#endif
-#ifndef CLIENT_COMPILE
-  { MSG_SAVE,    m_save,     MAXPARA, MSG_LAG|MSG_NOU, 0, 0, 0L},
-  { MSG_USER,    m_user,     MAXPARA, MSG_LAG|MSG_NOU, 0, 0, 0L},
-  { MSG_AWAY,    m_away,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_UMODE,   m_umode,    MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_ISON,    m_ison,     1,	 MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_SQUIT,   m_squit,    MAXPARA, MSG_LAG|MSG_REG|MSG_OP|MSG_LOP, 0,0, 0L},
-  { MSG_WHOIS,   m_whois,    MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_WHO,     m_who,      MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_WHOWAS,  m_whowas,   MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_LIST,    m_list,     MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_NAMES,   m_names,    MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_USERHOST,m_userhost, MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_PASS,    m_pass,     MAXPARA, MSG_LAG|MSG_NOU, 0, 0, 0L},
-  { MSG_LUSERS,  m_lusers,   MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_TIME,    m_time,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_OPER,    m_oper,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_CONNECT, m_connect,  MAXPARA,
-				MSG_LAG|MSG_REGU|MSG_OP|MSG_LOP, 0, 0, 0L},
-  { MSG_VERSION, m_version,  MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_STATS,   m_stats,    MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_LINKS,   m_links,    MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_ADMIN,   m_admin,    MAXPARA, MSG_LAG, 0, 0, 0L},
-  { MSG_USERS,   m_users,    MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_SUMMON,  m_summon,   MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_HELP,    m_help,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_INFO,    m_info,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_MOTD,    m_motd,     MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_CLOSE,   m_close,    MAXPARA, MSG_LAG|MSG_REGU|MSG_OP, 0, 0, 0L},
-  { MSG_SERVICE, m_service,  MAXPARA, MSG_LAG|MSG_NOU, 0, 0, 0L},
-  { MSG_EOB,     m_eob,      MAXPARA, MSG_LAG|MSG_NOU|MSG_REG, 0, 0, 0L},
-  { MSG_EOBACK,  m_eoback,   MAXPARA, MSG_LAG|MSG_NOU|MSG_REG, 0, 0, 0L},
+{ "PRIVMSG",  2, MPAR, 0, 0, 0L, { m_nop, m_private, m_private, m_nop, m_unreg } },
+{ "NJOIN",    2, MPAR, 0, 0, 0L, { m_njoin, m_nop, m_nop, m_nop, m_unreg } },
+{ "JOIN",     1, MPAR, 0, 0, 0L, { m_nop, m_join, m_join, m_nop, m_unreg } },
+{ "MODE",     1, MPAR, 0, 0, 0L, { m_mode, m_mode, m_mode, m_nop, m_unreg } },
+{ "UNICK",    7, MPAR, 0, 0, 0L, { m_unick, m_nop, m_nop, m_nop, m_unreg } },
+{ "NICK",     1, MPAR, 0, 0, 0L, { m_nick, m_nick, m_nick, m_nop, m_nick } },
+{ "PART",     1, MPAR, 0, 0, 0L, { m_part, m_part, m_part, m_nop, m_unreg } },
+{ "QUIT",     0, MPAR, 0, 0, 0L, { m_quit, m_quit, m_quit, m_quit, m_quit } },
+{ "NOTICE",   2, MPAR, 0, 0, 0L, { m_notice, m_notice, m_notice, m_notice, m_unreg } },
+{ "KICK",     2, MPAR, 0, 0, 0L, { m_kick, m_kick, m_kick, m_nop, m_unreg } },
+{ "SERVER",   2, MPAR, 0, 0, 0L, { m_server, m_nop, m_nop, m_nop, m_server } },
+{ "SMASK",    2, MPAR, 0, 0, 0L, { m_smask, m_nop, m_nop, m_nop, m_unreg } },
+{ "TRACE",    0, MPAR, 0, 0, 0L, { m_trace, m_trace, m_trace, m_nop, m_unreg } },
+{ "TOPIC",    1, MPAR, 0, 0, 0L, { m_nop, m_topic, m_topic, m_nop, m_unreg } },
+{ "INVITE",   2, MPAR, 0, 0, 0L, { m_nop, m_invite, m_invite, m_nop, m_unreg } },
+{ "WALLOPS",  1, MPAR, 0, 0, 0L, { m_wallops, m_nop, m_nop, m_nop, m_unreg } },
+{ "PING",     1, MPAR, 0, 0, 0L, { m_ping, m_ping, m_ping, m_ping, m_unreg } },
+{ "PONG",     1, MPAR, 0, 0, 0L, { m_pong, m_pong, m_pong, m_pong, m_unreg } },
+{ "ERROR",    1, MPAR, 0, 0, 0L, { m_error, m_nop, m_nop, m_nop, m_unreg } },
+{ "KILL",     2, MPAR, 0, 0, 0L, { m_kill, m_nopriv, m_kill, m_nop, m_unreg } },
+{ "SAVE",     1, MPAR, 0, 0, 0L, { m_save, m_nop, m_nop, m_nop, m_unreg } },
+{ "USER",     4, MPAR, 0, 0, 0L, { m_nop, m_reg, m_reg, m_nop, m_user } },
+{ "AWAY",     0, MPAR, 0, 0, 0L, { m_nop, m_away, m_away, m_nop, m_unreg } },
+{ "UMODE",    1, MPAR, 0, 0, 0L, { m_nop, m_umode, m_umode, m_nop, m_unreg } },
+{ "ISON",     1,    1, 0, 0, 0L, { m_ison, m_ison, m_ison, m_nop, m_unreg } },
+{ "SQUIT",    2, MPAR, 0, 0, 0L, { m_squit, m_nopriv, m_squit, m_nop, m_unreg } },
+{ "WHOIS",    1, MPAR, 0, 0, 0L, { m_whois, m_whois, m_whois, m_nop, m_unreg } },
+{ "WHO",      1, MPAR, 0, 0, 0L, { m_who, m_who, m_who, m_nop, m_unreg } },
+{ "WHOWAS",   1, MPAR, 0, 0, 0L, { m_whowas, m_whowas, m_whowas, m_nop, m_unreg } },
+{ "LIST",     0, MPAR, 0, 0, 0L, { m_list, m_list, m_list, m_nop, m_unreg } },
+{ "NAMES",    0, MPAR, 0, 0, 0L, { m_nop, m_names, m_names, m_nop, m_unreg } },
+{ "USERHOST", 1, MPAR, 0, 0, 0L, { m_userhost, m_userhost, m_userhost, m_nop, m_unreg } },
+{ "PASS",     1, MPAR, 0, 0, 0L, { m_nop, m_reg, m_reg, m_nop, m_pass } },
+{ "LUSERS",   0, MPAR, 0, 0, 0L, { m_lusers, m_lusers, m_lusers, m_nop, m_unreg } },
+{ "TIME",     0, MPAR, 0, 0, 0L, { m_nop, m_time, m_time, m_nop, m_unreg } },
+{ "OPER",     2, MPAR, 0, 0, 0L, { m_nop, m_oper, m_nop, m_nop, m_unreg } },
+{ "CONNECT",  1, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_connect, m_nop, m_unreg } },
+{ "VERSION",  0, MPAR, 0, 0, 0L, { m_nop, m_version, m_version, m_nop, m_unreg } },
+{ "STATS",    1, MPAR, 0, 0, 0L, { m_nop, m_stats, m_stats, m_nop, m_unreg } },
+{ "LINKS",    0, MPAR, 0, 0, 0L, { m_links, m_links, m_links, m_nop, m_unreg } },
+{ "ADMIN",    0, MPAR, 0, 0, 0L, { m_admin, m_admin, m_admin, m_admin, m_admin } },
+{ "USERS",    0, MPAR, 0, 0, 0L, { m_nop, m_users, m_users, m_nop, m_unreg } },
+{ "SUMMON",   0, MPAR, 0, 0, 0L, { m_nop, m_summon, m_summon, m_nop, m_unreg } },
+{ "HELP",     0, MPAR, 0, 0, 0L, { m_nop, m_help, m_help, m_nop, m_unreg } },
+{ "INFO",     0, MPAR, 0, 0, 0L, { m_nop, m_info, m_info, m_nop, m_unreg } },
+{ "MOTD",     0, MPAR, 0, 0, 0L, { m_nop, m_motd, m_motd, m_nop, m_unreg } },
+{ "CLOSE",    0, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_close, m_nop, m_unreg } },
+{ "SERVICE",  4, MPAR, 0, 0, 0L, { m_service, m_nop, m_nop, m_nop, m_service } },
+{ "EOB",      0, MPAR, 0, 0, 0L, { m_eob, m_nop, m_nop, m_nop, m_unreg } },
+{ "EOBACK",   0, MPAR, 0, 0, 0L, { m_eoback, m_nop, m_nop, m_nop, m_unreg } },
+{ "ENCAP",    1, MPAR, 0, 0, 0L, { m_encap, m_nop, m_nop, m_nop, m_nop } },
+{ "SDIE",     0, MPAR, 0, 0, 0L, { m_sdie, m_nop, m_nop, m_nop, m_unreg } },
 #ifdef	USE_SERVICES
-  { MSG_SERVSET, m_servset,  MAXPARA, MSG_LAG|MSG_SVC, 0, 0, 0L},
+{ "SERVSET",  1, MPAR, 0, 0, 0L, { m_nop, m_nop, m_nop, m_servset, m_nop } },
 #endif
-  { MSG_SQUERY,  m_squery,   MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
-  { MSG_SERVLIST,m_servlist, MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_HASH,    m_hash,     MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_DNS,     m_dns,      MAXPARA, MSG_LAG|MSG_REG|MSG_OP|MSG_LOP, 0, 0, 0L},
-#ifdef	OPER_REHASH
-  { MSG_REHASH,  m_rehash,   MAXPARA, MSG_REGU|MSG_OP
-# ifdef	LOCOP_REHASH
-					 |MSG_LOP
-# endif
-					, 0, 0, 0L},
+{ "SQUERY",   2, MPAR, 0, 0, 0L, { m_nop, m_squery, m_squery, m_nop, m_unreg } },
+{ "SERVLIST", 0, MPAR, 0, 0, 0L, { m_servlist, m_servlist, m_servlist, m_nop, m_unreg } },
+{ "HAZH",     1, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_hash, m_nop, m_nop } },
+{ "DNS",      0, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_dns, m_nop, m_nop } },
+{ "REHASH",   0, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_rehash, m_nop, m_unreg } },
+{ "RESTART",  0, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_restart, m_nop, m_unreg } },
+{ "DIE",      0, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_die, m_nop, m_unreg } },
+{ "SET",      0, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_set, m_nop, m_unreg } },
+{ "MAP",      0, MPAR, 0, 0, 0L, { m_map, m_map, m_map, m_nop, m_unreg } },
+{ "POST",     0, MPAR, 0, 0, 0L, { m_nop, m_nop, m_nop, m_nop, m_post } },
+#ifdef TKLINE
+{ "TKLINE",   3, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_tkline, m_tkline, m_unreg } },
+{ "UNTKLINE", 1, MPAR, 0, 0, 0L, { m_nop, m_nopriv, m_untkline, m_untkline, m_unreg } },
 #endif
-#ifdef	OPER_RESTART
-  { MSG_RESTART,  m_restart,   MAXPARA, MSG_REGU|MSG_OP
-# ifdef	LOCOP_RESTART
-					 |MSG_LOP
-# endif
-					, 0, 0, 0L},
-#endif
-#ifdef	OPER_DIE
-  { MSG_DIE,  m_die,   MAXPARA, MSG_REGU|MSG_OP
-# ifdef	LOCOP_DIE
-					 |MSG_LOP
-# endif
-					, 0, 0, 0L},
-#endif
-#ifdef OPER_SET
-  { MSG_SET,  m_set,   MAXPARA, MSG_REGU|MSG_OP
-#ifdef LOCOP_SET
-					| MSG_LOP
-#endif
-					, 0, 0, 0L},
-#endif /* OPER_SET */
-  { MSG_MAP,  m_map,   MAXPARA, MSG_LAG | MSG_REG, 0, 0, 0L},
-  { MSG_POST,    m_post,     MAXPARA, MSG_NOU, 0, 0, 0L},
-#endif /* !CLIENT_COMPILE */
-  { NULL, NULL, 0, 0, 0, 0, 0L}
+{ NULL,       0,    0, 0, 0, 0L,   NULL, NULL, NULL, NULL, NULL }
 };
 
 /*
  * NOTE: parse() should not be called recursively by other functions!
  */
-static	char	*para[MAXPARA+1];
+static	char	*para[MPAR+1];
 
-#ifdef	CLIENT_COMPILE
-static	char	sender[NICKLEN+USERLEN+HOSTLEN+3];
-char	userhost[USERLEN+HOSTLEN+2];
-#define	timeofday	time(NULL)
-#else
 static	char	sender[HOSTLEN+1];
 static	int	cancel_clients (aClient *, aClient *, char *);
 static	void	remove_unknown (aClient *, char *);
-#endif
 
 static	int	find_sender (aClient *cptr, aClient **sptr, char *sender,
 			char *buffer);
@@ -166,7 +126,6 @@ static	int	find_sender (aClient *cptr, aClient **sptr, char *sender,
 **	the old. 'name' is now assumed to be a null terminated
 **	string and the search is the for server and user.
 */
-#ifndef CLIENT_COMPILE
 aClient	*find_client(char *name, aClient *cptr)
 {
 	aClient *acptr = cptr;
@@ -266,22 +225,7 @@ aClient	*find_matching_client(char *mask)
 	}
 	return NULL;
 }
-#else /* CLIENT_COMPILE */
 
-aClient	*find_client(char *name, aClient *cptr)
-{
-	Reg	aClient	*c2ptr = cptr;
-
-	if (!name || !*name)
-		return c2ptr;
-
-	for (c2ptr = client; c2ptr; c2ptr = c2ptr->next) 
-		if (mycmp(name, c2ptr->name) == 0)
-			return c2ptr;
-	return cptr;
-}
-#endif /* CLIENT_COMPILE */
-#ifndef CLIENT_COMPILE
 /*
 **  Find a user@host (server or user).
 **
@@ -437,25 +381,6 @@ aClient	*find_name(char *name, aClient *cptr)
 	    }
 	return (sp ? sp->bcptr : cptr);
 }
-#else
-aClient	*find_server(char *name, aClient *cptr)
-{
-	Reg	aClient *c2ptr = cptr;
-
-	if (!name || !*name)
-		return c2ptr;
-
-	for (c2ptr = client; c2ptr; c2ptr = c2ptr->next)
-	    {
-		if (!IsServer(c2ptr) && !IsMe(c2ptr))
-			continue;
-		if (match(c2ptr->name, name) == 0 ||
-		    match(name, c2ptr->name) == 0)
-			break;
-	    }
-	return (c2ptr ? c2ptr : cptr);
-}
-#endif /* CLIENT_COMPILE */
 
 /*
 **  Find person by (nick)name.
@@ -489,7 +414,6 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 {
 	aClient *from = NULL;
 
-#ifndef	CLIENT_COMPILE
 	if (ST_UID(cptr))
 	{
 		if (isdigit(*sender))
@@ -518,7 +442,6 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 			}
 		}
 	}
-#endif
 	if (!from)
 	{
 		from = find_client(sender, (aClient *) NULL);
@@ -534,7 +457,6 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 			from = find_server(sender, (aClient *)NULL);
 		}
 	}
-#ifndef	CLIENT_COMPILE
 	/* Is there svc@server prefix ever? -Vesa */
 	/* every time a service talks -krys */
 	if (!from && index(sender, '@'))
@@ -550,7 +472,6 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 		para[0] = from->name;
 	}
 	else
-#endif
 	{
 		para[0] = sender;
 	}
@@ -568,9 +489,7 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 			"Unknown prefix (%s)(%s) from (%s)",
 			sender, buffer, cptr->name));
 		ircstp->is_unpf++;
-#ifndef	CLIENT_COMPILE
 		remove_unknown(cptr, sender);
-#endif
 		return -3;	/* Grab it in read_message() */
 	}
 	if (from->from != cptr)
@@ -579,17 +498,12 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 		Debug((DEBUG_ERROR,
 			"Message (%s) coming from (%s)",
 			buffer, cptr->name));
-#ifndef	CLIENT_COMPILE
 		return cancel_clients(cptr, from, buffer);
-#else
-		return -1;
-#endif
 	}
-
 	*sptr = from;
 	return 1;
 }
-#ifndef CLIENT_COMPILE
+
 /* find target.
 **  name - name of the client to be searched
 **  cptr - originating socket
@@ -639,7 +553,6 @@ aClient	*find_target(char *name, aClient *cptr)
 	}
 	return acptr;
 }
-#endif
 
 /*
  * parse a buffer.
@@ -655,13 +568,12 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 	Reg	int	len, i, numeric = 0, paramcount;
 	Reg	struct	Message *mptr = NULL;
 	int	ret;
+	int	status;
 
-#ifndef	CLIENT_COMPILE
 	Debug((DEBUG_DEBUG, "Parsing %s: %s",
 		get_client_name(cptr, FALSE), buffer));
 	if (IsDead(cptr))
 		return -1;
-#endif
 
 	s = sender;
 	*s = '\0';
@@ -678,18 +590,6 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 			if (s < (sender + sizeof(sender)-1))
 				*s++ = *ch; /* leave room for NULL */
 		*s = '\0';
-#ifdef CLIENT_COMPILE
-		if ((s = index(sender, '!')))
-		    {
-			*s++ = '\0';
-			strncpyzt(userhost, s, sizeof(userhost));
-		    }
-		else if ((s = index(sender, '@')))
-		    {
-			*s++ = '\0';
-			strncpyzt(userhost, s, sizeof(userhost));
-		    }
-#endif
 		/*
 		** Actually, only messages coming from servers can have
 		** the prefix--prefix silently ignored, if coming from
@@ -733,7 +633,7 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 	    {
 		numeric = (*ch - '0') * 100 + (*(ch + 1) - '0') * 10
 			+ (*(ch + 2) - '0');
-		paramcount = MAXPARA;
+		paramcount = MPAR;
 		ircstp->is_num++;
 	    }
 	else
@@ -765,27 +665,20 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 					    ":%s %d %s %s :Unknown command",
 					    me.name, ERR_UNKNOWNCOMMAND,
 					    from->name, ch);
-#ifdef	CLIENT_COMPILE
-				Debug((DEBUG_ERROR,"Unknown (%s) from %s[%s]",
-					ch, cptr->name, cptr->sockhost));
-#else
 				else if (IsServer(cptr))
 					sendto_flag(SCH_ERROR,
 					    "Unknown command from %s:%s",
 					    get_client_name(cptr, TRUE), ch);
 				Debug((DEBUG_ERROR,"Unknown (%s) from %s",
 					ch, get_client_name(cptr, TRUE)));
-#endif
 			    }
 			ircstp->is_unco++;
 			return -1;
 		    }
-		paramcount = mptr->parameters;
+		paramcount = mptr->maxparams;
 		i = bufend - ((s) ? s : ch);
 		mptr->bytes += i;
-#ifndef	CLIENT_COMPILE
-		if ((mptr->flags & MSG_LAG) &&
-		    !(IsServer(cptr) || IsService(cptr)))
+		if (!(IsServer(cptr) || IsService(cptr)))
 		    {	/* Flood control partly migrated into penalty */
 			if (bootopt & BOOT_PROT)
 				cptr->since += (1 + i / 100);
@@ -798,7 +691,6 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 			 * -SRB
 			 */
 		    }
-#endif
 	    }
 	/*
 	** Must the following loop really be so devious? On
@@ -810,15 +702,11 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 
 	/* Note initially true: s==NULL || *(s-1) == '\0' !! */
 
-#ifdef	CLIENT_COMPILE
-	if (me.user)
-		para[0] = sender;
-#endif
 	i = 0;
 	if (s)
 	    {
-		if (paramcount > MAXPARA)
-			paramcount = MAXPARA;
+		if (paramcount > MPAR)
+			paramcount = MPAR;
 		for (;;)
 		    {
 			/*
@@ -846,53 +734,53 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 				;
 		    }
 	    }
-	para[++i] = NULL; /* at worst, ++i is paramcount (MAXPARA) */
+	para[++i] = NULL; /* at worst, ++i is paramcount (MPAR) */
 	if (mptr == NULL)
 		return (do_numeric(numeric, cptr, from, i, para));
 	mptr->count++;
 	if (!MyConnect(from))
 		mptr->rcount++;
+	status = from->status < STAT_SERVER ? STAT_UNREG : from->status;
 	if (IsRegisteredUser(cptr) &&
 #ifdef	IDLE_FROM_MSG
-	    mptr->func == m_private)
+	    mptr->handler[status] == m_private)
 #else
-	    mptr->func != m_ping && mptr->func != m_pong)
+	    mptr->handler[status] != m_ping && mptr->handler[status] != m_pong)
 #endif
 		from->user->last = timeofday;
-	Debug((DEBUG_DEBUG, "Function: %#x = %s parc %d parv %#x",
-		mptr->func, mptr->cmd, i, para));
-#ifndef	CLIENT_COMPILE
-	if ((mptr->flags & MSG_REGU) && check_registered_user(from))
-		return -1;
-	if ((mptr->flags & MSG_SVC) && check_registered_service(from))
-		return -1;
-	if ((mptr->flags & MSG_REG) && check_registered(from))
-		return -1;
-	if ((mptr->flags & MSG_NOU) && (MyPerson(from) || MyService(from)))
-	    {
-		sendto_one(from, replies[ERR_ALREADYREGISTRED], ME, BadTo(para[0]));
-		return-1;
-	    }
-	if (MyConnect(from) && !IsServer(from) &&
-	    (mptr->flags & (MSG_LOP|MSG_OP)) &&
-	    !((mptr->flags & MSG_OP) && (IsOper(from))) &&
-	    !((mptr->flags & MSG_LOP) && (IsLocOp(from))))
-		    {
-			sendto_one(from, replies[ERR_NOPRIVILEGES], ME, BadTo(para[0]));
-			return -1;
-		    }
-#endif
-	/*
-	** ALL m_functions return now UNIFORMLY:
-	**   -2  old FLUSH_BUFFER return value (unchanged).
-	**   -1  if parsing of a protocol message leads in a syntactic/semantic
-	**       error and NO penalty scoring should be applied.
-	**   >=0 if protocol message processing was successful. The return
-	**       value indicates the penalty score.
-	*/
-	ret = (*mptr->func)(cptr, from, i, para);
+	Debug((DEBUG_DEBUG, "Function(%d): %#x = %s parc %d parv %#x",
+		status, mptr->handler[status], mptr->cmd, i, para));
+	if (mptr->handler[status] != m_nop && mptr->handler[status] != m_nopriv
+		&& mptr->handler[status] != m_unreg &&
+		mptr->minparams > 0 && 
+		(i <= mptr->minparams || para[mptr->minparams][0] == '\0'))
+	{
+		if (status == STAT_SERVER)
+		{
+			char	rbuf[BUFSIZE];
 
-#ifndef       CLIENT_COMPILE
+			sprintf(rbuf, "%s: Not enough parameters", mptr->cmd);
+			ret = exit_client(cptr, cptr, &me, rbuf);
+		}
+		else
+		{
+			sendto_one(from, replies[ERR_NEEDMOREPARAMS], 
+				ME, BadTo(para[0]), mptr->cmd);
+			ret = 1;
+		}
+	}
+	else
+	{
+		/*
+		** ALL m_functions return now UNIFORMLY:
+		**   -2  old FLUSH_BUFFER return value (unchanged).
+		**   -1  if parsing of a protocol message leads in a syntactic/semantic
+		**       error and NO penalty scoring should be applied.
+		**   >=0 if protocol message processing was successful. The return
+		**       value indicates the penalty score.
+		*/
+		ret = (*mptr->handler[status])(cptr, from, i, para);
+	}
 	/*
         ** Add penalty score for sucessfully parsed command if issued by
 	** a LOCAL user client.
@@ -906,7 +794,6 @@ int	parse(aClient *cptr, char *buffer, char *bufend)
 			   me.name, cptr->name, ch, ret);
 */
 	    }
-#endif
 	return (ret != FLUSH_BUFFER) ? 2 : FLUSH_BUFFER;
 }
 
@@ -970,7 +857,6 @@ char	*getfield(char *irc_newline)
 	return(field);
 }
 
-#ifndef	CLIENT_COMPILE
 static	int	cancel_clients(aClient *cptr, aClient *sptr, char *cmd)
 {
 	/*
@@ -1044,5 +930,26 @@ static	void	remove_unknown(aClient *cptr, char *sender)
 		sendto_flag(SCH_NOTICE, "Dropping unknown %s brought by %s.",
 			    sender, get_client_name(cptr, FALSE));
 }
-#endif
 
+int	m_nop(aClient *cptr, aClient *sptr, int parc, char **parv)
+{
+	return 1;
+}
+
+int	m_nopriv(aClient *cptr, aClient *sptr, int parc, char **parv)
+{
+	sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, parv[0]);
+	return 1;
+}
+
+int	m_unreg(aClient *cptr, aClient *sptr, int parc, char **parv)
+{
+	sendto_one(sptr, replies[ERR_NOTREGISTERED], ME, "*");
+	return -1;
+}
+
+int	m_reg(aClient *cptr, aClient *sptr, int parc, char **parv)
+{
+	sendto_one(sptr, replies[ERR_ALREADYREGISTRED], ME, parv[0]);
+	return 1;
+}

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.189 2004/05/14 22:58:13 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.214 2004/06/26 00:44:49 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -38,6 +38,7 @@ static	int	get_version (char *, char *);
 static	void	trace_one (aClient *, aClient *);
 static	void	report_listeners(aClient *, char *);
 static	void	report_class_usage(aClient *, char *);
+static	void	count_servers_users(aClient *, int *, int *);
 const	char	*check_servername_errors[3][2] = {
 	{ "too long", "Bogus servername - too long" },
 	{ "invalid", "Bogus servername - invalid hostname" },
@@ -125,80 +126,72 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	*server;
 	Reg	aClient	*acptr = NULL;
 	int	rsquit = 0;
-	char	*comment = (parc > 2 && parv[2]) ? parv[2] : "no reason";
+	char	*comment;
 	static char	comment2[TOPICLEN+1];
 
-	if (parc > 1)
-	{
-		server = parv[1];
-		/*
-		** To accomodate host masking, a squit for a masked server
-		** name is expanded if the incoming mask is the same as
-		** the server name for that link to the name of link.
-		*/
-		while ((*server == '*') && IsServer(cptr))
-		{
-			aconf = cptr->serv->nline;
-			if (!aconf)
-				break;
-			if (!mycmp(server,
-				   my_name_for_link(ME, aconf->port)))
-				server = cptr->name;
-			break; /* WARNING is normal here */
-		}
-		/*
-		** Find server matching (compatibility) SID
-		*/
-		if (server[0]=='$')
-		{
-			aServer *servptr;
+	if (is_allowed(sptr, ACL_SQUIT))
+		return m_nopriv(cptr, sptr, parc, parv);
 
-			servptr = find_tokserver(idtol(server + 1, SIDLEN - 1),
-				cptr, NULL);
-			if (servptr)
-			{
-				acptr = servptr->bcptr;
-			}
-		}
-		else	/* if (strlen(server)==SIDLEN) perhaps? --Beeth */
+	server = parv[1];
+	comment = parv[2];
+	/*
+	** To accomodate host masking, a squit for a masked server
+	** name is expanded if the incoming mask is the same as
+	** the server name for that link to the name of link.
+	*/
+	while ((*server == '*') && IsServer(cptr))
+	{
+		aconf = cptr->serv->nline;
+		if (!aconf)
+			break;
+		if (!mycmp(server,
+			   my_name_for_link(ME, aconf->port)))
+			server = cptr->name;
+		break; /* WARNING is normal here */
+	}
+	/*
+	** Find server matching (compatibility) SID
+	*/
+	if (server[0]=='$')
+	{
+		aServer *servptr;
+
+		servptr = find_tokserver(idtol(server + 1, SIDLEN - 1),
+			cptr, NULL);
+		if (servptr)
 		{
-			acptr = find_sid(server, NULL);
-		}
-		/*
-		** The following allows wild cards in SQUIT. Only useful
-		** when the command is issued by an oper.
-		*/
-		if (!acptr)
-		{
-			for (acptr = client;
-				(acptr = next_client(acptr, server));
-				acptr = acptr->next)
-			{
-				if (IsServer(acptr) || IsMe(acptr))
-				{
-					break;
-				}
-			}
-		}
-		if (acptr && IsMe(acptr))
-		{
-			if (MyConnect(sptr) && ST_UID(sptr))
-			{
-				/* remote server is closing it's link */
-				rsquit = 1;
-			}
-			acptr = cptr;
-			server = cptr->sockhost;
+			acptr = servptr->bcptr;
 		}
 	}
-	else
+	else	/* if (strlen(server)==SIDLEN) perhaps? --Beeth */
 	{
-		/*
-		** This is actually protocol error. But, well, closing
-		** the link is very proper answer to that...
-		*/
-		server = cptr->name;
+		acptr = find_sid(server, NULL);
+	}
+	/*
+	** The following allows wild cards in SQUIT. Only useful
+	** when the command is issued by an oper.
+	*/
+	if (!acptr)
+	{
+		for (acptr = client;
+			(acptr = next_client(acptr, server));
+			acptr = acptr->next)
+		{
+			if (IsServer(acptr) || IsMe(acptr))
+			{
+				break;
+			}
+		}
+	}
+	if (acptr && IsMe(acptr))
+	{
+		if (MyConnect(sptr) && ST_UID(sptr))
+		{
+			/* remote server is closing it's link */
+			rsquit = 1;
+		}
 		acptr = cptr;
+		server = cptr->sockhost;
 	}
 
 	/*
@@ -234,15 +227,9 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		sendto_one(sptr, replies[ERR_NOSUCHSERVER], ME, BadTo(parv[0]), server);
 		return 1;
 	    }
-	if (MyConnect(sptr) && !MyConnect(acptr) && parc < 3)
+	if (!MyConnect(acptr) && is_allowed(sptr, ACL_SQUITREMOTE))
 	    {
-                sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "SQUIT");
-		return 0;
-            }
-	if (IsLocOp(sptr) && !MyConnect(acptr))
-	    {
-		sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, BadTo(parv[0]));
-		return 1;
+		return m_nopriv(cptr, sptr, parc, parv);
 	    }
 	if (MyPerson(sptr))
 	{
@@ -308,12 +295,12 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	*/
 	if (MyConnect(acptr) && !IsAnOper(cptr) && !rsquit)
 	    {
-		sendto_ops_butone(NULL, &me,
-			":%s WALLOPS :Received SQUIT %s from %s (%s)",
-			ME, server, parv[0], comment);
+		sendto_ops_butone(NULL, ME,
+			"Received SQUIT %s from %s (%s)",
+			acptr->name, parv[0], comment);
 #if defined(USE_SYSLOG) && defined(SYSLOG_SQUIT)
 		syslog(LOG_DEBUG,"SQUIT From %s : %s (%s)",
-		       parv[0], server, comment);
+		       parv[0], acptr->name, comment);
 #endif
 	    }
 	if (MyConnect(acptr))
@@ -575,12 +562,6 @@ static	void	send_server_burst(aClient *cptr, aClient *acptr)
 int    m_smask(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	aClient *acptr;
-
-	if (parc < 3)
-	{
-		return exit_client(cptr, cptr, &me,
-			"Not enough parameters to SMASK");
-	}
 
 	if (!sid_valid(parv[1]))
 	{
@@ -844,9 +825,9 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		*/
 		if ((aconf = find_conf_name(host, CONF_QUARANTINED_SERVER)))
 		    {
-			sendto_ops_butone(NULL, &me,
-				":%s WALLOPS * :%s brought in %s, %s %s",
-				ME, get_client_name(cptr, TRUE),
+			sendto_ops_butone(NULL, ME,
+				"%s brought in %s, %s %s",
+				get_client_name(cptr, TRUE),
 				host, "closing link because",
 				BadPtr(aconf->passwd) ? "reason unspecified" :
 				aconf->passwd);
@@ -1780,27 +1761,7 @@ static	void	report_myservers(aClient *sptr, char *to)
 			continue;
 		}
 		timeconnected = timeofday - acptr->firsttime;
-#ifdef HUB
-		servers = 0;
-		users = 0;
-		for (asptr = svrtop; asptr; asptr = asptr->nexts)
-		{
-			if (IsMasked(asptr->bcptr))
-			{
-				continue;
-			}
-			if (asptr->bcptr->from == acptr)
-			{
-				servers++;
-				users += asptr->usercnt[0];
-				users += asptr->usercnt[1];
-			}
-		}
-#else /* !HUB */
-		servers = istat.is_serv - 1;
-		users = istat.is_user[0] + istat.is_user[1];
-		users -= istat.is_myclnt;
-#endif
+		count_servers_users(acptr, &servers, &users);
 		sendto_one(sptr,
 			   ":%s %d %s :%s (%d, %02d:%02d:%02d) %dS %dC"
 			   " %lldkB sent %lldkB recv %ldkB sq%s",
@@ -1815,6 +1776,38 @@ static	void	report_myservers(aClient *sptr, char *to)
 			   (int) ((int)DBufLength(&acptr->sendQ) / 1024),
 			   IsBursting(acptr) ? " BURST" : "");
 	}
+}
+
+/* Count number of servers and users behind client cptr.
+** Values are put on provided servers and users. */
+void	count_servers_users(aClient *cptr, int *servers, int *users)
+{
+#ifdef HUB
+	aServer *asptr;
+
+	*servers = 0;
+	*users = 0;
+	for (asptr = svrtop; asptr; asptr = asptr->nexts)
+	{
+		if (asptr->bcptr->from == cptr)
+		{
+			if (!IsMasked(asptr->bcptr))
+			{
+				*servers += 1;
+			}
+			*users += asptr->usercnt[0];
+			*users += asptr->usercnt[1];
+		}
+	}
+#else /* !HUB */
+	/* we can have only one server linked */
+	*servers = istat.is_serv - 1;
+	*users = istat.is_user[0];
+	*users += istat.is_user[1];
+	/* is_user includes myclnt, so we have to subtract it */
+	*users -= istat.is_myclnt;
+#endif
+	return;
 }
 
 /*
@@ -1839,7 +1832,7 @@ static	void	report_myservers(aClient *sptr, char *to)
 **	      it--not reversed as in ircd.conf!
 */
 
-static int report_array[16][3] = {
+static int report_array[18][3] = {
 		{ CONF_ZCONNECT_SERVER,	  RPL_STATSCLINE, 'c'},
 		{ CONF_CONNECT_SERVER,	  RPL_STATSCLINE, 'C'},
 		{ CONF_NOCONNECT_SERVER,  RPL_STATSNLINE, 'N'},
@@ -1848,13 +1841,18 @@ static int report_array[16][3] = {
 		{ CONF_KILL,		  RPL_STATSKLINE, 'K'},
 		{ CONF_QUARANTINED_SERVER,RPL_STATSQLINE, 'Q'},
 		{ CONF_LEAF,		  RPL_STATSLLINE, 'L'},
-		{ CONF_OPERATOR,	  RPL_STATSOLINE, 'o'},
+		{ CONF_OPERATOR,	  RPL_STATSOLINE, 'O'},
 		{ CONF_HUB,		  RPL_STATSHLINE, 'H'},
-		{ CONF_LOCOP,		  RPL_STATSOLINE, 'O'},
 		{ CONF_SERVICE,		  RPL_STATSSLINE, 'S'},
 		{ CONF_VER,		  RPL_STATSVLINE, 'V'},
 		{ CONF_BOUNCE,		  RPL_STATSBLINE, 'B'},
 		{ CONF_DENY,		  RPL_STATSDLINE, 'D'},
+#ifdef TKLINE
+		{ CONF_TOTHERKILL,	  RPL_STATSKLINE, 'k'},
+		{ CONF_TKILL,		  RPL_STATSKLINE, 'K'},
+#else
+		{ 0, 0, 0}, { 0, 0, 0},
+#endif
 		{ 0, 0, 0}
 	};
 
@@ -1864,9 +1862,17 @@ static	void	report_configured_links(aClient *sptr, char *to, int mask)
 	aConfItem *tmp;
 	int	*p, port;
 	char	c, *host, *pass, *name;
+
+	if ((mask & (CONF_KILL|CONF_OTHERKILL)))
+		tmp = kconf;
+#ifdef TKLINE
+	else if ((mask & (CONF_TKILL|CONF_TOTHERKILL)))
+		tmp = tkconf;
+#endif
+	else
+		tmp = conf;
 	
-	for (tmp = (mask & (CONF_KILL|CONF_OTHERKILL)) ? kconf : conf;
-	     tmp; tmp = tmp->next)
+	for (; tmp; tmp = tmp->next)
 		if (tmp->status & mask)
 		    {
 			for (p = &report_array[0][0]; *p; p += 3)
@@ -1894,12 +1900,29 @@ static	void	report_configured_links(aClient *sptr, char *to, int mask)
 					   c, host, (pass) ? pass : null,
 					   name, port, get_conf_class(tmp));
 			}
+#ifdef TKLINE
+			else if ((tmp->status & (CONF_TKILL|CONF_TOTHERKILL)))
+			{
+				sendto_one(sptr, replies[p[1]], ME, BadTo(to),
+					   c, host, (pass) ? pass : null,
+					   name, tmp->hold - timeofday,
+					   get_conf_class(tmp));
+			}
+#endif
 			else if ((tmp->status & CONF_CLIENT))
 			{
 				sendto_one(sptr, replies[p[1]], ME, BadTo(to),
 					   c, host, (pass) ? "*" : null,
 					   name, port, get_conf_class(tmp),
 					   iline_flags_to_string(tmp->flags));
+
+			}
+			else if ((tmp->status & CONF_OPERATOR))
+			{
+				sendto_one(sptr, replies[p[1]], ME, BadTo(to),
+					   c, host, (pass) ? "*" : null,
+					   name, port, get_conf_class(tmp),
+					   oline_flags_to_string(tmp->flags));
 
 			}
 			else
@@ -2139,7 +2162,13 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	case 'I' : case 'i' : /* I (and i) conf lines */
 		report_configured_links(cptr, parv[0], CONF_CLIENT);
 		break;
-	case 'K' : case 'k' : /* K lines */
+#ifdef TKLINE
+	case 'k' : /* temporary K lines */
+		report_configured_links(cptr, parv[0],
+				(CONF_TKILL|CONF_TOTHERKILL));
+		break;
+#endif
+	case 'K' : /* K lines */
 		report_configured_links(cptr, parv[0],
 					(CONF_KILL|CONF_OTHERKILL));
 		break;
@@ -2407,13 +2436,8 @@ int	 m_lusers(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 	}
 	
-#ifndef SHOW_INVISIBLE_LUSERS
-	if (!IsOper(sptr))
-	{
-		i_count = 0;
-	}
-#endif
 	sendto_one(sptr, replies[RPL_LUSERCLIENT], ME, BadTo(parv[0]),
+		   c_count + i_count, v_count, s_count,
 		   c_count + i_count, v_count, s_count);
 	if (o_count)
 	{
@@ -2429,11 +2453,11 @@ int	 m_lusers(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		   istat.is_chan);
 	
 	sendto_one(sptr, replies[RPL_LUSERME], ME, BadTo(parv[0]), m_clients,
+		   m_services, m_servers, m_clients,
 		   m_services, m_servers);
-        sendto_one(sptr, replies[RPL_LOCALUSERS], ME, BadTo(parv[0]),
-			istat.is_myclnt, istat.is_m_myclnt);
-	sendto_one(sptr, replies[RPL_GLOBALUSERS], ME, BadTo(parv[0]),
-			c_count + i_count, istat.is_m_users);
+        sendto_one(sptr, replies[RPL_LUSERMAX], ME, BadTo(parv[0]),
+			istat.is_m_myclnt, istat.is_m_users,
+			istat.is_m_myclnt, istat.is_m_users);
 	return 2;
 }
 
@@ -2455,22 +2479,14 @@ int	m_connect(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	aConfItem *aconf;
 	aClient *acptr;
 
-	if (parc > 3 && IsLocOp(sptr))
+	if (is_allowed(sptr, parc > 3 ? ACL_CONNECTREMOTE : ACL_CONNECTLOCAL))
 	    {
-		sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, BadTo(parv[0]));
-		return 1;
+		return m_nopriv(cptr, sptr, parc, parv);
 	    }
 
 	if (hunt_server(cptr,sptr,":%s CONNECT %s %s :%s",
 		       3,parc,parv) != HUNTED_ISME)
 		return 1;
-
-	if (parc < 2 || *parv[1] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),
-			   "CONNECT");
-		return 0;
-	    }
 
 	if ((acptr = find_name(parv[1], NULL))
 	    || (acptr = find_mask(parv[1], NULL)))
@@ -2536,9 +2552,9 @@ int	m_connect(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	*/
 	if (!IsAnOper(cptr))
 	    {
-		sendto_ops_butone(NULL, &me,
-				  ":%s WALLOPS :Remote CONNECT %s %d from %s",
-				   ME, parv[1], port,
+		sendto_ops_butone(NULL, ME,
+				  "Remote CONNECT %s %d from %s",
+				   parv[1], port,
 				   get_client_name(sptr,FALSE));
 #if defined(USE_SYSLOG) && defined(SYSLOG_CONNECT)
 		syslog(LOG_DEBUG, "CONNECT From %s : %s %s", parv[0],
@@ -2586,30 +2602,10 @@ int	m_connect(aClient *cptr, aClient *sptr, int parc, char *parv[])
 */
 int	m_wallops(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
-	char	*message, *pv[4];
-
-	message = parc > 1 ? parv[1] : NULL;
-
-	if (BadPtr(message))
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),
-			   "WALLOPS");
-		return 1;
-	    }
-
-	if (!IsServer(sptr))
-	    {
-		pv[0] = parv[0];
-		pv[1] = "+wallops";
-		pv[2] = message;
-		pv[3] = NULL;
-		return m_private(cptr, sptr, 3, pv);
-	    }
-	sendto_ops_butone(IsServer(cptr) ? cptr : NULL, sptr,
-			":%s WALLOPS :%s", parv[0], message);
+	sendto_ops_butone(IsServer(cptr) ? cptr : NULL, parv[0], "%s", parv[1]);
 #ifdef	USE_SERVICES
 	check_services_butone(SERVICE_WANT_WALLOP, NULL, sptr,
-			      ":%s WALLOP :%s", parv[0], message);
+			      ":%s WALLOP :%s", parv[0], parv[1]);
 #endif
 	return 2;
 }
@@ -2654,13 +2650,15 @@ int	m_admin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	return 2;
 }
 
-#if defined(OPER_REHASH) || defined(LOCOP_REHASH)
 /*
 ** m_rehash
 **
 */
 int	m_rehash(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
+	if (is_allowed(sptr, ACL_REHASH))
+		return m_nopriv(cptr, sptr, parc, parv);
+
 	sendto_one(sptr, replies[RPL_REHASHING], ME, BadTo(parv[0]),
 		   mybasename(configfile));
 	sendto_flag(SCH_NOTICE,
@@ -2668,11 +2666,9 @@ int	m_rehash(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #ifdef USE_SYSLOG
 	syslog(LOG_INFO, "REHASH From %s\n", get_client_name(sptr, FALSE));
 #endif
-	return rehash(cptr, sptr, (parc > 1) ? ((*parv[1] == 'q')?2:0) : 0);
+	return rehash(cptr, sptr, (parc > 1) ? parv[1][0] : 0);
 }
-#endif
 
-#if defined(OPER_RESTART) || defined(LOCOP_RESTART)
 /*
 ** m_restart
 **
@@ -2682,6 +2678,9 @@ int	m_restart(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	aClient	*acptr;
 	Reg	int	i;
 	char	killer[HOSTLEN * 2 + USERLEN + 5];
+
+	if (is_allowed(sptr, ACL_RESTART))
+		return m_nopriv(cptr, sptr, parc, parv);
 
 	strcpy(killer, get_client_name(sptr, TRUE));
 	sprintf(buf, "RESTART by %s", get_client_name(sptr, TRUE));
@@ -2710,7 +2709,6 @@ int	m_restart(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	/*NOT REACHED*/
 	return 0;
 }
-#endif
 
 static	void	trace_one(aClient *sptr, aClient *acptr)
 {
@@ -2743,52 +2741,21 @@ static	void	trace_one(aClient *sptr, aClient *acptr)
 				   class, name);
 			break;
 			
-		case STAT_CLIENT:
-			if (IsAnOper(acptr))
-			{
+		case STAT_OPER:
 				sendto_one(sptr, replies[RPL_TRACEOPERATOR], ME,
 					to, class, name);
-			}
-			else
-			{
+			break;
+
+		case STAT_CLIENT:
 				sendto_one(sptr, replies[RPL_TRACEUSER], ME,
 					to, class, name);
-			}
 			break;
 			
                 case STAT_SERVER:
 		{
 			/* we need to count servers/users behind this link */
 			int servers = 0, users = 0;
-#ifdef HUB
-			aServer *asptr;
-			for (asptr = svrtop; asptr; asptr = asptr->nexts)
-			{
-				if (asptr->bcptr->from == acptr)
-				{
-					servers++;
-					users += asptr->usercnt[0];
-#ifdef SHOW_INVISIBLE_LUSERS
-					users += asptr->usercnt[1];						
-#endif
-				}
-			}
-#else /* !HUB */
-				/* we can have only one server linked */
-				servers = istat.is_serv - 1;
-				users = istat.is_user[0];
-#ifdef SHOW_INVISIBLE_LUSERS
-				users += istat.is_user[1];
-				/* We are counting all remote users,
-				 * therefore we need to substract our own
-				 * users.
-				 */
-				users -= istat.is_myclnt;
-
-#else
-				users -= me.usercnt[0];
-#endif
-#endif /* HUB */
+			count_servers_users(acptr, &servers, &users);
                         if (acptr->serv->user)
 			{
                                 sendto_one(sptr, replies[RPL_TRACESERVER], ME,
@@ -2992,6 +2959,9 @@ int	m_close(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	int	i;
 	int	closed = 0;
 
+	if (is_allowed(sptr, ACL_CLOSE))
+		return m_nopriv(cptr, sptr, parc, parv);
+
 	for (i = highest_fd; i; i--)
 	    {
 		if (!(acptr = local[i]))
@@ -3194,12 +3164,14 @@ int	m_eoback(aClient *cptr, aClient *sptr, int parc, char *parv[])
 }
 
 
-#if defined(OPER_DIE) || defined(LOCOP_DIE)
 int	m_die(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	Reg	aClient	*acptr;
 	Reg	int	i;
 	char	killer[HOSTLEN * 2 + USERLEN + 5];
+
+	if (is_allowed(sptr, ACL_DIE))
+		return m_nopriv(cptr, sptr, parc, parv);
 
 	strcpy(killer, get_client_name(sptr, TRUE));
 	for (i = 0; i <= highest_fd; i++)
@@ -3224,9 +3196,7 @@ int	m_die(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	(void)s_die(0);
 	return 0;
 }
-#endif
 
-#if defined(OPER_SET) || defined(LOCOP_SET)
 int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	typedef struct
@@ -3242,6 +3212,9 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		{ 0, NULL }
 	};
 	int i, acmd = 0;
+
+	if (is_allowed(sptr, ACL_SET))
+		return m_nopriv(cptr, sptr, parc, parv);
 
 	if (parc > 1)
 	{
@@ -3335,7 +3308,7 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	}
 	return 1;
 }
-#endif
+
 /*
 ** storing server names in User structures is a real waste,
 ** the following functions change it to only store a pointer.
@@ -3783,4 +3756,16 @@ static void report_listeners(aClient *sptr, char *to)
 			acptr->confs->value.aconf->clients,
 			IsListenerInactive(acptr) ? "inactive" : "active" );
 	}
+}
+
+/* allows ENCAPsulation of commands */
+int	m_encap(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+	return 0;
+}
+
+/* announces server DIE */
+int	m_sdie(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+	return 0;
 }

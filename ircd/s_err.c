@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_err.c,v 1.49 2004/05/12 16:39:53 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_err.c,v 1.53 2004/06/24 17:16:18 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -271,7 +271,7 @@ char *	replies[] = {
 /* 240 RPL_STATSVLINE */	":%s 240 %s %c %s %s %s %d %d",
 /* 241 RPL_STATSLLINE */	":%s 241 %s %c %s %s %s %d %d",
 /* 242 RPL_STATSUPTIME */	":%s 242 %s :Server Up %d days, %d:%02d:%02d",
-/* 243 RPL_STATSOLINE */	":%s 243 %s %c %s %s %s %d %d",
+/* 243 RPL_STATSOLINE */	":%s 243 %s %c %s %s %s %d %d %s",
 /* 244 RPL_STATSHLINE */	":%s 244 %s %c %s %s %s %d %d", 
 /* 245 RPL_STATSSLINE */	":%s 245 %s %c %s %s %s 0x%X %d", 
 /* 246 RPL_STATSPING */	":%s 246 %s %s %d %d %d %d",
@@ -279,21 +279,11 @@ char *	replies[] = {
 /* 248 RPL_STATSDEFINE */	(char *)NULL,
 /* 249 RPL_STATSDEBUG */	(char *)NULL,
 /* 250 RPL_STATSDLINE */	":%s 250 %s %c %s %s %s %d %d",
-#if 0
-/* one day... */
-/* 251 RPL_LUSERCLIENT */	":%s 251 %s %d %d %d :global users, services, servers",
-#else
-/* 251 RPL_LUSERCLIENT */	":%s 251 %s :There are %d users and %d services on %d servers",
-#endif
+/* 251 RPL_LUSERCLIENT */	":%s 251 %s %d %d %d :global %d users, %d services, %d servers",
 /* 252 RPL_LUSEROP */	":%s 252 %s %d :operators online",
 /* 253 RPL_LUSERUNKNOWN */	":%s 253 %s %d :unknown connections",
 /* 254 RPL_LUSERCHANNELS */	":%s 254 %s %d :channels formed",
-#if 0
-/* one day... */
-/* 255 RPL_LUSERME */	":%s 255 %s %d %d %d :local users, services, servers",
-#else
-/* 255 RPL_LUSERME */	":%s 255 %s :I have %d users, %d services and %d servers",
-#endif
+/* 255 RPL_LUSERME */	":%s 255 %s %d %d %d :local %d users, %d services, %d servers",
 /* 256 RPL_ADMINME */	":%s 256 %s :Administrative info about %s",
 /* 257 RPL_ADMINLOC1 */	":%s 257 %s :%s",
 /* 258 RPL_ADMINLOC2 */	":%s 258 %s :%s",
@@ -303,8 +293,8 @@ char *	replies[] = {
 /* 262 RPL_TRACEEND */	":%s 262 %s %s %s.%s :End of TRACE",
 /* 263 RPL_TRYAGAIN */	":%s 263 %s %s :Please wait a while and try again.",
 /* 264 */ (char *)NULL,
-/* 265 RPL_LOCALUSERS */	":%s 265 %s %d %d :local users current, max",
-/* 266 RPL_GLOBALUSERS */	":%s 266 %s %d %d :global users current, max",
+/* 265 RPL_LUSERMAX */	":%s 265 %s %d %d :max %d local users, %d global users",
+/* 266 */ (char *)NULL,
 /* 267 */ (char *)NULL,
 /* 268 */ (char *)NULL,
 /* 269 */ (char *)NULL,
@@ -538,7 +528,7 @@ char *	replies[] = {
 /* 478 ERR_BANLISTFULL */	":%s 478 %s %s %s!%s@%s :Channel list is full",
 /* 479 */ (char *)NULL,
 /* 480 */ (char *)NULL,
-/* 481 ERR_NOPRIVILEGES */	":%s 481 %s :Permission Denied- You're not an IRC operator",
+/* 481 ERR_NOPRIVILEGES */	":%s 481 %s :Permission Denied",
 /* 482 ERR_CHANOPRIVSNEEDED */	":%s 482 %s %s :You're not channel operator",
 /* 483 ERR_CANTKILLSERVER */	":%s 483 %s %s :You can't kill a server!",
 /* 484 ERR_RESTRICTED */	":%s 484 %s :Your connection is restricted!",

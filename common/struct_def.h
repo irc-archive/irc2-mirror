@@ -17,7 +17,7 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *   $Id: struct_def.h,v 1.97 2004/04/07 17:02:37 chopin Exp $
+ *   $Id: struct_def.h,v 1.109 2004/06/25 01:41:07 chopin Exp $
  */
 
 typedef	struct	ConfItem aConfItem;
@@ -109,18 +109,24 @@ typedef struct        LineItem aExtData;
 #define	BOOT_STRICTPROT	0x200
 #define	BOOT_NOIAUTH	0x400
 
-#define	STAT_CONNECTING	-4
-#define	STAT_HANDSHAKE	-3
-#define	STAT_UNKNOWN	-2
-#define	STAT_ME		-1
-#define	STAT_SERVER	0
-#define	STAT_CLIENT	1
-#define	STAT_SERVICE	2
+typedef enum Status {
+	STAT_CONNECTING = -4,
+	STAT_HANDSHAKE, /* -3 */
+	STAT_UNKNOWN,	/* -2 */
+	STAT_ME,	/* -1 */
+	STAT_SERVER,	/* 0 */
+	STAT_CLIENT,	/* 1 */
+	STAT_OPER,	/* 2 */
+	STAT_SERVICE,	/* 3 */
+	STAT_UNREG,	/* 4 */
+	STAT_MAX	/* 5 -- size of handler[] table we need */
+} Status;
 
 /*
  * status macros.
  */
-#define	IsRegisteredUser(x)	((x)->status == STAT_CLIENT && (x)->user)
+#define	IsRegisteredUser(x)	(((x)->status == STAT_CLIENT || \
+				 (x)->status == STAT_OPER) && (x)->user)
 #define	IsRegistered(x)		((x)->status >= STAT_SERVER || \
 				 (x)->status == STAT_ME)
 #define	IsConnecting(x)		((x)->status == STAT_CONNECTING)
@@ -128,7 +134,8 @@ typedef struct        LineItem aExtData;
 #define	IsMe(x)			((x)->status == STAT_ME)
 #define	IsUnknown(x)		((x)->status == STAT_UNKNOWN)
 #define	IsServer(x)		((x)->status == STAT_SERVER)
-#define	IsClient(x)		((x)->status == STAT_CLIENT)
+#define	IsClient(x)		((x)->status == STAT_CLIENT || \
+				 (x)->status == STAT_OPER)
 #define	IsService(x)		((x)->status == STAT_SERVICE && (x)->service)
 
 #define	SetConnecting(x)	((x)->status = STAT_CONNECTING)
@@ -136,7 +143,7 @@ typedef struct        LineItem aExtData;
 #define	SetMe(x)		((x)->status = STAT_ME)
 #define	SetUnknown(x)		((x)->status = STAT_UNKNOWN)
 #define	SetServer(x)		((x)->status = STAT_SERVER)
-#define	SetClient(x)		((x)->status = STAT_CLIENT)
+#define	SetClient(x)		((x)->status = IsAnOper((x)) ? STAT_OPER : STAT_CLIENT)
 #define	SetService(x)		((x)->status = STAT_SERVICE)
 
 #define	FLAGS_PINGSENT	0x0000001 /* Unreplied ping sent */
@@ -209,8 +216,10 @@ typedef struct        LineItem aExtData;
 
 #define	SetDead(x)		((x)->flags |= FLAGS_DEADSOCK)
 #define	CBurst(x)		((x)->flags & FLAGS_CBURST)
-#define	SetOper(x)		((x)->user->flags |= FLAGS_OPER)
-#define	SetLocOp(x)		((x)->user->flags |= FLAGS_LOCOP)
+#define	SetOper(x)		((x)->user->flags |= FLAGS_OPER, \
+				 (x)->status = STAT_OPER)
+#define	SetLocOp(x)		((x)->user->flags |= FLAGS_LOCOP, \
+				 (x)->status = STAT_OPER)
 #define	SetInvisible(x)		((x)->user->flags |= FLAGS_INVISIBLE)
 #define SetRestricted(x)	((x)->user->flags |= FLAGS_RESTRICT)
 #define	SetWallops(x)		((x)->user->flags |= FLAGS_WALLOP)
@@ -230,7 +239,10 @@ typedef struct        LineItem aExtData;
 #define	DoneXAuth(x)		((x)->flags & FLAGS_XAUTHDONE)
 #define	NoNewLine(x)		((x)->flags & FLAGS_NONL)
 
-#define	ClearOper(x)		((x)->user->flags &= ~FLAGS_OPER)
+#define	ClearOper(x)		((x)->user->flags &= ~FLAGS_OPER, \
+				 (x)->status = STAT_CLIENT)
+#define	ClearLocOp(x)		((x)->user->flags &= ~FLAGS_LOCOP, \
+				 (x)->status = STAT_CLIENT)
 #define	ClearInvisible(x)	((x)->user->flags &= ~FLAGS_INVISIBLE)
 #define ClearRestricted(x)      ((x)->user->flags &= ~FLAGS_RESTRICT)
 #define	ClearWallops(x)		((x)->user->flags &= ~FLAGS_WALLOP)
@@ -309,7 +321,7 @@ struct	ListItem	{
 #define	CONF_CONNECT_SERVER	0x000008
 #define	CONF_NOCONNECT_SERVER	0x000010
 #define	CONF_ZCONNECT_SERVER	0x000020
-#define	CONF_LOCOP		0x000040
+
 #define	CONF_OPERATOR		0x000080
 #define	CONF_ME			0x000100
 #define	CONF_KILL		0x000200
@@ -323,8 +335,12 @@ struct	ListItem	{
 #define	CONF_BOUNCE		0x040000
 #define	CONF_OTHERKILL		0x080000
 #define	CONF_DENY		0x100000
+#ifdef TKLINE
+#define	CONF_TKILL		0x200000
+#define	CONF_TOTHERKILL		0x400000
+#endif
 
-#define	CONF_OPS		(CONF_OPERATOR | CONF_LOCOP)
+#define	CONF_OPS		CONF_OPERATOR
 #define	CONF_SERVER_MASK	(CONF_CONNECT_SERVER | CONF_NOCONNECT_SERVER |\
 				 CONF_ZCONNECT_SERVER)
 #define	CONF_CLIENT_MASK	(CONF_CLIENT | CONF_SERVICE | CONF_OPS | \
@@ -587,28 +603,17 @@ struct	SMode	{
 
 /* Message table structure */
 
+typedef	int	(*CmdHandler)(aClient *, aClient *, int, char **);
+
 struct	Message	{
 	char	*cmd;
-	int	(*func)(aClient *cptr, aClient *sptr, int parc, char *parv[]);
-	int	parameters;
-	u_int	flags;
-		/* bit 0 set means that this command is allowed to be used
-		 * only on the average of once per 2 seconds -SRB */
+	int	minparams;
+	int	maxparams;
 	u_int	count;	/* total count */
 	u_int	rcount;	/* remote count */
 	u_long	bytes;
+	CmdHandler	handler[STAT_MAX];
 };
-
-#define	MSG_LAG		0x0001
-#define	MSG_NOU		0x0002	/* Not available to users */
-#define	MSG_SVC		0x0004	/* Services only */
-#define	MSG_NOUK	0x0008	/* Not available to unknowns */
-#define	MSG_REG		0x0010	/* Must be registered */
-#define	MSG_REGU	0x0020	/* Must be a registered user */
-/*#define	MSG_PP		0x0040*/
-/*#define	MSG_FRZ		0x0080*/
-#define	MSG_OP		0x0100	/* opers only */
-#define	MSG_LOP		0x0200	/* locops only */
 
 /* fd array structure */
 
@@ -726,14 +731,9 @@ struct Channel	{
 */
 #define       IsMember(u, c)          (u && (u)->user && \
 		       find_channel_link((u)->user->channel, c) ? 1 : 0)
-#ifdef CLIENT_COMPILE
-# define	IsChannelName(n)	((n) && (*(n) == '#' || *(n) == '&' ||\
-					*(n) == '+' || *(n) == '!'))
-#else
 # define	IsChannelName(n)	((n) && (*(n) == '#' || *(n) == '&' ||\
 					*(n) == '+' || \
 					(*(n) == '!' && cid_ok(n, CHIDLEN))))
-#endif
 #define	IsQuiet(x)		((x)->mode.mode & MODE_QUIET)
 #define	UseModes(n)		((n) && (*(n) == '#' || *(n) == '&' || \
 					 *(n) == '!'))
@@ -879,7 +879,8 @@ typedef	struct	{
 #define	SCH_DEBUG	10
 #define	SCH_AUTH	11
 #define	SCH_SAVE	12
-#define	SCH_MAX		12
+#define	SCH_WALLOP	13
+#define	SCH_MAX		13
 
 /* used for async dns values */
 
@@ -932,24 +933,6 @@ typedef	struct	{
 
 #define	SAP	struct SOCKADDR *
 
-/* IRC client structures */
-
-#ifdef	CLIENT_COMPILE
-typedef	struct	Ignore {
-	char	user[NICKLEN+1];
-	char	from[USERLEN+HOSTLEN+2];
-	int	flags;
-	struct	Ignore	*next;
-} anIgnore;
-
-#define	IGNORE_PRIVATE	1
-#define	IGNORE_PUBLIC	2
-#define	IGNORE_TOTAL	3
-
-#define	HEADERLEN	200
-
-#endif /* CLIENT_COMPILE */
-
 /* safety checks */
 #if ! (UIDLEN <= NICKLEN)
 #   error UIDLEN must not be bigger than NICKLEN
@@ -977,3 +960,28 @@ typedef struct
 	int split_minservers;
 	int split_minusers;
 } iconf_t;
+
+/* O:line flags, used also in is_allowed() */
+#define ACL_LOCOP		0x00001
+#define ACL_KILLLOCAL		0x00002
+#define ACL_KILLREMOTE		0x00004
+#define ACL_KILL		(ACL_KILLLOCAL|ACL_KILLREMOTE)
+#define ACL_SQUITLOCAL		0x00008
+#define ACL_SQUITREMOTE		0x00010
+#define ACL_SQUIT		(ACL_SQUITLOCAL|ACL_SQUITREMOTE)
+#define ACL_CONNECTLOCAL	0x00020
+#define ACL_CONNECTREMOTE	0x00040
+#define ACL_CONNECT		(ACL_CONNECTLOCAL|ACL_CONNECTREMOTE)
+#define ACL_CLOSE		0x00080
+#define ACL_HAZH		0x00100
+#define ACL_DNS			0x00200
+#define ACL_REHASH		0x00400
+#define ACL_RESTART		0x00800
+#define ACL_DIE			0x01000
+#define ACL_SET			0x02000
+#define ACL_TKLINE		0x04000
+#define ACL_UNTKLINE		ACL_TKLINE
+
+#define ACL_ALL_REMOTE		(ACL_KILLREMOTE|ACL_SQUITREMOTE|ACL_CONNECTREMOTE)
+#define ACL_ALL			0xFFFFF
+

@@ -1,3 +1,192 @@
+2004-06-25  Piotr Kucharski
+
+	* config.h.dist, send.c/logfiles_open(): LOGFILES_ALWAYS_CREATE define.
+	* s_serv.c/m_squit(): show server name, not sid, in wallops.
+	* s_serv.c/m_close(), res.c/m_dns(), hash.c/m_hash(): add is_allowed().
+
+2004-06-24  Piotr Kucharski
+
+	* parse.c: require 2 params for KILL and SQUIT.
+	* s_serv.c/m_squit(), s_user.c/m_kill(): remove code checking and
+	  dealing with less than 2 params.
+	* struct_def.h: remove ACL enum, use #define ACL_mumble.
+	* s_conf.c: new functions oline_flags_to_string(), oline_flags_parse().
+	* s_conf.c/initconf(): use oline_flags_parse().
+	* s_err.c: add room for oline flags in STATSOLINE.
+	* s_serv.c/report_configured_links(): use oline_flags_to_string() to
+	  report O:line flags.
+	* s_err.c: change 481 to not mention not being irc operator.
+	* s_user.c/is_allowed(): use O:line flags to decide access.
+	* s_debug.c: removed unused LOCOP_ defines.
+	* s_serv.c/m_squit(): use ACL_SQUITREMOTE to decide if allowed.
+	* s_serv.c/m_connect(): use ACL_CONNECT* to decide if allowed.
+	* s_user.c/m_kill(): use ACL_KILL* to decide if allowed; also remove
+	  #ifdef LOCAL_KILL_ONLY, initconf() takes care of guarding it.
+	* config.h.dist: OPER_mumble all defined by default.
+	* INSTALL: changed O: format and described O:line flags.
+
+2004-06-22  Piotr Kucharski
+
+	* Makefile.in: add implicit dependency for struct_def.h
+	* struct_def.h: change definition of SetClient.
+	* s_user.c/m_umode(): use SetClient macro.
+	* s_conf.c/m_tkline(): moved tkline existence check and nexttkexpire
+	  setting to do_tkline().
+	* s_conf.c/do_tkline(): removed doall parameter (it always removes all
+	  matching clients); also send notice only when new tkline is set. 
+
+2004-06-21  Piotr Kucharski
+
+	* parse.c/parse(): minparams check was flawed.
+	* parse.c/parse(): status was computed too early.
+	* class.c/initclass(): add default 1.1 limits.
+	* s_user.c/m_umode(): incorrect STAT_CLIENT/STAT_OPER change.
+	* config_read.c/config_read(): do not prepend ircd conf dir if filename
+	  to include begins with slash; also drop <> convention, use only "".
+
+2004-06-19  Piotr Kucharski
+
+	* parse.c/parse(): don't check for min param count for commands which
+	  are (for given caller) either ignored or insufficient privs, or unreg.
+	* struct_def.h: CONF_TKILL, CONF_TOTHERKILL and ACL_TKLINE.
+	* s_conf.c, s_conf_ext.h: new functions: m_tkline(), m_untkline(), 
+	  tkline_expire(), do_tkline() and one variable tkconf added.
+	* s_conf.c/find_kill(): support for tklines.
+	* s_conf.c/rehash(): "rehash t" flushes all tklines.
+	* s_user.c/is_allowed(): add ACL_TKLINE case.
+	* config.h.dist: TKLINE related defines.
+	* s_serv.c/report_configured_links(): aware of tklines (also shows
+	  time to live of a tkline, not port).
+	* s_serv.c/m_stats(): stats k reports tklines, stats K klines.
+	* parse.c: TKLINE and UNTKLINE handlers.
+	* ircd.c/io_loop(): call tkline_expire() from time to time.
+
+2004-06-18  Piotr Kucharski
+
+	* s_conf.c: move config_read() to new file.
+	* config_read.c: new file with config_read() and config_free().
+	* chkconf.c: work (almost) properly with ircd #include directive.
+	* Makefile.in: s_conf.o and chkconf.o dependency on config_read.c.
+	* s_serv.c/m_rehash(): use first char of first param to REHASH.
+	* s_conf.c/rehash(): change sig==2 (was sign of 'q') to sig=='d'.
+
+2004-06-17  Piotr Kucharski
+
+	* s_err.c, s_serv.c: slightly changed LUSERS format (numbers in front,
+	  but to ease transition, keep text with numbers too).
+	* os.h: removed some client includes of nameser.h.
+	* s_misc.c/exit_client(): exit_server() frees sptr, so we have to move
+	  usage of sptr->name up.
+
+2004-06-15  Piotr Kucharski
+
+	* parse.c: incorrect minparams for SMASK.
+	* parse.c/parse(): exit server when it sends us command with less than
+	  minparams parameters.
+	* s_serv.c: new function count_servers_users().
+	* s_serv.c/trace_one(), report_myservers(): use count_servers_users().
+	* s_serv.c/m_lusers(), config.h.dist: removed SHOW_INVISIBLE_LUSERS.
+	* numeric_def.h, s_err.c, s_serv.c/m_lusers: RPL_LOCALUSERS and
+	  RPL_GLOBALUSERS combined into one RPL_LUSERMAX.
+	* s_serv.c/m_wallops(): client wallops are ignored during parse.
+
+2004-06-13  Piotr Kucharski
+
+	* channel.c/set_mode(): reset reop time when +r comes from server (or
+	  channel will never get reopped).
+
+2004-06-12  Piotr Kucharski
+
+	* struct_def.h: new enum type ACL.
+	* s_user.c: new function is_allowed() meant to replace #ifdef based
+	  command restrictions.
+	* parse.c, s_serv_ext.h, s_serv.c/m_rehash(), m_restart(), m_die(),
+	  m_set(): remove #ifdef OPER_mumble.
+	* s_user.c/m_kill(), s_serv.c/m_rehash(), m_restart(), m_die(),
+	  m_set(): use is_allowed().
+	* s_user.c/m_umode(): remove STAT_OPER status after -o/-O.
+	
+2004-06-11  Piotr Kucharski
+
+	* struct_def.h: added minparams to Message struct.
+	* parse.c/parse(): check for minparams and reject command without even
+	  calling function.
+	* irc/*, doc/irc.1: removed irc client.
+	* match.c, support.c: remove c_*.h includes.
+	* configure.in, configure, setup.h.in: adopted to autoheader.
+	* acconfig.h: removed (now it's kind of in configure.in).
+	* Makefile.in: adapted to no client.
+	* s_user.c/m_message(): parse checks param count, removed.
+	* msg_def.h: removed.
+	* parse.c: merged msg_def.h
+	* s_user.c/m_message(): no MSG_PRIVATE, simply "PRIVMSG".
+	* removed unneeded occurrences of CLIENT_COMPILE.
+	* parse.c/parse(): minparams check failed when it was 0.
+	* parse.c, parse_ext.h: new functions: m_ignore, m_noprivileges,
+	  m_unregistered and m_registered.
+
+2004-06-08  Piotr Kucharski
+
+	* channel.c/del_modeid(): do not free modeid.
+	* channel.c/set_mode(): free modeid after del_modeid(), after using it.
+
+2004-06-06  Piotr Kucharski
+
+	* channel.c/set_mode(): allow +k even if there already is a key set.
+	* channel.c/check_string(): use global static asterix.
+	* channel.c/make_bei(): use check_string() before copying; also copy
+	  at most max lens for each part (problem reported by Marcin Rozycki).
+	* channel.c/set_mode(): get rid of make_nick_user_host(), use alist.
+	* channel.c/make_nick_user_host(): removed whole function.
+	* channel.c/set_mode(): possible tiny memleak fixed.
+	* channel.c/make_bei(): alloc & strcpy minimal possible number of bytes.
+	* s_user.c/m_user(): parse second USER parameter better, reducing
+	  incorrectly assigned +r due to faulty clients.
+
+2004-06-02  Piotr Kucharski
+
+	* match.c/isvalidusername(): allow two non-alphanums in username.
+
+2004-05-24  Piotr Kucharski
+
+	* channel.c/set_mode(): use supplied key when removing, don't change it
+	  before sending out to the one on the server.
+
+2004-05-19  Piotr Kucharski
+
+	* parse.c: new server commands: SDIE and ENCAP.
+	* s_serv.c: new functions: m_sdie and m_encap (empty yet). 
+
+2004-05-18  Piotr Kucharski
+
+	* channel.c/m_njoin(): properly end buffers before sending.
+	* channel.c/m_njoin(): send SID as source to 2.11 servers.
+	* send.c/setup_svchans(), channel.c/setup_server_channels(),
+	  struct_def.h: new server channel &WALLOPS.
+	* send.c/sendto_ops_butone(): rewritten, not sending to +w users,
+	  not traversing all fds, simply send to servers and &WALLOPS.
+	* s_serv.c/m_squit(), m_server(), m_connect(), m_wallops(), 
+	  s_user.c/m_unick(), m_umode(): parameters fix to match rewritten
+	  sendto_ops_butone().
+	* s_serv.c/m_wallops(): no more +wallops channel, just send notice
+	  to &ERRORS about user-issued wallops.
+
+2004-05-16  Piotr Kucharski
+
+	* ircd.c/try_connections(): yet another condition, which could lead to
+	  temporarily disabled AC.
+	* ircd.c: new function calculate_preference().
+	* ircd.c/try_connections(): tidied up, moved calculating preference
+	  to new function.
+	* ircd.c/try_connections(): move send_ping() to calculate_preference.
+	* ircd.c/calculcate_preference(): skip non AC C-lines.
+
+2004-05-14  Piotr Kucharski
+
+	* msg_def.h, parse.c, s_serv.c, s_serv_ext.h: new command EOBACK
+	  (so far only placeholder).
+	* s_serv.c/m_eob(): send EOBACK.
+
 2004-05-13  Piotr Kucharski
 
 	* channel.c/m_njoin(): bug causing small desynch of big channels

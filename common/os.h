@@ -223,15 +223,6 @@
 # include <zlib.h>
 #endif
 
-#if defined(INET6) && defined(CLIENT_COMPILE)
-# ifdef HAVE_RESOLV_H
-#  include <resolv.h>
-# endif
-# if HAVE_ARPA_NAMESER_H
-#  include <arpa/nameser.h>
-# endif
-#endif
-
 #if defined(HAVE_DLFCN_H)
 # include <dlfcn.h>
 #endif
@@ -462,38 +453,6 @@ extern char *inet_ntoa (struct in_addr in);
 #if BSD_RELIABLE_SIGNALS || POSIX_SIGNALS
 #define	HAVE_RELIABLE_SIGNALS
 #endif
-
-/*  Curses/Termcap portability problems (client only).
- */
-
-#ifdef CLIENT_COMPILE
-#if USE_NCURSES || USE_CURSESX || USE_CURSES
-# define DOCURSES
-# if USE_CURSESX && HAVE_CURSESX_H
-#  include <cursesX.h>
-# endif
-# if (USE_NCURSES || USE_CURSES)
-#  if HAVE_NCURSES_H
-#   include <ncurses.h>
-#  elif HAVE_NCURSES_NCURSES_H
-#   include <ncurses/ncurses.h>
-#  elif HAVE_CURSES_H
-#   include <curses.h>
-#  endif
-# endif
-#else
-# undef DOCURSES
-#endif /* USE_NCURSES || ... */
-
-#if USE_TERMCAP
-# define DOTERMCAP
-# if HAVE_SGTTY_H
-#  include <sgtty.h>
-# endif
-#else
-# undef DOTERMCAP
-#endif /* USE_TERMCAP */
-#endif /* CLIENT_COMPILE */
 
 /*  ctime portability problems.
  */

@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.108 2004/05/07 19:29:12 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.118 2004/06/25 01:42:05 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -62,22 +62,16 @@ static	int	check_time_interval (char *, char *);
 #endif
 static	int	lookup_confhost (aConfItem *);
 
-#if defined(CONFIG_DIRECTIVE_INCLUDE)
-
-typedef struct Config aConfig;
-struct Config
-{
-	char *line;
-	aConfig *next;
-};
-
-void config_file(char *, char *, char *);
-aConfig *config_read(int, int);
+#ifdef CONFIG_DIRECTIVE_INCLUDE
+#include "config_read.c"
 #endif
 
 aConfItem	*conf = NULL;
 aConfItem	*kconf = NULL;
 char		*networkname = NULL;
+#ifdef TKLINE
+aConfItem	*tkconf = NULL;
+#endif
 
 /* Parse I-lines flags from string.
  * D - Restricted, if no DNS.
@@ -211,6 +205,78 @@ char *pline_flags_to_string(long flags)
 
 	*s++ = '\0';
 	return pfsbuf;
+}
+
+/* convert oline flags to human readable string */
+char	*oline_flags_to_string(long flags)
+{
+	static char ofsbuf[BUFSIZE];
+	char *s = ofsbuf;
+
+	if (flags & ACL_LOCOP)
+		*s++ = 'L';
+	if (flags & ACL_KILLREMOTE)
+		*s++ = 'K';
+	else if (flags & ACL_KILLLOCAL)
+		*s++ = 'k';
+	if (flags & ACL_SQUITREMOTE)
+		*s++ ='S';	
+	else if (flags & ACL_SQUITLOCAL)
+		*s++ ='s';	
+	if (flags & ACL_CONNECTREMOTE)
+		*s++ ='C';	
+	else if (flags & ACL_CONNECTLOCAL)
+		*s++ ='c';	
+	if (flags & ACL_CLOSE)
+		*s++ ='l';	
+	if (flags & ACL_HAZH)
+		*s++ ='h';	
+	if (flags & ACL_DNS)
+		*s++ ='d';	
+	if (flags & ACL_REHASH)
+		*s++ ='r';	
+	if (flags & ACL_RESTART)
+		*s++ ='R';	
+	if (flags & ACL_DIE)
+		*s++ ='D';	
+	if (flags & ACL_SET)
+		*s++ ='e';	
+	if (flags & ACL_TKLINE)
+		*s++ ='T';	
+	if (s == ofsbuf)
+		*s++ = '-';
+	*s++ = '\0';
+	return ofsbuf;
+}
+/* convert string from config to flags */
+long	oline_flags_parse(char *string)
+{
+	long tmp = 0;
+	char *s;
+	
+	for (s = string; *s; s++)
+	{
+		switch(*s)
+		{
+		case 'L': tmp |= ACL_LOCOP; break;
+		case 'A': tmp |= (ACL_ALL & ~ACL_LOCOP); break;
+		case 'K': tmp |= ACL_KILL; break;
+		case 'k': tmp |= ACL_KILLLOCAL; break;
+		case 'S': tmp |= ACL_SQUIT; break;
+		case 's': tmp |= ACL_SQUITLOCAL; break;
+		case 'C': tmp |= ACL_CONNECT; break;
+		case 'c': tmp |= ACL_CONNECTLOCAL; break;
+		case 'l': tmp |= ACL_CLOSE; break;
+		case 'h': tmp |= ACL_HAZH; break;
+		case 'd': tmp |= ACL_DNS; break;
+		case 'r': tmp |= ACL_REHASH; break;
+		case 'R': tmp |= ACL_RESTART; break;
+		case 'D': tmp |= ACL_DIE; break;
+		case 'e': tmp |= ACL_SET; break;
+		case 'T': tmp |= ACL_TKLINE; break;
+		}
+	}
+	return tmp;
 }
 /*
  * remove all conf entries from the client except those which match
@@ -574,7 +640,7 @@ int	attach_conf(aClient *cptr, aConfItem *aconf)
 		return 1;
 	if (IsIllegal(aconf))
 		return -1; /* EXITC_FAILURE, hmm */
-	if ((aconf->status & (CONF_LOCOP | CONF_OPERATOR | CONF_CLIENT )))
+	if ((aconf->status & (CONF_OPERATOR | CONF_CLIENT )))
 	    {
 		if (aconf->clients >= ConfMaxLinks(aconf) &&
 		    ConfMaxLinks(aconf) > 0)
@@ -770,7 +836,7 @@ aConfItem	*find_conf_exact(char *name, char *user, char *host,
 		*/
 		if (match(tmp->host, userhost))
 			continue;
-		if (tmp->status & (CONF_OPERATOR|CONF_LOCOP))
+		if (tmp->status & CONF_OPERATOR)
 		    {
 			if (tmp->clients < MaxLinks(Class(tmp)))
 				return tmp;
@@ -1049,8 +1115,12 @@ int	rehash(aClient *cptr, aClient *sptr, int sig)
 	for (cltmp = NextClass(FirstClass()); cltmp; cltmp = NextClass(cltmp))
 		MaxLinks(cltmp) = -1;
 
-	if (sig == 2)
+	if (sig == 'd')
 		flush_cache();
+#ifdef TKLINE
+	if (sig == 't')
+		tkline_expire(1);
+#endif
 	(void) initconf(0);
 	close_listeners();
 
@@ -1374,11 +1444,9 @@ int 	initconf(int opt)
 				aconf->status = CONF_NOCONNECT_SERVER;
 				break;
 			case 'o':
-				aconf->status = CONF_OPERATOR;
-				break;
-			/* Local Operator, (limited privs --SRB) */
+				aconf->flags |= ACL_LOCOP;
 			case 'O':
-				aconf->status = CONF_LOCOP;
+				aconf->status = CONF_OPERATOR;
 				break;
 			case 'P': /* listen port line */
 			case 'p':
@@ -1415,7 +1483,7 @@ int 	initconf(int opt)
 				(CONF_CONNECT_SERVER|CONF_ZCONNECT_SERVER
 				|CONF_CLIENT|CONF_KILL
 				|CONF_OTHERKILL|CONF_NOCONNECT_SERVER
-				|CONF_OPERATOR|CONF_LOCOP|CONF_LISTEN_PORT
+				|CONF_OPERATOR|CONF_LISTEN_PORT
 				|CONF_SERVICE))
 				aconf->host = ipv6_convert(tmp);
 			else
@@ -1545,7 +1613,7 @@ int 	initconf(int opt)
 				continue;
 
 		if (aconf->status &
-		    (CONF_SERVER_MASK|CONF_LOCOP|CONF_OPERATOR|CONF_SERVICE))
+		    (CONF_SERVER_MASK|CONF_OPERATOR|CONF_SERVICE))
 			if (!index(aconf->host, '@') && *aconf->host != '/')
 			    {
 				char	*newhost;
@@ -1558,6 +1626,40 @@ int 	initconf(int opt)
 				aconf->host = newhost;
 				istat.is_confmem += 2;
 			    }
+		if (tmp3 && (aconf->status & CONF_OPERATOR))
+		{
+			aconf->flags |= oline_flags_parse(tmp3);
+			if (aconf->flags & ACL_LOCOP)
+				aconf->flags &= ~ACL_ALL_REMOTE;
+#ifdef OPER_KILL
+# ifdef LOCAL_KILL_ONLY
+			aconf->flags &= ~ACL_KILLREMOTE;
+# endif
+#else
+			aconf->flags &= ~ACL_KILL;
+#endif
+#ifndef OPER_REHASH
+			aconf->flags &= ~ACL_REHASH;
+#endif
+#ifndef OPER_SQUIT
+			aconf->flags &= ~ACL_SQUIT;
+#endif
+#ifndef OPER_CONNECT
+			aconf->flags &= ~ACL_CONNECT;
+#endif
+#ifndef OPER_RESTART
+			aconf->flags &= ~ACL_RESTART;
+#endif
+#ifndef OPER_DIE
+			aconf->flags &= ~ACL_DIE;
+#endif
+#ifndef OPER_SET
+			aconf->flags &= ~ACL_SET;
+#endif
+#ifndef OPER_TKLINE
+			aconf->flags &= ~ACL_TKLINE;
+#endif
+		}
 		if (aconf->status & CONF_SERVER_MASK)
 		    {
 			if (BadPtr(aconf->passwd))
@@ -1642,14 +1744,7 @@ int 	initconf(int opt)
 		aconf = NULL;
 	}
 #if defined(CONFIG_DIRECTIVE_INCLUDE)
-	/* config_read() alloc()s, free now (no longer needed) */
-	while (ConfigTop)
-	{
-		p = ConfigTop;
-		ConfigTop = ConfigTop->next;
-		MyFree(p->line);
-		MyFree(p);
-	}
+	config_free(ConfigTop);
 #endif
 	if (aconf)
 		free_conf(aconf);
@@ -1738,6 +1833,9 @@ int	find_kill(aClient *cptr, int timedklines, char **comment)
 	char		*host, *ip, *name, *ident, *check;
 	aConfItem	*tmp;
 	int		now = 0;
+#ifdef TKLINE
+	int		tklines = 1;
+#endif
 
 	if (!cptr->user)
 		return 0;
@@ -1776,17 +1874,36 @@ int	find_kill(aClient *cptr, int timedklines, char **comment)
 	*reply = '\0';
 #endif
 
-	for (tmp = kconf; tmp; tmp = tmp->next)
+findkline:
+	tmp = 
+#ifdef TKLINE
+		tklines ? tkconf :
+#endif
+		kconf;
+	for (; tmp; tmp = tmp->next)
 	{
 #ifdef TIMEDKLINES
 		if (timedklines && (BadPtr(tmp->passwd) || !isdigit(*tmp->passwd)))
 			continue;
 #endif
-		if (!(tmp->status & (CONF_KILL | CONF_OTHERKILL)))
+		if (!(tmp->status & (
+#ifdef TKLINE
+			tklines ? (CONF_TKILL | CONF_TOTHERKILL) :
+#endif
+			(CONF_KILL | CONF_OTHERKILL))))
 			continue; /* should never happen with kconf */
 		if (!tmp->host || !tmp->name)
 			continue;
-		if (tmp->status == CONF_KILL)
+#ifdef TKLINE
+		/* this TK already expired */
+		if (tklines && tmp->hold < timeofday)
+			continue;
+#endif
+		if (tmp->status == (
+#ifdef TKLINE
+			tklines ? CONF_TKILL : 
+#endif
+			CONF_KILL))
 			check = name;
 		else
 			check = ident;
@@ -1832,7 +1949,13 @@ int	find_kill(aClient *cptr, int timedklines, char **comment)
 			break;
 		    }
 	}
-
+#ifdef TKLINE
+	if (!tmp && tklines)
+	{
+		tklines = 0;
+		goto findkline;
+	}
+#endif
 	if (tmp && !BadPtr(tmp->passwd))
 	{
 		*comment = tmp->passwd;
@@ -2090,148 +2213,275 @@ aConfItem	*find_denied(char *name, int class)
     return NULL;
 }
 
-#ifdef CONFIG_DIRECTIVE_INCLUDE
-
-/* max file length */
-#define FILEMAX 255
-
-/* max nesting depth. ircd.conf itself is depth = 0 */
-#define MAXDEPTH 3
-
-/* 
-** syntax of include is simple:
-** #include "filename"
-** #include <filename>
-** # must be first char on the line and " or > the last
-** if filename in <>, it's loaded from dir where IRCDCONF_PATH is.
-*/
-
-/* read from supplied fd, putting line by line onto aConfig struct.
-** calls itself recursively for each #include directive */
-aConfig *config_read(int fd, int depth)
+#ifdef TKLINE
+int	m_tkline(aClient *cptr, aClient *sptr, int parc, char **parv)
 {
-	int len;
-	struct stat fst;
-	char *i, *address;
-	aConfig *ConfigTop = NULL;
-	aConfig *ConfigCur = NULL;
+	int	time, status = CONF_TKILL;
+	char	*user, *host, *reason, *s;
+	aConfItem	*tmp;
 
-	fstat(fd, &fst);
-	len = fst.st_size;
-	if ((address = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0))
-		== MAP_FAILED)
+	if (is_allowed(sptr, ACL_TKLINE))
+		return m_nopriv(cptr, sptr, parc, parv);
+
+	/* sanity checks */
+	for (s = parv[1]; *s; s++)
 	{
-		sendto_flag(SCH_ERROR, "mmap failed reading config");
-		return NULL;
+		if (!isdigit(*s))
+			break;
+	}
+	user = parv[2];
+	host = strchr(user, '@');
+	if (*s || !host)
+	{
+		/* error */
+		if (!IsPerson(sptr))
+		{
+			sendto_one(sptr, ":%s NOTICE %s "
+				":TKLINE: Incorrect format",
+				ME, parv[0]);
+			return exit_client(cptr, cptr, &me,
+				"TKLINE: Incorrect format");
+		}
+		sendto_one(sptr, ":%s NOTICE %s :TKLINE: Incorrect format",
+			ME, parv[0]);
+		return 2;
 	}
 
-	i = address;
-	while (i < address + len)
+	/* All seems fine. */
+	time = atoi(parv[1]);
+	if (*user == '=')
 	{
-		char *p;
-		aConfig	*new;
-		int linelen;
+		status = CONF_TOTHERKILL;
+		*user++;
+	}
+	*host++ = '\0';
+	reason = parv[3];
+	if (strlen(reason) > TOPICLEN)
+	{
+		reason[TOPICLEN] = '\0';
+	}
 
-		/* eat empty lines first */
-		while (*i == '\n' || *i == '\r')
+	/* All parameters are now sane. Do the stuff. */
+	do_tkline(parv[0], time, user, host, reason, status);
+
+	return 1;
+}
+
+/* 
+ * Adds tkline to tkconf.
+ * If tkline already existed, its expire time is updated.
+ *
+ * Returns created tkline expire time.
+ */
+void do_tkline(char *who, int time, char *user, char *host, char *reason, int status)
+{
+	char buff[BUFSIZE];
+	aClient	*acptr;
+	aConfItem *aconf;
+	int i;
+
+	buff[0] = '\0';
+
+	/* Check if such u@h already exists in tkconf. */
+	for (aconf = tkconf; aconf; aconf = aconf->next)
+	{
+		if (0==strcasecmp(aconf->host, host) && 
+			0==strcasecmp(aconf->name, user))
 		{
-			i++;
+			aconf->hold = timeofday + time;
+			break;
 		}
-		p = strchr(i, '\n');
-		if (p == NULL)
+	}
+	if (aconf == NULL)
+	{
+		aconf = make_conf();
+		aconf->next = NULL;
+		aconf->status = status;
+		aconf->hold = timeofday + time;
+		aconf->port = 0;
+		Class(aconf) = find_class(0);
+		DupString(aconf->name, BadTo(user));
+		DupString(aconf->host, BadTo(host));
+		DupString(aconf->passwd, reason);
+		istat.is_confmem += strlen(aconf->name) + 1;
+		istat.is_confmem += strlen(aconf->host) + 1;
+		istat.is_confmem += strlen(aconf->passwd) + 1;
+
+		/* put on top of tkconf */
+		if (tkconf)
 		{
-			/* EOF without \n, I presume */
-			p = address + len;
+			aconf->next = tkconf;
 		}
+		tkconf = aconf;
+		sendto_flag(SCH_NOTICE, "TKLINE %s@%s (%d) by %s",
+			aconf->name, aconf->host, time, who);
+	}
 
-		if (*i == '#')
+	/* get rid of tklined clients */
+	for (i = highest_fd; i >= 0; i--)
+	{
+		if (!(acptr = local[i]) || !IsPerson(acptr)
+			|| IsKlineExempt(acptr))
 		{
-			char	*start = i + 9, *end = p;
-			int	dont = 0;
-
-			end--;			/* eat last \n */
-			if (*end == '\r')
-				end--;		/* ... and \r, if is */
-
-			if (((*start == '<' && *end == '>') ||
-				(*start == '"' && *end == '"'))
-				&& strncasecmp(i, "#include ", 9) == 0)
+			continue;
+		}
+		if (!strcmp(acptr->sockhost, acptr->user->sip))
+		{
+			/* unresolved */
+			if (strchr(aconf->host, '/'))
 			{
-				char	file[FILEMAX + 1];
-				char	*filep = file;
-				aConfig	*ret;
-
-				*filep = '\0';
-				if (depth >= MAXDEPTH)
+				if (match_ipmask(*aconf->host == '=' ?
+					aconf->host + 1 : aconf->host,
+					acptr, 1))
 				{
-					sendto_flag(SCH_ERROR,
-						"config: too nested (%d)",
-						depth);
-					dont = 1;
-				}
-				if (*start == '<')
-				{
-					strcat(file, IRCDCONF_PATH);
-					filep = strrchr(file, '/') + 1;
-					*filep = '\0';
-				}
-				if (end - start + filep - file >= FILEMAX)
-				{
-					sendto_flag(SCH_ERROR, "config: too "
-						"long filename to process");
-					dont = 1;
-				}
-				start++;
-				memcpy(filep, start, end - start);
-				filep += end - start;
-				*filep = '\0';
-				if ((fd = open(file, O_RDONLY)) < 0)
-				{
-					sendto_flag(SCH_ERROR,
-						"config: error opening %s "
-						"(depth=%d)", file, depth);
-					dont = 1;
-				}
-				if (dont == 0)
-				{
-					ret = config_read(fd, depth + 1);
-					close(fd);
-					if (ConfigCur)
-						ConfigCur->next = ret;
-					else
-						ConfigTop = ret;
-					while (ConfigCur->next)
-					{
-						ConfigCur = ConfigCur->next;
-					}
-					i = p + 1;
 					continue;
 				}
 			}
-			/* comments and bad #include directives are not
-			** discarded -- upper layer may want to do something
-			** with them (like new directives? --B. */
-		}
-		linelen = p - i;
-		if (*(p - 1) == '\r')
-			linelen--;
-		new = (aConfig *)malloc(sizeof(aConfig));
-		new->line = (char *) malloc((linelen+1) * sizeof(char));
-		memcpy(new->line, i, linelen);
-		new->line[linelen] = '\0';
-		new->next = NULL;
-		if (ConfigCur)
-		{
-			ConfigCur->next = new;
+			else
+			{
+				if (match(*aconf->host == '=' ?
+					aconf->host + 1 : aconf->host,
+					acptr->sockhost))
+				{
+					continue;
+				}
+			}
 		}
 		else
 		{
-			ConfigTop = new;
+			/* resolved */
+			if (*aconf->host == '=')
+			{
+				/* IP only */
+				continue;
+			}
+			if (strchr(aconf->host, '/'))
+			{
+				if (match_ipmask(aconf->host, acptr, 1))
+				{
+					continue;
+				}
+			}
+			else
+			{
+				if (match(aconf->host, acptr->user->sip)
+					&& match(aconf->host,
+					acptr->user->host))
+				{
+					continue;
+				}
+			}
 		}
-		ConfigCur = new;
-		i = p + 1;
+		if (match(aconf->name, aconf->status == CONF_TOTHERKILL ?
+			acptr->auth : (IsRestricted(acptr) &&
+			acptr->user->username[0] == '+' ?
+			acptr->user->username+1 :
+			acptr->user->username)) == 0)
+		{
+			sendto_one(acptr, replies[ERR_YOUREBANNEDCREEP],
+				ME, acptr->name, aconf->name, aconf->host,
+				": ", aconf->passwd);
+			sendto_flag(SCH_NOTICE,
+				"TKill line active for %s",
+				get_client_name(acptr, FALSE));
+			if (buff[0] == '\0')
+			{
+				sprintf(buff, "Kill line active: %.80s",
+					aconf->passwd);
+			}
+			(void) exit_client(acptr, acptr, &me, buff);
+		}
 	}
-	munmap(address, len);
-	return ConfigTop;
+
+	/* do next tkexpire, but not more often than once a minute */
+	if (!nexttkexpire || nexttkexpire > aconf->hold)
+	{
+		nexttkexpire = MAX(timeofday + 60, aconf->hold);
+	}
+	return;
+}
+
+int	m_untkline(aClient *cptr, aClient *sptr, int parc, char **parv)
+{
+	aConfItem	*tmp, *prev;
+	char	*user, *host;
+	int	deleted = 0;
+	
+	if (is_allowed(sptr, ACL_UNTKLINE))
+		return m_nopriv(cptr, sptr, parc, parv);
+
+	user = parv[1];
+	host = strchr(user, '@');
+	if (!host)
+	{
+		/* error */
+		if (!IsPerson(sptr))
+		{
+			sendto_one(sptr, ":%s NOTICE %s "
+				":UNTKLINE: Incorrect format",
+				ME, parv[0]);
+			return exit_client(cptr, cptr, &me,
+				"UNTKLINE: Incorrect format");
+		}
+		sendto_one(sptr, ":%s NOTICE %s :UNTKLINE: Incorrect format",
+			ME, parv[0]);
+		return 2;
+	}
+	if (*user == '=')
+	{
+		*user++;
+	}
+	*host++ = '\0';
+
+	for (prev = tkconf, tmp = tkconf; tmp; tmp = tmp->next)
+	{
+		if (0==strcasecmp(tmp->host, host) && 
+			0==strcasecmp(tmp->name, user))
+		{
+			if (tmp == tkconf)
+				tkconf = tmp->next;
+			else
+				prev->next = tmp->next;
+			free_conf(tmp);
+			deleted = 1;
+			break;
+		}
+		prev = tmp;
+	}
+
+	if (deleted)
+	{
+		sendto_flag(SCH_NOTICE, "UNTKLINE %s@%s by %s",
+			user, host, parv[0]);
+	}
+	return 1;
+}
+
+time_t	tkline_expire(int all)
+{
+	aConfItem	*tmp = NULL, *tmp2 = tkconf, *prev = tkconf;
+	time_t	min = 0;
+	
+	while ((tmp = tmp2))
+	{
+		tmp2 = tmp->next;
+		if (all || tmp->hold < timeofday)
+		{
+			if (tmp == tkconf)
+				tkconf = tmp->next;
+			else
+				prev->next = tmp->next;
+			free_conf(tmp);
+			continue;
+		}
+		if (tmp->hold < min)
+		{
+			min = tmp->hold;
+		}
+		prev = tmp;
+	}
+	if (min && min < nexttkexpire + 60)
+		min = nexttkexpire + 60;
+	return min;
 }
 #endif

@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.200 2004/05/14 14:22:19 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.215 2004/06/13 12:32:10 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -113,17 +113,16 @@ static	aClient	*find_chasing(aClient *sptr, char *user, int *chasing)
 }
 
 /*
- *  Fixes a string so that the first white space found becomes an end of
- * string marker (`\-`).  returns the 'fixed' string or "*" if the string
+ * Fixes a string so that the first white space found becomes an end of
+ * string marker (`\0`). Returns the 'fixed' string or static "*" if the string
  * was NULL length or a NULL pointer.
  */
 static	char	*check_string(char *s)
 {
-	static	char	star[2] = "*";
 	char	*str = s;
 
 	if (BadPtr(s))
-		return star;
+		return asterix;
 
 	for ( ;*s; s++)
 		if (isspace(*s))
@@ -132,32 +131,7 @@ static	char	*check_string(char *s)
 			break;
 		    }
 
-	return (BadPtr(str)) ? star : str;
-}
-
-/*
- * create a string of form "foo!bar@fubar" given foo, bar and fubar
- * as the parameters.  If NULL, they become "*".
- */
-static	char *make_nick_user_host(char *nick, char *name, char *host)
-{
-	static	char	namebuf[NICKLEN+USERLEN+HOSTLEN+6];
-	Reg	char	*s = namebuf;
-
-	bzero(namebuf, sizeof(namebuf));
-	nick = check_string(nick);
-	strncpyzt(namebuf, nick, NICKLEN + 1);
-	s += strlen(s);
-	*s++ = '!';
-	name = check_string(name);
-	strncpyzt(s, name, USERLEN + 1);
-	s += strlen(s);
-	*s++ = '@';
-	host = check_string(host);
-	strncpyzt(s, host, HOSTLEN + 1);
-	s += strlen(s);
-	*s = '\0';
-	return (namebuf);
+	return (BadPtr(str)) ? asterix : str;
 }
 
 static	void	free_bei(aListItem *bei)
@@ -177,38 +151,47 @@ static	void	free_bei(aListItem *bei)
 	MyFree(bei);
 }
 
+/* Prepare and fill ListItem struct. Note: check_string takes care of
+** cleaning parts, including possible use of static asterix. */
 static	aListItem	*make_bei(char *nick, char *user, char *host)
 {
 	aListItem	*tmp;
+	int	len;
 
 	tmp = (struct ListItem *)MyMalloc(sizeof(aListItem));
 
-	if (!nick || !*nick || (nick[0]=='*' && nick[1]=='\0'))
+	nick = check_string(nick);
+	if (nick == asterix)
 	{
-		tmp->nick=asterix;
+		tmp->nick = asterix;
 	}
 	else
 	{
-		tmp->nick=(char *) MyMalloc( strlen(nick)+1 );
-		strcpy(tmp->nick, nick);
+		len = MIN(strlen(nick), NICKLEN) + 1;
+		tmp->nick = (char *) MyMalloc(len);
+		strncpyzt(tmp->nick, nick, len);
 	}
-	if (!user || !*user || (user[0]=='*' && user[1]=='\0'))
+	user = check_string(user);
+	if (user == asterix)
 	{
-		tmp->user=asterix;
-	}
-	else
-	{
-		tmp->user=(char *) MyMalloc( strlen(user)+1 );
-		strcpy(tmp->user, user);
-	}
-	if (!host || !*host || (host[0]=='*' && host[1]=='\0'))
-	{
-		tmp->host=asterix;
+		tmp->user = asterix;
 	}
 	else
 	{
-		tmp->host=(char *) MyMalloc( strlen(host)+1 );
-		strcpy(tmp->host, host);
+		len = MIN(strlen(user), USERLEN) + 1;
+		tmp->user=(char *) MyMalloc(len);
+		strncpyzt(tmp->user, user, len);
+	}
+	host = check_string(host);
+	if (host == asterix)
+	{
+		tmp->host = asterix;
+	}
+	else
+	{
+		len = MIN(strlen(host), HOSTLEN) + 1;
+		tmp->host=(char *) MyMalloc(len);
+		strncpyzt(tmp->host, host, len);
 	}
 
 	return tmp;
@@ -308,10 +291,6 @@ static	int	del_modeid(int type, aChannel *chptr, aListItem *modeid)
 			free_link(tmp);
 			break;
 		}
-	}
-	if (modeid)
-	{
-		free_bei(modeid);
 	}
 	return 0;
 }
@@ -695,6 +674,10 @@ void	setup_server_channels(aClient *mp)
 	strcpy(chptr->topic, "SERVER MESSAGES: debug messages [you shouldn't be here! ;)]");
 	add_user_to_channel(chptr, mp, CHFL_CHANOP);
 	chptr->mode.mode = smode|MODE_SECRET;
+	chptr = get_channel(mp, "&WALLOPS", CREATE);
+	strcpy(chptr->topic, "SERVER MESSAGES: wallops received");
+	add_user_to_channel(chptr, mp, CHFL_CHANOP);
+	chptr->mode.mode = smode;
 
 	setup_svchans();
 }
@@ -952,12 +935,6 @@ int	m_mode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	int	penalty = 0;
 	aChannel *chptr;
 	char	*name, *p = NULL;
-
-	if (parc < 1)
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "MODE");
- 	 	return 1;
-	    }
 
 	parv[1] = canonize(parv[1]);
 
@@ -1235,11 +1212,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				break;
 			if (whatt == MODE_ADD)
 			    {
-				if (*mode->key && !IsServer(cptr))
-					sendto_one(cptr, replies[ERR_KEYSET],
-						   ME, BadTo(cptr->name), chptr->chname);
-				else if (ischop &&
-				    (!*mode->key || IsServer(cptr)))
+				if (ischop)
 				    {
 					if (**parv == ':')
 						/* this won't propagate right*/
@@ -1258,7 +1231,10 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				if (*mode->key && (ischop || IsServer(cptr)))
 				    {
 					lp = &chops[opcnt++];
-					lp->value.cp = mode->key;
+					lp->value.cp = *parv;
+					if (strlen(lp->value.cp) >
+					    (size_t) KEYLEN)
+						lp->value.cp[KEYLEN] = '\0';
 					lp->flags = MODE_KEY|MODE_DEL;
 					keychange = 1;
 				    }
@@ -1334,9 +1310,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 					/* this won't propagate right */
 					break;
 				lp = &chops[opcnt++];
-				/* this is horribly temporary,
-				** we deal with it later, find
-				** parseNUH to check */
+				/* we deal with it later at parseNUH */
 				lp->value.cp = *parv;
 				lp->flags = MODE_ADD|tmp_mode;
 			}
@@ -1506,6 +1480,12 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				      sendto_channel_butone(NULL, &me, chptr, ":%s NOTICE %s :Be aware that anonymity on IRC is NOT securely enforced!", ME, chptr->chname);
 				  }
 			  }
+			/* +r coming from server must trigger reop. If not
+			** needed, it will be reset to 0 elsewhere, --B. */
+			if (*ip == MODE_REOP && IsServer(sptr))
+			{
+				chptr->reop = timeofday + LDELAYCHASETIMELIMIT;
+			}
 			*mbuf++ = *(ip+1);
 		    }
 
@@ -1542,6 +1522,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 		Reg	int	i = 0;
 		Reg	char	c = '\0';
 		char	*user, *host, numeric[16];
+		int	tmplen;
 
 /*		if (opcnt > MAXMODEPARAMS)
 			opcnt = MAXMODEPARAMS;
@@ -1607,18 +1588,12 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 					c = 'R'; break;
 				}
 				/* parseNUH: */
-				cp = lp->value.cp;	/* see? we get it back */
+				cp = lp->value.cp;
 				if ((user = index(cp, '!')))
 					*user++ = '\0';
 				if ((host = rindex(user ? user : cp, '@')))
 					*host++ = '\0';
 				lp->value.alist = make_bei(cp, user, host);
-				/* XXX: rewrite to get rid of this function --B. */
-				cp = make_nick_user_host(cp, user, host);
-				if (user)
-					*(--user) = '!';
-				if (host)
-					*(--host) = '@';
 				break;
 			case MODE_KEY :
 				c = 'k';
@@ -1632,8 +1607,29 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				cp = numeric;
 				break;
 			}
+			
+			switch(lp->flags & MODE_WPARAS)
+			{
+			case MODE_BAN :
+			case MODE_EXCEPTION :
+			case MODE_INVITE :
+			case MODE_REOPLIST :
+				tmplen = BanLen(lp->value.alist) + 2 /* !@ */;
+				if (len + tmplen + 2 > (size_t) MODEBUFLEN)
+				{
+					free_bei(lp->value.alist);
+					tmplen = -1;
+				}
+				break;
+			default:
+				tmplen = strlen(cp);
+				if (len + tmplen + 2 > (size_t) MODEBUFLEN)
+				{
+					tmplen = -1;
+				}
+			}
 
-			if (len + strlen(cp) + 2 > (size_t) MODEBUFLEN)
+			if (tmplen == -1)
 				break;
 			/*
 			 * pass on +/-o/v regardless of whether they are
@@ -1745,22 +1741,33 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 					!del_modeid(tmp_chfl, chptr,
 						lp->value.alist))))
 				{
+					char nuh[NICKLEN+USERLEN+HOSTLEN+3];
+
+					/* I could strcat on u/pbuf directly,
+					** but this looks nicer. Note that alist
+					** values were already cleaned. --B. */
+					tmplen = sprintf(nuh, "%s!%s@%s",
+						lp->value.alist->nick,
+						lp->value.alist->user,
+						lp->value.alist->host);
 					*mbuf++ = c;
-					(void)strcat(pbuf, cp);
-					(void)strcat(upbuf, cp);
-					len += strlen(cp);
-					ulen += strlen(cp);
+					(void)strcat(pbuf, nuh);
+					(void)strcat(upbuf, nuh);
+					len += tmplen;
+					ulen += tmplen;
 					(void)strcat(pbuf, " ");
 					(void)strcat(upbuf, " ");
 					len++;
 					ulen++;
+					if ((whatt & MODE_DEL))
+						free_bei(lp->value.alist);
 				}
 				else
 				{
 					/* We have to free lp->value.alist
 					** allocated by make_bei, otherwise
 					** it is memleak. del_modeid always
-					** succeeds, so free_bei is there.
+					** succeeds, so it is freed above.
 					** If add_modeid succeeds, it uses
 					** pointer, if not, we free it here.
 					** This also covers all other cases,
@@ -2176,12 +2183,6 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	int	i, tmplen, flags = 0;
 	char	*p = NULL, *p2 = NULL, *s, chop[5];
 
-	if (parc < 2 || *parv[1] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "JOIN");
-		return 1;
-	    }
-
 	*jbuf = '\0';
 	/*
 	** Rebuild list of channels joined to be the actual result of the
@@ -2578,12 +2579,6 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	aClient *acptr;
 	int maxlen;
 
-	if (parc < 3 || *parv[2] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME,
-			BadTo(parv[0]), "NJOIN");
-		return 1;
-	    }
 	*nbuf = '\0'; q = nbuf;
 	*uidbuf = '\0'; u = uidbuf;
  	/* 17 comes from syntax ": NJOIN  :,@@+\r\n\0" */ 
@@ -2693,12 +2688,14 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		/* send it out if too big to fit buffer */
 		if (MAX(q-nbuf, u-uidbuf) >= maxlen)
 		{
+			*q = '\0';
+			*u = '\0';
 			sendto_match_servs_notv(chptr, cptr, SV_UID,
 				":%s NJOIN %s :%s",
 				parv[0], parv[1], nbuf);
 			sendto_match_servs_v(chptr, cptr, SV_UID,
 				":%s NJOIN %s :%s",
-				parv[0], parv[1], uidbuf);
+				sptr->serv->sid, parv[1], uidbuf);
 			*nbuf = '\0'; q = nbuf;
 			*uidbuf = '\0'; u = uidbuf;
 		}
@@ -2803,9 +2800,9 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (nbuf[0])
 	{
 		sendto_match_servs_notv(chptr, cptr, SV_UID, ":%s NJOIN %s :%s",
-				     parv[0], parv[1], nbuf);
+			parv[0], parv[1], nbuf);
 		sendto_match_servs_v(chptr, cptr, SV_UID, ":%s NJOIN %s :%s",
-				     parv[0], parv[1], uidbuf);
+			sptr->serv->sid, parv[1], uidbuf);
 	}
 
 	return 0;
@@ -2821,12 +2818,6 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	Reg	aChannel *chptr;
 	char	*p = NULL, *name, *comment = "";
 	int	size;
-
-	if (parc < 2 || parv[1][0] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "PART");
-		return 1;
-	    }
 
 	*buf = '\0';
 
@@ -2919,11 +2910,6 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	obuf[BUFSIZE+1];
 	int	clen, maxlen;
 
-	if (parc < 3 || *parv[1] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]), "KICK");
-		return 1;
-	    }
 	if (IsServer(sptr))
 		sendto_flag(SCH_NOTICE, "KICK from %s for %s %s",
 			    parv[0], parv[1], parv[2]);
@@ -3091,13 +3077,6 @@ int	m_topic(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	char	*topic = NULL, *name, *p = NULL;
 	int	penalty = 1;
 	
-	if (parc < 2)
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),
-			   "TOPIC");
-		return 1;
-	    }
-
 	parv[1] = canonize(parv[1]);
 
 	for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
@@ -3190,13 +3169,6 @@ int	m_invite(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	aClient *acptr;
 	aChannel *chptr;
-
-	if (parc < 3 || *parv[1] == '\0')
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),
-			   "INVITE");
-		return 1;
-	    }
 
 	if (!(acptr = find_person(parv[1], (aClient *)NULL)))
 	    {

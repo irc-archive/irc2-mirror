@@ -79,14 +79,6 @@
 #undef	ENABLE_SUMMON	/* local summon */
 #undef	ENABLE_USERS	/* enables local /users (same as who/finger output) */
 
-/* SHOW_INVISIBLE_LUSERS
- *
- * As defined this will show the correct invisible count for anyone who does
- * LUSERS on your server. On a large net this doesnt mean much, but on a
- * small net it might be an advantage to undefine it.
- */
-#define	SHOW_INVISIBLE_LUSERS
-
 /* NO_DEFAULT_INVISIBLE
  *
  * When defined, your users will not automatically be attributed with user
@@ -95,32 +87,25 @@
  */
 #undef	NO_DEFAULT_INVISIBLE
 
-/* OPER_KILL
- *
- * If you dont believe operators should be allowed to use the /KILL command
- * or believe it is uncessary for them to use it, then leave OPER_KILL
- * undefined. This will not affect other operators or servers issuing KILL
- * commands however.  OPER_REHASH and OPER_RESTART allow operators to
- * issue the REHASH and RESTART commands when connected to your server.
- * Left undefined they increase the security of your server from wayward
- * operators and accidents.
- * OPER_SET enables SET command which can be used for fine-tuning of certain
- * aspects of ircd behaviour during runtime.
- * The 'LOCOP_' #defines are for making the respective commands available
- * to 'local' operators. Note that the 'OPER_' #defines affect both global
- * (big O) and local (little o) operators.  Defining 'LOCOP_x' has no effect
- * if 'OPER_x' is undefined so you can't give local operators more rights
- * than global ones.
+/*
+ * Define this if you want to have TKLINE and UNTKLINE commands
+ * for opers and services.
  */
-#undef	OPER_KILL
-#define	OPER_REHASH
-#undef	OPER_RESTART
+#define TKLINE
+
+/* 
+ * Operator rights can be precisely defined in O:line flags. However
+ * if you undefine any of the following, it will make given function
+ * unaccessible to local operators, disregarding their O:line flags.
+ */
+#define	OPER_CONNECT
 #define	OPER_DIE
-#define OPER_SET
-#undef	LOCOP_REHASH
-#undef	LOCOP_RESTART
-#undef	LOCOP_DIE
-#undef	LOCOP_SET
+#define	OPER_KILL
+#define	OPER_REHASH
+#define	OPER_RESTART
+#define	OPER_SET
+#define	OPER_SQUIT
+#define	OPER_TKLINE
 
 /*
  * Maximum number of network connections your server will allow.  This must
@@ -260,6 +245,11 @@
  * Define this if you want to log failed /oper attempts.
  */
 #undef FAILED_OPERLOG
+
+/*
+ * Define this to make ircd create logfiles if they do not exist.
+ */
+#undef LOGFILES_ALWAYS_CREATE
 
 /*
  * Define this if you want to use crypted passwords for operators in your
@@ -712,4 +702,12 @@
 
 #if defined(CONFIG_DIRECTIVE_INCLUDE) && !defined(HAVE_MMAP)
 #error CONFIG_DIRECTIVE_INCLUDE requires mmap()
+#endif
+
+#ifndef TKLINE
+#undef OPER_TKLINE
+#endif
+
+#if defined(LOGFILES_ALWAYS_CREATE) && !defined(HAVE_SYS_STAT_H)
+#error LOGFILES_ALWAYS_CREATE requires sys/stat.h
 #endif

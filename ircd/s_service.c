@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_service.c,v 1.51 2004/03/25 22:07:05 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_service.c,v 1.53 2004/06/23 17:25:05 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -574,12 +574,6 @@ int	m_servset(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, BadTo(parv[0]));
 		return 1;
 	    }
-	if (parc < 2)
-	    {
-		sendto_one(sptr, replies[ERR_NEEDMOREPARAMS], ME, BadTo(parv[0]),
-			   "SERVSET");
-		return 1;
-	    }
 	if (sptr->service->wants)
 		return 1;
 
@@ -589,7 +583,7 @@ int	m_servset(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (strcmp(sptr->service->dist, "*"))
 		sptr->service->wants &= ~SERVICE_MASK_GLOBAL;
 	/* allow options */
-	sptr->service->wants |= (atoi(parv[1]) & ~SERVICE_MASK_ALL);
+	sptr->service->wants |= (strtol(parv[1], NULL, 0) & ~SERVICE_MASK_ALL);
 	/* send accepted SERVSET */
 	sendto_one(sptr, ":%s SERVSET %s :%d", sptr->name, sptr->name,
 		   sptr->service->wants);
