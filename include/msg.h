@@ -58,7 +58,6 @@
 #define MSG_LINREPLY "LINREPLY"
 #define MSG_NOTICE   "NOTICE"
 #define MSG_JOIN     "JOIN"
-#define MSG_CHANNEL  "CHANNEL"
 #define MSG_PART     "PART"
 #define MSG_LUSERS   "LUSERS"
 #define MSG_MOTD     "MOTD"
@@ -68,6 +67,7 @@
 #define MSG_USERHOST "USERHOST"
 #define MSG_ISON     "ISON"
 #define MSG_SERVICE  "SERVICE"
+#define MSG_NOTE     "NOTE"
 #define MSG_SQUERY   "SQUERY"
 #define MSG_SERVLIST "SERVLIST"
 #define MSG_SERVSET  "SERVSET"
@@ -86,7 +86,7 @@ extern int m_users(), m_nick(), m_error(), m_help();
 extern int m_squit(), m_restart(), m_away(), m_die(), m_connect();
 extern int m_ping(), m_pong(), m_oper(), m_pass(), m_trace();
 extern int m_time(), m_rehash(), m_names(), m_admin();
-extern int m_notice(), m_lusers(), m_umode();
+extern int m_notice(), m_lusers(), m_umode(), m_note();
 extern int m_motd(), m_whowas(), m_wallops(), m_mode(), m_kick();
 extern int m_join(), m_part(), m_service(), m_userhost(), m_ison();
 extern int m_service(), m_servset(), m_servlist(), m_squery();
@@ -109,16 +109,16 @@ struct Message {
 struct Message msgtab[] = {
   { MSG_PRIVATE, m_private,  0, 2, 1 },
   { MSG_NICK,    m_nick,     0, 2, 1 },
-  { MSG_WHOIS,   m_whois,    0, 4, 1 },
-  { MSG_CHANNEL, m_join,     0, 6, 1 },
+  { MSG_NOTICE,  m_notice,   0, 2, 1 },
   { MSG_USER,    m_user,     0, 4, 1 },
+  { MSG_JOIN,    m_join,     0, 6, 1 },
   { MSG_QUIT,    m_quit,     0, 2, 1 },
   { MSG_MODE,    m_mode,     0, 6, 1 },
-  { MSG_NOTICE,  m_notice,   0, 2, 1 },
-  { MSG_PONG,    m_pong,     0, 3, 1 },
-  { MSG_JOIN,    m_join,     0, 6, 1 },
+  { MSG_PART,    m_part,     0, 2, 1 },
   { MSG_AWAY,    m_away,     0, 1, 1 },
   { MSG_SERVER,  m_server,   0, 3, 1 },
+  { MSG_PONG,    m_pong,     0, 3, 1 },
+  { MSG_WHOIS,   m_whois,    0, 4, 1 },
   { MSG_WALLOPS, m_wallops,  0, 1, 1 },
   { MSG_TOPIC,   m_topic,    0, 2, 1 },
   { MSG_SQUIT,   m_squit,    0, 2, 1 },
@@ -129,7 +129,6 @@ struct Message msgtab[] = {
   { MSG_WHOWAS,  m_whowas,   0, 4, 1 },
   { MSG_LIST,    m_list,     0, 2, 1 },
   { MSG_NAMES,   m_names,    0, 1, 1 },
-  { MSG_PART,    m_part,     0, 2, 1 },
   { MSG_INVITE,  m_invite,   0, 2, 1 },
   { MSG_PING,    m_ping,     0, 2, 1 },
   { MSG_ISON,    m_ison,     0, 1, 1 },
@@ -150,6 +149,11 @@ struct Message msgtab[] = {
   { MSG_HELP,    m_help,     0, 2, 1 },
   { MSG_INFO,    m_info,     0, 1, 1 },
   { MSG_MOTD,    m_motd,     0, 2, 1 },
+#ifdef NPATH
+  { MSG_NOTE,    m_note,     0, 1, 1 },
+#endif
+
+#undef USE_SERVICES
 #ifdef USE_SERVICES
   { MSG_SERVICE, m_service,  0, 7, 1 },
   { MSG_SERVSET, m_servset,  0, 3, 1 },

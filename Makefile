@@ -34,6 +34,9 @@ CFLAGS= -I$(INCLUDEDIR) -g
 # HPUX: (was IRCDLIBS= -lBSD but apparently its not needed)
 # IRCDLIBS=
 #
+# PCS MUNIX:
+# IRCDLIBS= -lresolv -lbsd -lc_s
+#
 #and otherwise:
 #IRCDLIBS=
 
@@ -74,6 +77,10 @@ clean:
 		cd $$i;\
 		${MAKE} clean; cd ..;\
 	done
+	@echo "Cleaning res"; cd res; make clean; cd ..;
+
+bindircd: server
+	cd ircd; ${MAKE} bindircd; cd ..;
 
 depend:
 	@for i in $(SUBDIRS); do \

@@ -44,7 +44,8 @@ char s_bsd_id[] = "s_bsd.c v2.0 (c) 1988 University of Oulu, Computing Center\
 #include <sys/socket.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
-#if defined(__hpux) || defined(apollo)
+#include <sys/un.h>
+#if defined(__hpux)
 #include "inet.h"
 #endif
 #include "netdb.h"
@@ -53,30 +54,54 @@ char s_bsd_id[] = "s_bsd.c v2.0 (c) 1988 University of Oulu, Computing Center\
 #include <fcntl.h>
 #include <utmp.h>
 #include <sys/errno.h>
+#include <sys/resource.h>
+#ifdef AIX
+#include <arpa/nameser.h>
+#include <resolv.h>
+#else
 #include "nameser.h"
 #include "resolv.h"
+#endif
 #include "sock.h"	/* If FD_ZERO isn't define up to this point,  */
 			/* define it (BSD4.2 needs this) */
 
 #ifndef IN_LOOPBACKNET
 #define IN_LOOPBACKNET 127
 #endif
+#ifdef RLIMIT_FDMAX
+#define	RLIMIT_FD_MAX	RLIMIT_FDMAX
+#else
+# ifdef RLIMIT_NOFILE
+#  define RLIMIT_FD_MAX RLIMIT_NOFILE
+# else
+#  undef RLIMIT_FD_MAX
+# endif
+#endif
 
 /*  ...should really start using *.h -files instead of these :-( --msa */
-extern aClient me;
-extern aClient *client, *find_server();
-extern aConfItem *find_conf(), *find_conf_host();
-extern aConfItem *attach_confs(), *attach_confs_host(), *find_conf_name();
-extern char *get_client_name();
-extern char *my_name_for_link();
-extern int portnum;
-extern int debugtty, debuglevel;
-extern long nextconnect;
+extern	aClient me, *client;
+extern	aClient *find_server PROTO((char *, aClient *));
+extern	aConfItem *find_conf PROTO((Link *, char*, int));
+extern	aConfItem *find_conf_host PROTO((Link *, char *, int));
+extern	aConfItem *attach_confs PROTO((aClient*, char *, int));
+extern	aConfItem *attach_confs_host PROTO((aClient*, char *, int));
+extern	aConfItem *find_conf_name PROTO((char *, int));
+extern	char	*get_client_name PROTO((aClient *, int));
+extern	char	*my_name_for_link PROTO((char *, aConfItem *));
+extern	int	portnum, debugtty, debuglevel;
+extern	long	nextconnect;
 
-extern int errno;
+extern	int errno;
 
 aClient	*local[MAXCONNECTIONS];
 int	highest_fd = 0, readcalls = 0;
+
+struct	sockaddr *connect_unix_server PROTO((aConfItem *, aClient *, int *));
+struct	sockaddr *connect_inet_server PROTO((aConfItem *, aClient *, int *));
+static	int	completed_connection PROTO((aClient *));
+#ifdef	UNIXPORT
+static	char	unixpath[256];
+#endif
 
 /*
 ** add_local_domain()
@@ -84,27 +109,27 @@ int	highest_fd = 0, readcalls = 0;
 ** (as suggested by eps@TOASTER.SFSU.EDU)
 */
 
-static char *add_local_domain(hname, size)
-char *hname;
-int size;
+static	char	*add_local_domain(hname, size)
+char	*hname;
+int	size;
 {
 #ifdef RES_INIT
-  /* try to fix up unqualified names */
-  if (!index(hname, '.'))
-    {
-      if (!(_res.options & RES_INIT))
-	{
-	  debug(DEBUG_DNS,"res_init()");
-	  res_init();
-	}
-      if (_res.defdname[0])
-	{
-	  strncat(hname, ".", size-1);
-	  strncat(hname, _res.defdname, size-2);
-	}
-    }
+	/* try to fix up unqualified names */
+	if (!index(hname, '.'))
+	    {
+		if (!(_res.options & RES_INIT))
+		    {
+			debug(DEBUG_DNS,"res_init()");
+			res_init();
+		    }
+		if (_res.defdname[0])
+		    {
+			strncat(hname, ".", size-1);
+			strncat(hname, _res.defdname, size-2);
+		    }
+	    }
 #endif
-  return(hname);
+	return(hname);
 }
 
 /*
@@ -116,7 +141,7 @@ int size;
 **	available file descriptors (fd's). Thus, the server goes
 **	into a loop: select() OK -> accept() FAILS :(
 */
-static int AcceptNewConnections = TRUE;
+static	int	AcceptNewConnections = TRUE;
 
 /*
 ** Cannot use perror() within daemon. stderr is closed in
@@ -137,8 +162,8 @@ static int AcceptNewConnections = TRUE;
 **	cptr	if not NULL, is the *LOCAL* client associated with
 **		the error.
 */
-static int report_error(text,cptr)
-char *text;
+static	int	report_error(text,cptr)
+char	*text;
 aClient *cptr;
     {
 	Reg1 int errtmp = errno; /* debug may change 'errno' */
@@ -153,12 +178,12 @@ aClient *cptr;
 	return 0;
     }
 
-int open_port(portnum)
-int portnum;
+int	open_port(portnum)
+int	portnum;
     {
-	int sock, length;
-	int opt = 1;
-	static struct sockaddr_in server;
+	int	sock, length, sock2;
+	int	opt = 1;
+	static	struct sockaddr_in server;
 
 	/* At first, open a new socket */
 	sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -170,10 +195,10 @@ int portnum;
 
 #ifdef SO_REUSEADDR
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-	  {
-	    report_error("setsockopt %s:%s", (aClient *) 0);
-	    exit(-1);
-	  }
+	    {
+		report_error("setsockopt %s:%s", (aClient *) 0);
+		exit(-1);
+	    }
 #endif
 
 	/* Bind a port to listen for new connections */
@@ -197,30 +222,91 @@ int portnum;
 	{ /* KLUDGE to get it work... */
 	  char buf[1024];
 	  int len = sizeof(server);
-	  if (getsockname(sock, &server, &len)) {
-	    exit(1);
-	  }
+	  if (getsockname(sock, &server, &len))
+	  	exit(1);
+
+	  me.port = server.sin_port;
 	  sprintf(buf, ":%s %d %d :Port to local server is\n",
-		  me.name, RPL_MYPORTIS, server.sin_port);
+		  me.name, RPL_MYPORTIS, me.port);
 	  write(0, buf, strlen(buf));
 	}
 	if (sock > highest_fd)
-	  highest_fd = sock;
+		highest_fd = sock;
 	local[sock] = &me;
 	listen(sock, 3);
+
 	return(sock);
     }
 
-init_sys(bootopt)
+#ifdef	UNIXPORT
+int	unixport(port, cptr)
+int	port;
+aClient	*cptr;
+{
+	struct sockaddr_un un;
+
+	cptr->fd = socket(AF_UNIX, SOCK_STREAM, 0);
+
+	un.sun_family = AF_UNIX;
+	sprintf(unixpath, "%s/%d", UNIXPORTPATH, port);
+	unlink(unixpath);
+	strcpy(un.sun_path, unixpath);
+	if (bind(cptr->fd, (struct sockaddr *) &un, strlen(unixpath) + 2))
+	    {
+		perror("bind unix");
+		return -1;
+	    }
+	if (cptr->fd > highest_fd)
+		highest_fd = cptr->fd;
+	listen(cptr->fd, 3);
+	chmod(UNIXPORTPATH, 0755);
+	SetMe(cptr);
+	cptr->flags |= FLAGS_UNIX;
+	cptr->from = cptr;
+	cptr->port = 0;
+	strncpyzt(cptr->sockhost, unixpath, sizeof(cptr->sockhost));
+	strcpy(cptr->name, me.name);
+	local[cptr->fd] = cptr;
+
+	return 0;
+}
+#endif
+
+int	init_sys(bootopt)
 int	bootopt;
     {
+	struct rlimit limit;
 	int fd;
 #ifdef sequent
 	setdtablesize(SEQ_NOFILE);
 #endif
-#if !HPUX
+#ifdef PCS
+	char logbuf[BUFSIZ];
+
+	setvbuf(stdout,logbuf,_IOLBF,sizeof(logbuf));
+	setvbuf(stderr,logbuf,_IOLBF,sizeof(logbuf));
+#else
+#ifndef HPUX
 	setlinebuf(stdout);
 	setlinebuf(stderr);
+# endif
+#endif
+
+#ifdef RLIMIT_FD_MAX
+	if (!getrlimit(RLIMIT_FD_MAX, &limit))
+	    {
+		if (limit.rlim_max < MAXCONNECTIONS)
+		    {
+			fprintf(stderr,"ircd fd table too big\n");
+			fprintf(stderr,"Hard Limit: %d IRC max: %d\n",
+				limit.rlim_max, MAXCONNECTIONS);
+			fprintf(stderr,"Fix MAXCONNECTIONS in config.h\n");
+			exit(-1);
+		    }
+		limit.rlim_cur = MAXCONNECTIONS;
+		limit.rlim_max = MAXCONNECTIONS;
+		setrlimit(RLIMIT_FD_MAX, &limit);
+	    }
 #endif
 
 	for (fd = 0; fd < MAXCONNECTIONS; fd++)
@@ -279,14 +365,14 @@ void	write_pidfile()
 **             Check if any of the config lines contains
 **             a non numeric IP-address.
 */
-non_ip_addresses(confs)
+int non_ip_addresses(confs)
      Link *confs;
 {
-  Link *tmp;
+	Link *tmp;
 
-  for (tmp=confs; tmp; tmp=tmp->next)
-    if (inet_addr(tmp->value.aconf->host) == -1)
-      return 1;
+	for (tmp=confs; tmp; tmp=tmp->next)
+		if (inet_addr(tmp->value.aconf->host) == -1)
+			return 1;
 
   return 0;
 }
@@ -303,6 +389,19 @@ Reg3	struct	sockaddr_in *socka;
 {
 	int	len = sizeof(struct sockaddr_in);
 
+#ifdef	UNIXPORT
+	if (cptr->flags & FLAGS_UNIX)
+	    {
+		strncpyzt(full, unixpath, HOSTLEN+1);
+		strncpyzt(sockn, unixpath, HOSTLEN+1);
+		strncpyzt(cptr->sockhost, unixpath, HOSTLEN+1);
+		bcopy(&cptr->ip, &socka->sin_addr, sizeof(struct in_addr));
+		socka->sin_family = AF_INET;
+
+		return 0;
+	    }
+#endif
+
 	/* If descriptor is a tty, special checking... */
 	if (isatty(cptr->fd))
 	    {
@@ -314,22 +413,25 @@ Reg3	struct	sockaddr_in *socka;
 		report_error("connect failure: %s :%s", cptr);
 		return -1;
 	    }
-	strcpy(sockn, inet_ntoa(socka->sin_addr));
+	strcpy(sockn, (char *)inet_ntoa(socka->sin_addr));
 	if (inet_netof(socka->sin_addr) == IN_LOOPBACKNET)
 		strncpy(full, me.sockhost, HOSTLEN);
 	else
 		strcpy(full, sockn);
-	cptr->ip.s_addr = socka->sin_addr.s_addr;
+	bcopy(&socka->sin_addr, &cptr->ip, sizeof(struct in_addr));
+	cptr->port = socka->sin_port;
 
 	return 0;
 }
 
-#ifdef	CHECK_GETHOST
+#ifdef	GETHOST
 struct	hostent	*gethost(sp, len, fam)
 void	*sp;
 int	len, fam;
 {
-	struct	hostent	*hp = NULL, hps, *hp2 = NULL;
+	Reg1	int	i, j;
+	Reg2	struct	hostent	*hp = NULL, *hp2 = NULL;
+	struct	hostent	hps;
 	int	stop = 0;
 
 	hp = gethostbyaddr(sp, len, fam);
@@ -364,20 +466,21 @@ aClient	*cptr;
 int	flags;
 {
 	Reg1	char	*name;
-	Reg2	aConfItem *aconf = NULL;
+	Reg2	aConfItem *aconf;
 	char	sockname[16], fullname[HOSTLEN+1];
-	struct	hostent *hp = NULL, *hp2 = NULL;
+	struct	hostent *hp = NULL;
 	struct	sockaddr_in sk;
-	int	i = 0, j = 0;
+	int	i = 0;
  
 	debug(DEBUG_DNS, "ch_cl: check access for %s[%s]",
-		cptr->name, fullname);
+		cptr->name, inet_ntoa(cptr->ip));
 
 	if (check_init(cptr, sockname, fullname, &sk))
 		return -2;
 
-	hp = gethostbyaddr(&(sk.sin_addr), sizeof(struct in_addr),
-			   sk.sin_family);
+	if (!(cptr->flags & FLAGS_UNIX))
+		hp = gethostbyaddr(&(sk.sin_addr), sizeof(struct in_addr),
+				   sk.sin_family);
 
 	/* attach I-lines using hostname first, then check ip#'s. */
 	if (hp)
@@ -436,7 +539,7 @@ aClient	*cptr;
 	char	sockname[16], fullname[HOSTLEN+1];
 	Reg2	aConfItem *c_conf = NULL, *n_conf = NULL;
 	Reg3	struct hostent *hp = NULL;
-	struct sockaddr_in sk;
+	struct	sockaddr_in sk;
 	Reg4	int i = 0;
 	Link	*links;
 
@@ -464,25 +567,35 @@ aClient	*cptr;
 		n_conf = find_conf(links, name, NFLAG);
 		if (!c_conf || !n_conf)
 		    {
-			sendto_ops("Connecting Error: %s[%s]",
-				   name, fullname);
+			sendto_ops("Connecting Error: %s[%s]", name, fullname);
 			det_confs_butmask(cptr, 0);
 			return -1;
 		    }
 	    }
+#ifdef	UNIXPORT
+	if (cptr->flags & FLAGS_UNIX)
+	    {
+		if (!c_conf)
+			c_conf = find_conf(links, name, CFLAG);
+		if (!n_conf)
+			n_conf = find_conf(links, name, NFLAG);
+	    }
+#endif
+
 	/*
-	 * if the servername is a hostname, either an alias (CNAME) or
-	 * real name, then check with it as the host. Use gethostbyname()
-	 * to check for servername as hostname.
-	 */
+	** If the servername is a hostname, either an alias (CNAME) or
+	** real name, then check with it as the host. Use gethostbyname()
+	** to check for servername as hostname.
+	*/
 	if ((!c_conf || !n_conf) && gethostbyname(name))
 	    {
-		strncpy(cptr->sockhost, name, HOSTLEN);
+		strncpyzt(cptr->sockhost, name, sizeof(cptr->sockhost));
 		if (!c_conf)
 			c_conf = find_conf_host(links, name, CFLAG);
 		if (!n_conf)
 			n_conf = find_conf_host(links, name, NFLAG);
 	    }
+
 	if (!c_conf || !n_conf)
 		hp = gethostbyaddr(&(sk.sin_addr), sizeof(struct in_addr),
 				   sk.sin_family);
@@ -493,17 +606,18 @@ aClient	*cptr;
 		 */
 		for (name = hp->h_name; name ; name = hp->h_aliases[i++])
 		    {
-			strncpy(fullname, name, sizeof(fullname)-1);
+			strncpyzt(fullname, name, sizeof(fullname));
 			add_local_domain(fullname,HOSTLEN-strlen(fullname));
 			debug(DEBUG_DNS, "sv_cl: gethostbyaddr: %s->%s",
 				sockname, fullname);
 			if (!c_conf)
-				c_conf = find_conf_host(links, name, CFLAG);
+				c_conf = find_conf_host(links,fullname,CFLAG);
 			if (!n_conf)
-				n_conf = find_conf_host(links, name, NFLAG);
+				n_conf = find_conf_host(links,fullname,NFLAG);
 			if (c_conf && n_conf)
 			    {
-				strncpy(cptr->sockhost, fullname, HOSTLEN);
+				strncpyzt(cptr->sockhost, fullname,
+					  sizeof(cptr->sockhost));
 				break;
 			    }
 		    }
@@ -525,7 +639,7 @@ aClient	*cptr;
 	/* if no C or no N lines, then deny access */
 	if (!c_conf || !n_conf)
 	    {
-		strcpy(cptr->sockhost, sockname);
+		strncpyzt(cptr->sockhost, sockname, sizeof(cptr->sockhost));
 		debug(DEBUG_DNS, "sv_cl: access denied: %s[%s] c %x n %x",
 			cptr->name, cptr->sockhost, c_conf, n_conf);
 		return -1;
@@ -536,9 +650,10 @@ aClient	*cptr;
 	attach_conf(cptr, n_conf);
 	attach_conf(cptr, c_conf);
 
-	if (c_conf->ipnum.s_addr == -1)
+	if ((c_conf->ipnum.s_addr == -1) && !(cptr->flags & FLAGS_UNIX))
 		bcopy(&(sk.sin_addr),&(c_conf->ipnum),sizeof(struct in_addr));
-	strncpy(cptr->sockhost, c_conf->host, HOSTLEN);
+	if (!(cptr->flags & FLAGS_UNIX))
+		strncpy(cptr->sockhost, c_conf->host, HOSTLEN);
 
 	debug(DEBUG_DNS,"sv_cl: access ok: %s[%s]",
 		cptr->name, cptr->sockhost);
@@ -560,18 +675,25 @@ aClient	*cptr;
 	aConfItem *aconf;
 	SetHandshake(cptr);
 	
-	/* Lots of code moved to connect_server.
-	 * This routine "can't" fail anymore...   meLazy
-	 */
 	aconf = find_conf(cptr->confs, cptr->name, CONF_CONNECT_SERVER);
+	if (aconf == (aConfItem *)NULL)
+	    {
+		sendto_ops("Lost C-Line for %s", get_client_name(cptr,FALSE));
+		return -1;
+	    }
 	if (!BadPtr(aconf->passwd))
 		sendto_one(cptr, "PASS %s", aconf->passwd);
 
 	aconf = find_conf(cptr->confs, cptr->name, CONF_NOCONNECT_SERVER);
+	if (aconf == (aConfItem *)NULL)
+	    {
+		sendto_ops("Lost N-Line for %s", get_client_name(cptr,FALSE));
+		return -1;
+	    }
 	sendto_one(cptr, ":%s SERVER %s 1 :%s",
 		   me.name, my_name_for_link(me.name, aconf), me.info);
 
-	return (cptr->flags & FLAGS_DEADSOCKET) == 0;
+	return (cptr->flags & FLAGS_DEADSOCKET) ? -1 : 0;
 }
 
 /*
@@ -636,19 +758,23 @@ aClient *cptr;
 **	blocking version of IRC--not a problem if you are a
 **	lightly loaded node...)
 */
-static	set_non_blocking(cptr)
+static int	set_non_blocking(cptr)
 aClient *cptr;
     {
 	int res;
 
-	/*
-	** Do fcntl's return "-1" with F_GETFL in case of error?
-	** Or, are the following error tests bogus??? --msa
-	*/
+#ifdef PCS
+	/* This portion of code might also apply to NeXT and sun.  -LynX */
+	res = 1;
+
+	if (ioctl (cptr->fd, FIONBIO, &res) < 0)
+		report_error("ioctl(fd,FIONBIO) failed for %s:%s",cptr);
+#else
 	if ((res = fcntl(cptr->fd, F_GETFL, 0)) == -1)
 		report_error("fcntl(fd,F_GETFL) failed for %s:%s",cptr);
 	else if (fcntl(cptr->fd, F_SETFL, res | FNDELAY) == -1)
 		report_error("fcntl(fd,F_SETL,FNDELAY) failed for %s:%s",cptr);
+#endif
 	return 0;
     }
 
@@ -684,9 +810,10 @@ int	fd;
 		/* Copy ascii address to 'sockhost' just in case. Then we
 		 * have something valid to put into error messages...
 		 */
-		strncpyzt(cptr->sockhost, inet_ntoa(addr.sin_addr),
+		strncpyzt(cptr->sockhost, (char *)inet_ntoa(addr.sin_addr),
 			  sizeof(cptr->sockhost));
-		cptr->ip.s_addr = addr.sin_addr.s_addr;
+		bcopy (&cptr->ip, &addr.sin_addr, sizeof(struct in_addr));
+		bcopy (&addr.sin_addr, &cptr->ip, sizeof(struct in_addr));
 	    }
 
 	cptr->fd = fd;
@@ -697,6 +824,39 @@ int	fd;
 	set_non_blocking(cptr);
 	return cptr;
 }
+
+#ifdef	UNIXPORT
+aClient *add_unixconnection(fd)
+int	fd;
+{
+	aClient *cptr;
+	struct	sockaddr_un addr;
+	struct	hostent	*hp;
+	int	len = sizeof(struct sockaddr_un);
+
+	cptr = make_client((aClient *)NULL);
+
+	/* Copy ascii address to 'sockhost' just in case. Then we
+	 * have something valid to put into error messages...
+	 */
+	strncpyzt(cptr->sockhost, me.sockhost, sizeof(cptr->sockhost));
+
+	cptr->fd = fd;
+	if (fd > highest_fd)
+		highest_fd = fd;
+	local[fd] = cptr;
+	cptr->flags |= FLAGS_UNIX;
+	hp = gethostbyname(me.sockhost);
+	if (hp)
+		bcopy(hp->h_addr_list[0], &cptr->ip, sizeof(struct in_addr));
+	else
+		cptr->ip.s_addr = inet_addr("127.0.0.1");
+
+	add_client_to_list(cptr);
+	set_non_blocking(cptr);
+	return cptr;
+}
+#endif
 
 /*
  * Check all connections for new connections and input data that is to be
@@ -720,14 +880,19 @@ long	delay; /* Don't ever use ZERO here, unless you mean to poll and then
   aConfItem *aconf = NULL;
   long tval, delay2 = delay, now;
 
+#ifdef NPATH
+  check_command(&delay, (char *)NULL);
+#endif
   now = time(NULL);
   for (res = 0;;)
     {
       tval = now + 5; /* +x - # of messages allowed in bursts */
       FD_ZERO(&read_set);
       FD_ZERO(&write_set);
-      if (AcceptNewConnections && (now > lastaccept))
-	FD_SET(me.fd, &read_set);
+      for (i = 0; i <= highest_fd; i++)
+	if ((cptr = local[i]) && IsMe(cptr) && AcceptNewConnections &&
+	    (now > lastaccept))
+	  FD_SET(i, &read_set);
       for (i = 0; i <= highest_fd; i++)
 	if (cptr = local[i])
 	  {
@@ -763,11 +928,13 @@ long	delay; /* Don't ever use ZERO here, unless you mean to poll and then
   /* This actually "if ()..", but now I can use "break" within
      the body. Not happy with this, but... --msa */
   
-  while (FD_ISSET(me.fd, &read_set))
+  for (i = 0; i <= highest_fd; i++)
+   if ((cptr = local[i]) && IsMe(cptr) && FD_ISSET(i, &read_set))
     {
+      FD_CLR(i, &read_set);
       nfds--;
       lastaccept = now;
-      if ((fd = accept(me.fd, (struct sockaddr *)0, (int *)0)) < 0)
+      if ((fd = accept(i, (struct sockaddr *)0, (int *)0)) < 0)
 	{
 	  /*
 	   ** There may be many reasons for error return, but
@@ -792,11 +959,17 @@ long	delay; /* Don't ever use ZERO here, unless you mean to poll and then
       }
       /* Reuse of add_connection (which do never fail)  meLazy
        */
+#ifdef	UNIXPORT
+      if (i == me.fd)
+	add_connection(fd);
+      else
+	add_unixconnection(fd);
+#else
       add_connection(fd);
+#endif
+
       break; /* Really! This was not a loop, just faked "if" --msa */
     }	/* WARNING IS NORMAL HERE! */
-
-  tval = now;
 
   for (i = 0; (i <= highest_fd) && nfds > 0; i++)
     {
@@ -804,16 +977,16 @@ long	delay; /* Don't ever use ZERO here, unless you mean to poll and then
 	continue;
       if (FD_ISSET(i, &write_set))
 	{
-	  int writeerr = 0;
+	  int write_err = 0;
 	  nfds--;
-	  if (IsConnecting(cptr) && !completed_connection(cptr))
-	    writeerr = 1;
 	  /*
 	   ** ...room for writing, empty some queue then...
 	   */
-	  if (!writeerr)
+	  if (IsConnecting(cptr))
+	    write_err = completed_connection(cptr);
+	  if (!write_err)
 	    send_queued(cptr);
-	  if (cptr->flags & FLAGS_DEADSOCKET || writeerr)
+	  if (cptr->flags & FLAGS_DEADSOCKET || write_err)
 	   {
 	    if (FD_ISSET(i, &read_set))
 	     {
@@ -840,6 +1013,9 @@ long	delay; /* Don't ever use ZERO here, unless you mean to poll and then
        ** here from quite valid reasons, although.. why
        ** would select report "data available" when there
        ** wasn't... so, this must be an error anyway...  --msa
+       ** actually, EOF occurs when read() returns 0 and
+       ** in due course, select() returns that fd as ready
+       ** for reading even though it ends up being an EOF. -avalon
        */
       if (IsServer(cptr) || IsHandshake(cptr))
 	{
@@ -847,8 +1023,7 @@ long	delay; /* Don't ever use ZERO here, unless you mean to poll and then
 	    sendto_ops("Server %s closed the connection",
 		       get_client_name(cptr,FALSE));
 	  else
-	    report_error("Lost server connection to %s:%s",
-			cptr);
+	    report_error("Lost server connection to %s:%s", cptr);
 	}
       else
 	debug(DEBUG_DEBUG,"READ ERROR: fd = %d", cptr->fd);
@@ -880,10 +1055,9 @@ long	delay; /* Don't ever use ZERO here, unless you mean to poll and then
 int	connect_server(aconf)
 aConfItem *aconf;
     {
-	struct	sockaddr_in server;
-	struct	hostent *hp;
+	struct	sockaddr *svp;
 	aClient *cptr, *c2ptr;
-	int	errtmp;
+	int	errtmp, len;
 
 	if (c2ptr = find_server(aconf->name, NULL))
 	    {
@@ -891,46 +1065,24 @@ aConfItem *aconf;
 			   aconf->name, c2ptr->name);
 		return -1;
 	    }
-	cptr = make_client(NULL);
-	/*
-	 * might as well get sockhost from here, the connection is attempted
-	 * with it so if it fails its useless.
-	 */
-	cptr->fd = socket(AF_INET, SOCK_STREAM, 0);
-	strncpy(cptr->sockhost, aconf->host, HOSTLEN);
+	cptr = make_client((aClient *)NULL);
 
-	if (cptr->fd < 0)
-	    {
-		report_error("opening stream socket to server %s:%s",cptr);
-		free(cptr);
+#ifdef	UNIXPORT
+	if (aconf->host[0] == '/')
+		svp = connect_unix_server(aconf, cptr, &len);
+	else
+		svp = connect_inet_server(aconf, cptr, &len);
+#else
+	svp = connect_inet_server(aconf, cptr, &len);
+#endif
+
+	if (svp == (struct sockaddr *)NULL)
 		return -1;
-	    }
-	server.sin_family = AF_INET;
-	
-	/* MY FIX -- jtrim@duorion.cair.du.edu  (2/10/89) */
-
-	if (isdigit(*(aconf->host)) && (aconf->ipnum.s_addr == -1))  {
-		aconf->ipnum.s_addr = inet_addr(aconf->host);
-	} else if (aconf->ipnum.s_addr == -1) {
-		hp = gethostbyname(aconf->host);
-		if (hp == NULL)
-		    {
-			close(cptr->fd);
-			free(cptr);
-			debug(DEBUG_FATAL, "%s: unknown host", aconf->host);
-			return(-2);
-		    }
-		bcopy(hp->h_addr, &aconf->ipnum, sizeof(struct in_addr));
-	    }
-	server.sin_addr.s_addr = aconf->ipnum.s_addr;
-	server.sin_port = htons((aconf->port > 0) ? aconf->port : portnum);
-	
-	/* End FIX */
 
 	set_non_blocking(cptr);
 	signal(SIGALRM, dummy);
 	alarm(4);
-	if (connect(cptr->fd, (struct sockaddr *)&server, sizeof(server)) < 0
+	if (connect(cptr->fd, svp, len) < 0
 	    && errno != EINPROGRESS)
 	    {
 		alarm(0);
@@ -954,9 +1106,10 @@ aConfItem *aconf;
         attach_confs_host(cptr, aconf->host,
 		       CONF_NOCONNECT_SERVER | CONF_CONNECT_SERVER);
 
-	if (!find_conf_host(cptr->confs, aconf->host, CONF_NOCONNECT_SERVER))
+	if (!find_conf_host(cptr->confs, aconf->host, CONF_NOCONNECT_SERVER) ||
+	    !find_conf_host(cptr->confs, aconf->host, CONF_CONNECT_SERVER))
 	    {
-      		sendto_ops("Host %s is not enabled for connecting (N-line)",
+      		sendto_ops("Host %s is not enabled for connecting:no C/N-line",
 			   aconf->host);
 		det_confs_butmask(cptr, 0);
 		close(cptr->fd);
@@ -971,23 +1124,98 @@ aConfItem *aconf;
 	local[cptr->fd] = cptr;
 	SetConnecting(cptr);
 
-	strncpyzt(cptr->sockhost, aconf->host, HOSTLEN);
+	strncpyzt(cptr->sockhost, aconf->host, sizeof(cptr->sockhost));
 	strncpyzt(cptr->name, aconf->name, sizeof(cptr->name));
 	add_client_to_list(cptr);
 	return 0;
     }
 
+struct	sockaddr *connect_inet_server(aconf, cptr, lenp)
+aConfItem	*aconf;
+aClient	*cptr;
+int	*lenp;
+{
+	static	struct	sockaddr_in	server;
+	struct	hostent	*hp;
+
+	/*
+	 * might as well get sockhost from here, the connection is attempted
+	 * with it so if it fails its useless.
+	 */
+
+	cptr->fd = socket(AF_INET, SOCK_STREAM, 0);
+	strncpyzt(cptr->sockhost, aconf->host, sizeof(cptr->sockhost));
+	server.sin_family = AF_INET;
+
+	if (cptr->fd < 0)
+	    {
+		report_error("opening stream socket to server %s:%s",cptr);
+		free(cptr);
+		return (struct sockaddr *)NULL;
+	    }
+	
+	/* MY FIX -- jtrim@duorion.cair.du.edu  (2/10/89) */
+
+	if (isdigit(*(aconf->host)) && (aconf->ipnum.s_addr == -1))  {
+		aconf->ipnum.s_addr = inet_addr(aconf->host);
+	} else if (aconf->ipnum.s_addr == -1) {
+		hp = gethostbyname(aconf->host);
+		if (hp == (struct hostent *)NULL)
+		    {
+			close(cptr->fd);
+			free(cptr);
+			debug(DEBUG_FATAL, "%s: unknown host",
+			      aconf->host);
+			return (struct sockaddr *)NULL;
+		    }
+		bcopy(hp->h_addr_list[0], &aconf->ipnum,
+		      sizeof(struct in_addr));
+	   	}
+	bcopy(&aconf->ipnum,&server.sin_addr,sizeof(struct in_addr));
+	server.sin_port = htons((aconf->port>0)?aconf->port:portnum);
+
+	/* End FIX */
+
+	*lenp = sizeof(server);
+	return	(struct sockaddr *)&server;
+}
+
+#ifdef	UNIXPORT
+struct	sockaddr *connect_unix_server(aconf, cptr, lenp)
+aConfItem	*aconf;
+aClient	*cptr;
+int	*lenp;
+{
+	static	struct	sockaddr_un	sock;
+
+	if ((cptr->fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
+	    {
+		report_error("Connect to host %s failed: %s", cptr);
+		free(cptr);
+		return (struct sockaddr *)NULL;
+	    }
+
+	strncpyzt(cptr->sockhost, aconf->host, sizeof(cptr->sockhost));
+	strncpyzt(sock.sun_path, aconf->host, sizeof(sock.sun_path));
+	sock.sun_family = AF_UNIX;
+	*lenp = strlen(sock.sun_path) + 2;
+
+	cptr->flags |= FLAGS_UNIX;
+	return (struct sockaddr *)&sock;
+}
+#endif
+
 /*
  * The following section of code performs summoning of users to irc.
  */
-#ifdef ENABLE_SUMMON
+#if defined(ENABLE_SUMMON) || defined(ENABLE_USERS)
 int utmp_open()
 {
   return (open(UTMP,O_RDONLY));
 }
 
-int utmp_read(fd, name, line, host)
-int fd;
+int utmp_read(fd, name, line, host, hlen)
+int fd, hlen;
 char *name, *line, *host;
     {
 	struct utmp ut;
@@ -996,7 +1224,7 @@ char *name, *line, *host;
 		strncpyzt(name,ut.ut_name,9);
 		strncpyzt(line,ut.ut_line,10);
 #ifdef USER_PROCESS
-#	if HPUX
+#	ifdef HPUX
 		strncpyzt(host,(ut.ut_host[0]) ? (ut.ut_host) : me.name, 16);
 #	else
 		strncpyzt(host, me.name, 9);
@@ -1004,7 +1232,7 @@ char *name, *line, *host;
 		if (ut.ut_type == USER_PROCESS)
 			return 0;
 #else
-		strncpy(host,(ut.ut_host[0]) ? (ut.ut_host) : me.name, 16);
+		strncpy(host,(ut.ut_host[0]) ? (ut.ut_host) : me.name, hlen);
 		if (ut.ut_name[0])
 			return 0;
 #endif
@@ -1017,7 +1245,7 @@ int fd;
     {
 	return(close(fd));
     }
-
+#  ifdef ENABLE_SUMMON
 summon(who, namebuf, linebuf)
 aClient *who;
 char *namebuf, *linebuf;
@@ -1037,7 +1265,7 @@ char *namebuf, *linebuf;
 	/* UTMP is for some silly reason writable to everyone... */
 	if ((linebuf[0] != 't' || linebuf[1] != 't' || linebuf[2] != 'y')
 	    && (linebuf[0] != 'c' || linebuf[1] != 'o' || linebuf[2] != 'n')
-#if HPUX
+#ifdef HPUX
 	    && (linebuf[0] != 'p' || linebuf[1] != 't' || linebuf[2] != 'y' ||
 		linebuf[3] != '/')
 #endif
@@ -1102,46 +1330,48 @@ char *namebuf, *linebuf;
 		   who->name, namebuf);
 	return 0;
     }
+#  endif
 #endif /* ENABLE_SUMMON */
 
-get_my_name(conf_name, name, len)
-char *conf_name, *name;
-int len;
+int	get_my_name(conf_name, name, len)
+char	*conf_name, *name;
+int	len;
 {
-  struct hostent *hp;
+	struct hostent *hp;
 
-  if (gethostname(name,len) < 0)
-    return -1;
-  name[len] = '\0';
+	if (gethostname(name,len) < 0)
+		return -1;
+	name[len] = '\0';
 
-  /* assume that a name containing '.' is a fully qualified domain name */
-  if (!index(name,'.'))
-    add_local_domain(name, len-strlen(name));
+	/* assume that a name containing '.' is a fully qualified domain name */
+	if (!index(name,'.'))
+		add_local_domain(name, len-strlen(name));
 
-  /* If hostname gives another name than conf_name, then check if there is
-   * a CNAME record for conf_name pointing to hostname. If so accept conf_name
-   * as our name.   meLazy
-   */
-  if (!BadPtr(conf_name) && mycmp(conf_name, name))
-    {
-      if (hp = gethostbyname(conf_name))
-	{
-	  char tmp[HOSTLEN];
-	  char *hname;
-	  int i=0;
-
-	  for (hname = hp->h_name; hname; hname = hp->h_aliases[i++])
+	/* If hostname gives another name than conf_name, then check if there is
+	 * a CNAME record for conf_name pointing to hostname. If so accept
+	 * conf_name as our name.   meLazy
+	 */
+	if (!BadPtr(conf_name) && mycmp(conf_name, name))
 	    {
-	      strncpy(tmp, hname, sizeof(tmp));
-	      add_local_domain(tmp, sizeof(tmp) - strlen(tmp));
-	      if (!mycmp(tmp, conf_name))
-		{
-		  strncpy(name, conf_name, len);
-		  break;
-		}
-	    }
-	}
-    }
+		if (hp = gethostbyname(conf_name))
+		    {
+			char tmp[HOSTLEN];
+			char *hname;
+			int i=0;
 
-  return (0);
+			for (hname = hp->h_name; hname;
+			     hname = hp->h_aliases[i++])
+	  		    {
+				strncpy(tmp, hname, sizeof(tmp));
+				add_local_domain(tmp,sizeof(tmp)-strlen(tmp));
+				if (!mycmp(tmp, conf_name))
+				    {
+					strncpy(name, conf_name, len);
+					break;
+				    }
+	 		    }
+		    }
+	    }
+
+	return (0);
 }

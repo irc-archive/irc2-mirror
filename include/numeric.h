@@ -18,6 +18,12 @@
  */
 
 /*
+ * -- Avalon -- 13 May 1992
+ *
+ * Added RPL_STATSLLINE
+ */
+
+/*
  * -- Avalon -- 12 Jan 1992
  *
  * Added RPL_TRACELINK
@@ -54,6 +60,17 @@
  * Added ERR_CANNOTSENDTOCHAN...
  */
 
+/*
+ * Reserve numerics 000-099 for server-client connections where the client
+ * is local to the server. If any server is passed a numeric in this range
+ * from another server then it is remapped to 100-199. -avalon
+ */
+#define	RPL_MYINFO           001
+
+/*
+ * Errors are in the range from 400-599 currently and are grouped by what
+ * commands they come from.
+ */
 #define ERR_NOSUCHNICK       401
 #define ERR_NOSUCHSERVER     402
 #define ERR_NOSUCHCHANNEL    403
@@ -78,6 +95,7 @@
 
 #define ERR_USERNOTINCHANNEL 441
 #define ERR_NOTONCHANNEL     442
+#define	ERR_USERONCHANNEL    443
 
 #define ERR_NOTREGISTERED    451
 
@@ -102,6 +120,10 @@
 #define ERR_UMODEUNKNOWNFLAG 501
 #define ERR_USERSDONTMATCH   502
 
+/*
+ * Numberic replies from server commands.
+ * These are currently in the range 200-399.
+ */
 #define RPL_AWAY             301
 #define RPL_USERHOST         302
 #define RPL_ISON             303
@@ -185,4 +207,4 @@
 #define RPL_SERVLIST         234
 #define RPL_SERVLISTEND      235
 
-
+#define	RPL_STATSLLINE       241
