@@ -130,15 +130,13 @@
 #undef	LOCOP_SET
 
 /*
- * Maximum number of network connections your server will allow.  This should
- * never exceed max. number of open file descrpitors and wont increase this.
- * Should remain LOW as possible. Most sites will usually have under 50 or so
- * connections.
- * if you have a lot of server connections, it may be worth splitting the load
+ * Maximum number of network connections your server will allow.  This must
+ * not exceed OS limit of max. number of open file descriptors available upon
+ * ircd start.
+ * If you have a lot of server connections, it may be worth splitting the load
  * over 2 or more servers.
  * 1 server = 1 connection, 1 user = 1 connection.
- * This should be at *least* 4: 2 listen ports (1 tcp, 1 udp)
- *				1 dns port, 1 client
+ * Due to various sanity checks during startup, minimum is 13.
  */
 #define MAXCONNECTIONS	50
 
@@ -398,6 +396,17 @@
 */
 #define HELLO_MSG "Please wait while we process your connection."
 
+/*
+ * Connections rejected by check_clones() will be delayed for this many seconds
+ * before final error is sent to them and their socket is closed.
+ * This effectively reduces bouncing (fast reconnecting clients).
+ * CLONE_CHECK must be defined for this to work.
+ *
+ * Note: it may lead to file descriptors exhaustion. ("All connections in use"
+ * error message.)
+ */
+#define DELAY_CLOSE     15       /* Recommended value: 15 */
+
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
@@ -575,11 +584,27 @@
  */
 #define	MAXCLIENTS	(MAXCONNECTIONS-5)
 
+#if (MAXCONNECTIONS < 13)
+# error Sorry, MAXCONNECTIONS minimum 13 for ircd to start.
+#endif
+
 #if defined(CLIENT_FLOOD)
 # if	(CLIENT_FLOOD > 8000) || (CLIENT_FLOOD < 512)
 #error CLIENT_FLOOD needs redefining.
 # endif
 #else
+
+/* sanity check */
+#if defined(DELAY_CLOSE)
+#  if defined(SLOW_ACCEPT) || !defined(CLONE_CHECK)
+#    error redefine CLONE_CHECK and undefine SLOW_ACCEPT to use DELAY_CLOSE.
+#  endif
+#  if (DELAY_CLOSE < 1)
+#    error DELAY_CLOSE needs redefining.
+#  endif
+#endif
+
+
 #error CLIENT_FLOOD undefined
 #endif
 

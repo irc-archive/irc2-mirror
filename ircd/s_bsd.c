@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.117 2004/02/27 15:43:48 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.127 2004/03/11 02:08:31 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -49,6 +49,7 @@ static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.117 2004/02/27 15:43:48 chopin Exp 
 #endif
 
 aClient	*local[MAXCONNECTIONS];
+aClient	*listeners[MAXCONNECTIONS];
 FdAry	fdas, fdall;
 int	highest_fd = 0, readcalls = 0, udpfd = -1, resfd = -1, adfd = -1;
 time_t	timeofday;
@@ -229,7 +230,6 @@ int	inetport(aClient *cptr, char *ip, char *ipmask, int port)
 
 	(void)sprintf(cptr->sockhost, "%-.42s.%u", ip ? ip : ME,
 		      (unsigned int)port);
-	(void)strcpy(cptr->name, ME);
 	DupString(cptr->auth, ipname);
 	/*
 	 * At first, open a new socket
@@ -311,7 +311,6 @@ int	inetport(aClient *cptr, char *ip, char *ipmask, int port)
 #endif
 	cptr->port = port;
 	(void)listen(cptr->fd, LISTENQUEUE);
-	local[cptr->fd] = cptr;
 
 	return 0;
 }
@@ -331,11 +330,11 @@ int	add_listener(aConfItem *aconf)
 	cptr->acpt = cptr;
 	cptr->from = cptr;
 	cptr->firsttime = time(NULL);
+	cptr->name = ME;
 	SetMe(cptr);
 #ifdef	UNIXPORT
 	if (*aconf->host == '/')
 	    {
-		strncpyzt(cptr->name, aconf->host, sizeof(cptr->name));
 		if (unixport(cptr, aconf->host, aconf->port))
 			cptr->fd = -2;
 	    }
@@ -349,6 +348,7 @@ int	add_listener(aConfItem *aconf)
 		cptr->confs = make_link();
 		cptr->confs->next = NULL;
 		cptr->confs->value.aconf = aconf;
+		listeners[cptr->fd] = cptr;
 		add_fd(cptr->fd, &fdas);
 		add_fd(cptr->fd, &fdall);
 		set_non_blocking(cptr->fd, cptr);
@@ -380,7 +380,7 @@ int	unixport(aClient *cptr, char *path, int port)
 	else if (cptr->fd >= MAXCLIENTS)
 	    {
 		sendto_flag(SCH_ERROR,
-			    "No more connections allowed (%s)", cptr->name);
+			    "No more connections allowed (%s)", path);
 		(void)close(cptr->fd);
 		return -1;
 	    }
@@ -390,7 +390,6 @@ int	unixport(aClient *cptr, char *path, int port)
 	sprintf(unixpath, "%s/%d", path, port);
 	(void)unlink(unixpath);
 	strncpyzt(un.sun_path, unixpath, sizeof(un.sun_path));
-	(void)strcpy(cptr->name, ME);
 	errno = 0;
 	get_sockhost(cptr, unixpath);
 
@@ -407,7 +406,6 @@ int	unixport(aClient *cptr, char *path, int port)
 	(void)chmod(unixpath, 0777);
 	cptr->flags |= FLAGS_UNIX;
 	cptr->port = 0;
-	local[cptr->fd] = cptr;
 
 	return 0;
 }
@@ -432,9 +430,9 @@ void	close_listeners(void)
 	 */
 	for (i = highest_fd; i >= 0; i--)
 	    {
-		if (!(cptr = local[i]))
+		if (!(cptr = listeners[i]))
 			continue;
-		if (cptr == &me || !IsListening(cptr))
+		if (cptr == &me)
 			continue;
 		aconf = cptr->confs->value.aconf;
 
@@ -610,9 +608,13 @@ void	init_sys(void)
 	bzero((char *)&fdas, sizeof(fdas));
 	bzero((char *)&fdall, sizeof(fdall));
 	fdas.highest = fdall.highest = -1;
-	bzero((char *)&local, sizeof(local));
+	/* we need stderr open, don't close() it, daemonize() will do it */
+	local[0] = local[1] = local[2] = NULL;
+	listeners[0] = listeners[1] = listeners[2] = NULL;
 	for (fd = 3; fd < MAXCONNECTIONS; fd++)
 	{
+		local[fd] = NULL;
+		listeners[fd] = NULL;
 		(void)close(fd);
 	}
 }
@@ -633,7 +635,7 @@ void	daemonize(void)
 		(void)close(2);
 
 	if (((bootopt & BOOT_CONSOLE) || isatty(0)) &&
-	    !(bootopt & (BOOT_INETD|BOOT_OPER)))
+	    !(bootopt & BOOT_INETD))
 	    {
 		if (fork())
 			exit(0);
@@ -1210,7 +1212,7 @@ void	close_connection(aClient *cptr)
 		sendto_iauth("%d D", cptr->fd);
 #endif
 		flush_connections(i);
-		if (IsServer(cptr) || IsListening(cptr))
+		if (IsServer(cptr))
 		    {
 			del_fd(i, &fdas);
 #ifdef	ZIP_LINKS
@@ -1221,6 +1223,11 @@ void	close_connection(aClient *cptr)
 			zip_free(cptr);
 #endif
 		    }
+		else if (IsListening(cptr))
+		{
+			del_fd(i, &fdas);
+			listeners[i] = NULL;
+		}
 		else if (IsClient(cptr))
 		    {
 #ifdef	SO_LINGER
@@ -1485,10 +1492,11 @@ aClient	*add_connection(aClient *cptr, int fd)
 				report_error("Failed in connecting to %s :%s",
 					     cptr);
 add_con_refuse:
+			(void)close(fd);
+add_con_refuse_delay:
 			ircstp->is_ref++;
 			acptr->fd = -2;
 			free_client(acptr);
-			(void)close(fd);
 			return NULL;
 		    }
 		/* don't want to add "Failed in connecting to" here.. */
@@ -1508,6 +1516,22 @@ add_con_refuse:
 			sizeof(struct IN_ADDR));
 		acptr->port = ntohs(addr.SIN_PORT);
 
+#ifdef	CLONE_CHECK
+		if (check_clones(acptr) > CLONE_MAX)
+		{
+			sendto_flag(SCH_LOCAL, "Rejecting connection from %s.",
+				acptr->sockhost);
+			sendto_flog(acptr, EXITC_CLONE, "", acptr->sockhost);
+#ifdef DELAY_CLOSE
+			nextdelayclose = delay_close(fd);
+			goto add_con_refuse_delay;
+#else
+			(void)send(fd, "ERROR :Too rapid connections from your "
+				"host\r\n", 46, 0);
+			goto add_con_refuse;
+#endif
+		}
+#endif
 		lin.flags = ASYNC_CLIENT;
 		lin.value.cptr = acptr;
 		lin.next = NULL;
@@ -1525,22 +1549,6 @@ add_con_refuse:
 		nextdnscheck = 1;
 	    }
 
-#ifdef	CLONE_CHECK
-	if (check_clones(acptr) > CLONE_MAX)
-	    {
-		sendto_flag(SCH_LOCAL, "Rejecting connection from %s[%s].",
-			    (acptr->hostp) ? acptr->hostp->h_name : "",
-			    acptr->sockhost);
-		sendto_flog(acptr, EXITC_CLONE, "",
-			    (acptr->hostp) ? acptr->hostp->h_name :
-			    acptr->sockhost);
-		del_queries((char *)acptr);
-		(void)send(fd,
-			   "ERROR :Too rapid connections from your host\r\n",
-			   46, 0);
-		goto add_con_refuse;
-	    }
-#endif
 	acptr->fd = fd;
 	set_non_blocking(acptr->fd, acptr);
 	if (set_sock_opts(acptr->fd, acptr) == -1)
@@ -1917,7 +1925,11 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 #endif
 		for (i = fdp->highest; i >= 0; i--)
 		    {
-			if (!(cptr = local[fd = fdp->fd[i]]) || IsLog(cptr))
+			fd = fdp->fd[i];
+			cptr = local[fd];
+			if (!cptr)
+				cptr = listeners[fd];
+			if (!cptr)
 				continue;
 			Debug((DEBUG_L11, "fd %d cptr %#x %d %#x %s",
 				fd, cptr, cptr->status, cptr->flags,
@@ -2115,7 +2127,11 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 #endif
 	    {
 #if ! USE_POLL
-		if (!(cptr = local[fd = fdp->fd[i]]))
+		fd = fdp->fd[i];
+		cptr = local[fd];
+		if (!cptr)
+			cptr = listeners[fd];
+		if (!cptr)
 			continue;
 #else
 		fd = pfd->fd;
@@ -2147,7 +2163,10 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 #if USE_POLL
 		    }
 		fd = pfd->fd;
-		if (!(cptr = local[fd]))
+		cptr = local[fd];
+		if (!cptr)
+			cptr = listeners[fd];
+		if (!cptr)
 			continue;
 #else
 		fd = cptr->fd;
@@ -2330,27 +2349,32 @@ int	connect_server(aConfItem *aconf, aClient *by, struct hostent *hp)
 		    }
 	    }
 	cptr = make_client(NULL);
+	if ((make_server(cptr))==NULL)
+	{
+		free_client(cptr);
+		return -1;
+	}
 	cptr->hostp = hp;
 	/*
 	 * Copy these in so we have something for error detection.
 	 */
-	strncpyzt(cptr->name, aconf->name, sizeof(cptr->name));
+	strncpyzt(cptr->serv->namebuf, aconf->name, sizeof(cptr->serv->namebuf));
 	strncpyzt(cptr->sockhost, aconf->host, HOSTLEN+1);
 
 #ifdef	UNIXPORT
 	if (*aconf->host == '/') /* (/ starts a 2), Unix domain -- dl*/
 		svp = connect_unix(aconf, cptr, &len);
 	else
-		svp = connect_inet(aconf, cptr, &len);
-#else
-	svp = connect_inet(aconf, cptr, &len);
 #endif
+	svp = connect_inet(aconf, cptr, &len);
 
 	if (!svp)
 	    {
-		if (cptr->fd != -1)
+free_server:
+		if (cptr->fd >= 0)
 			(void)close(cptr->fd);
 		cptr->fd = -2;
+		free_server(cptr->serv, cptr);
 		free_client(cptr);
 		return -1;
 	    }
@@ -2368,13 +2392,10 @@ int	connect_server(aConfItem *aconf, aClient *by, struct hostent *hp)
 		  sendto_one(by,
 			     ":%s NOTICE %s :Connect to host %s failed.",
 			     ME, by->name, cptr);
-		(void)close(cptr->fd);
-		cptr->fd = -2;
-		free_client(cptr);
 		errno = i;
 		if (errno == EINTR)
 			errno = ETIMEDOUT;
-		return -1;
+		goto free_server;
 	    }
 	(void)alarm(0);
 
@@ -2398,19 +2419,11 @@ int	connect_server(aConfItem *aconf, aClient *by, struct hostent *hp)
 			     ":%s NOTICE %s :Connect to host %s failed.",
 			     ME, by->name, cptr);
 		det_confs_butmask(cptr, 0);
-		(void)close(cptr->fd);
-		cptr->fd = -2;
-		free_client(cptr);
-		return(-1);
+		goto free_server;
 	    }
 	/*
 	** The socket has been connected or connect is in progress.
 	*/
-	if (!make_server(cptr))
-	{
-		free_client(cptr);
-		return(-1);
-	}
 	if (by && IsPerson(by))
 	    {
 		(void)strcpy(cptr->serv->by, by->name);
@@ -2462,7 +2475,6 @@ static	struct	SOCKADDR *connect_inet(aConfItem *aconf, aClient *cptr,
 			    "No more connections allowed (%s)", cptr->name);
 		return NULL;
 	    }
-	mysk.SIN_PORT = 0;
 	bzero((char *)&server, sizeof(server));
 	server.SIN_FAMILY = AFINET;
 	get_sockhost(cptr, aconf->host);
@@ -2478,7 +2490,9 @@ static	struct	SOCKADDR *connect_inet(aConfItem *aconf, aClient *cptr,
 		if ((outip.sin_addr.s_addr = inetaddr(aconf->source_ip)) == -1)
 #endif
 		{
-			memcpy(&mysk, &outip, sizeof(mysk));		
+			sendto_flag(SCH_ERROR, "Invalid source IP (%s) in C:line",
+				aconf->source_ip);
+			memcpy(&outip, &mysk, sizeof(mysk));
 		}
 	}
 	else
@@ -2753,6 +2767,7 @@ void	get_my_name(aClient *cptr, char *name, int len)
 	*/
 	bzero((char *)&mysk, sizeof(mysk));
 	mysk.SIN_FAMILY = AFINET;
+	mysk.SIN_PORT = 0;
 	
 	if ((aconf = find_me())->passwd && isdigit(*aconf->passwd))
 #ifdef INET6
@@ -3199,3 +3214,98 @@ static	void	do_dns_async(void)
 	} while ((bytes > 0) && (pkts < 10));
 }
 
+#ifdef DELAY_CLOSE
+/*
+ * Delaying close(2) on too rapid connections reduces cpu
+ * and bandwidth usage. Not mentioning disk space, if you
+ * log such crap.
+ *
+ * Based on Ari `DLR' Heikkinen <aheikin@dlr.pspt.fi> irce0.9.1
+ * by Piotr `Beeth' Kucharski <chopin@sgh.waw.pl>
+ *
+ * Note: calling with fd == -2 closes all delayed fds.
+ */
+
+time_t	delay_close(int fd)
+{
+	struct	fdlog
+	{
+		struct	fdlog	*next;
+		int	fd;
+		time_t	time;
+	};
+	static	struct	fdlog	*first = NULL, *last = NULL;
+	struct	fdlog	*next = first, *tmp;
+	int	tmpdel = 0;
+
+	if (fd == -2)
+	{
+		/* special case used in m_close() -- close all! */
+		tmpdel = istat.is_delayclosewait;
+	}
+	else 
+	/* Make sure we don't delay close() on too many fds. If we have
+	 * kept more than half (possibly) available fds for clients
+	 * waiting to be closed, release quarter oldest of them.
+	 * >>1, >>2 are faster equivalents of /2, /4 --B. */
+	if (istat.is_delayclosewait > (MAXCLIENTS-istat.is_localc) >> 1)
+	{
+		tmpdel = istat.is_delayclosewait >> 2;
+	}
+
+	while ((tmp = next))
+	{
+		if (tmp->time < timeofday || tmpdel-- > 0)
+		{
+			next = tmp->next;
+			(void)send(fd, "ERROR :Too rapid connections "
+				"from your host\r\n", 46, 0);
+			close(tmp->fd);
+			MyFree(tmp);
+			istat.is_delayclosewait--;
+			if (!next)
+			{
+				last = NULL;
+			}
+			first = next;
+		}
+		else
+		{
+			/* This linked list has entries chronologically
+			 * sorted, so if tmp is not old enough, all next
+			 * would also be not old enough to close. */
+			break;
+		}
+	}
+
+	if (fd >= 0)
+	{
+		/* set socket in nonblocking state (just in case) */
+		set_non_blocking(fd, NULL);
+
+		/* disallow further receives */
+		shutdown(fd, SHUT_RD);
+
+		/* create a new entry with fd and time of close */
+		tmp = (struct fdlog *)MyMalloc(sizeof(*tmp));
+		tmp->next = NULL;
+		tmp->fd = fd;
+		tmp->time = timeofday + DELAY_CLOSE;
+		istat.is_delayclosewait++;
+		istat.is_delayclose++;
+
+		/* then add it to the list */
+		if (last)
+		{
+			last->next = tmp;
+			last = tmp;
+		}
+		else
+		{
+			first = last = tmp;
+		}
+	}
+
+	return first ? first->time : 0;
+}
+#endif

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_service.c,v 1.47 2004/02/10 19:32:50 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_service.c,v 1.49 2004/03/11 02:48:04 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -42,6 +42,7 @@ aService	*make_service(aClient *cptr)
 
 	cptr->service = svc = (aService *)MyMalloc(sizeof(*svc));
 	bzero((char *)svc, sizeof(*svc));
+	cptr->name = svc->namebuf;
 	svc->bcptr = cptr;
 	if (svctop)
 		svctop->prevs = svc;
@@ -57,20 +58,25 @@ void	free_service(aClient *cptr)
 	Reg	aService	*serv;
 
 	if ((serv = cptr->service))
-	    {
+	{
 		if (serv->nexts)
 			serv->nexts->prevs = serv->prevs;
 		if (serv->prevs)
 			serv->prevs->nexts = serv->nexts;
 		if (svctop == serv)
 			svctop = serv->nexts;
+		/* It's just the pointer, not even allocated in m_service.
+		 * Why would someone want to destroy that struct here?
+		 * So far commenting it out. --B.
 		if (serv->servp)
 			free_server(serv->servp, cptr);
+		 */
+		/* this is ok, ->server is a string. */
 		if (serv->server)
 			MyFree(serv->server);
 		MyFree(serv);
 		cptr->service = NULL;
-	    }
+	}
 }
 
 
@@ -319,8 +325,10 @@ int	m_service(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (IsServer(cptr))
 	    {
 		sptr = make_client(cptr);
+		svc = make_service(sptr);
 		add_client_to_list(sptr);
-		strncpyzt(sptr->name, parv[1], sizeof(sptr->name));
+		strncpyzt(sptr->service->namebuf, parv[1],
+			sizeof(sptr->service->namebuf));
 		server = parv[2];
 		sptr->hopcount = atoi(parv[5]);
 		sp = find_tokserver(atoi(server), cptr, NULL);
@@ -356,6 +364,7 @@ int	m_service(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #ifdef	USE_SERVICES
 	if (!IsServer(cptr))
 	    {
+		svc = make_service(sptr);
 		sptr->hopcount = 0;
 		server = ME;
 		sp = me.serv;
@@ -374,7 +383,8 @@ int	m_service(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			return exit_client(cptr, sptr, &me, "Name too long");
 		    }
 
-		strncpyzt(sptr->name, parv[1], sizeof(sptr->name));
+		strncpyzt(sptr->service->namebuf, parv[1],
+			sizeof(sptr->service->namebuf));
 		if (!(aconf = find_conf_service(sptr, type, NULL)))
 		    {
 			sendto_one(sptr,
@@ -420,7 +430,6 @@ int	m_service(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	istat.is_service++;
 	if (istat.is_service > istat.is_m_service)
 		istat.is_m_service = istat.is_service;
-	svc = make_service(sptr);
 	SetService(sptr);
 	svc->servp = sp;
 	sp->refcnt++;

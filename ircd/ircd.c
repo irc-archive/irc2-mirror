@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: ircd.c,v 1.111 2004/03/05 16:36:15 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: ircd.c,v 1.120 2004/03/10 15:28:27 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -53,6 +53,9 @@ volatile static	int	dorehash = 0,
 			dorestart = 0,
 			restart_iauth = 0;
 
+#ifdef DELAY_CLOSE
+time_t	nextdelayclose = 0;	/* time for next delayed close */
+#endif
 time_t	nextconnect = 1;	/* time for next try_connections call */
 time_t	nextgarbage = 1;        /* time for next collect_channel_garbage call*/
 time_t	nextping = 1;		/* same as above for check_pings() */
@@ -167,7 +170,7 @@ void	server_reboot()
 	if ((bootopt & BOOT_CONSOLE) || isatty(0))
 		(void)close(0);
 	ircd_writetune(tunefile);
-	if (!(bootopt & (BOOT_INETD|BOOT_OPER)))
+	if (!(bootopt & BOOT_INETD))
 	    {
 		(void)execv(IRCD_PATH, myargv);
 #ifdef USE_SYSLOG
@@ -405,7 +408,7 @@ static	time_t	check_pings(time_t currenttime)
 
 	for (i = highest_fd; i >= 0; i--)
 	    {
-		if (!(cptr = local[i]) || IsListening(cptr) || IsLog(cptr))
+		if (!(cptr = local[i]))
 			continue;
 
 #ifdef TIMEDKLINES
@@ -609,8 +612,8 @@ static	void	setup_me(aClient *mp)
 #endif
 	mp->hostp->h_addr_list[1] = NULL ;
 
-	if (mp->name[0] == '\0')
-		strncpyzt(mp->name, mp->sockhost, sizeof(mp->name));
+	if (mp->serv->namebuf[0] == '\0')
+		strncpyzt(mp->serv->namebuf, mp->sockhost, sizeof(mp->serv->namebuf));
 	if (me.info == DefInfo)
 		me.info = mystrdup("IRCers United");
 	mp->lasttime = mp->since = mp->firsttime = time(NULL);
@@ -652,7 +655,7 @@ static	void	setup_me(aClient *mp)
 static	int	bad_command(void)
 {
   (void)printf(
-	 "Usage: ircd [-a] [-b] [-c]%s [-h servername] [-q] [-o] [-i]"
+	 "Usage: ircd [-a] [-b] [-c]%s [-h servername] [-q] [-i]"
 	 "[-T tunefile] [-p (strict|on|off)] [-s] [-v] [-t] %s\n",
 #ifdef CMDLINE_CONFIG
 	 " [-f config]",
@@ -758,10 +761,6 @@ int	main(int argc, char *argv[])
 		    case 'q':
 			bootopt |= BOOT_QUICK;
 			break;
-		    case 'o': /* Per user local daemon... */
-                        (void)setuid((uid_t)uid);
-			bootopt |= BOOT_OPER;
-		        break;
 #ifdef CMDLINE_CONFIG
 		    case 'f':
                         (void)setuid((uid_t)uid);
@@ -771,7 +770,7 @@ int	main(int argc, char *argv[])
 		    case 'h':
 			if (*p == '\0')
 				bad_command();
-			strncpyzt(me.name, p, sizeof(me.name));
+			strncpyzt(me.serv->namebuf, p, sizeof(me.serv->namebuf));
 			break;
 		    case 'i':
 			bootopt |= BOOT_INETD|BOOT_AUTODIE;
@@ -938,11 +937,8 @@ int	main(int argc, char *argv[])
 
                 for (i = 0; i <= highest_fd; i++)
                     {   
-                        if (!(acptr = local[i]))
-                                continue;
-			if (IsListening(acptr))
-				break;
-			acptr = NULL;
+                        if ((acptr = listeners[i]))
+                                break;
 		    }
 		/* exit if there is nothing to listen to */
 		if (acptr == NULL && !(bootopt & BOOT_INETD))
@@ -956,6 +952,12 @@ int	main(int argc, char *argv[])
 		{
 			fprintf(stderr,
 			"Fatal Error: No M-line in ircd.conf.\n");
+			exit(-1);
+		}
+		if (check_servername(ME))
+		{
+			fprintf(stderr,
+			"Fatal Error: Invalid server name.\n");
 			exit(-1);
 		}
 		if (!me.serv->sid)
@@ -988,6 +990,7 @@ int	main(int argc, char *argv[])
 		aConfItem *aconf;
 
 		tmp = make_client(NULL);
+		make_server(tmp);
 
 		tmp->fd = 0;
 		tmp->flags = FLAGS_LISTEN;
@@ -997,7 +1000,7 @@ int	main(int argc, char *argv[])
 
                 SetMe(tmp);
 
-                (void)strcpy(tmp->name, "*");
+                (void)strcpy(tmp->serv->namebuf, "*");
 
                 if (inetport(tmp, 0, "0.0.0.0", 0))
                         tmp->fd = -1;
@@ -1020,17 +1023,6 @@ int	main(int argc, char *argv[])
 		    exit(5);
 	    }
 	
-	if (bootopt & BOOT_OPER)
-	    {
-		aClient *tmp = add_connection(&me, 0);
-
-		if (!tmp)
-			exit(1);
-		SetMaster(tmp);
-		local[0] = tmp;
-	    }
-
-
 	Debug((DEBUG_NOTICE,"Server ready..."));
 #ifdef USE_SYSLOG
 	syslog(LOG_NOTICE, "Server Ready: v%s (%s #%s)", version, creation,
@@ -1049,10 +1041,7 @@ int	main(int argc, char *argv[])
 	mysrand(timeofday);
 	
 	daemonize();	
-	if (!(bootopt & BOOT_OPER))
-	{
-		write_pidfile();
-	}
+	write_pidfile();
 	dbuf_init();
 	
 	serverbooting = 0;
@@ -1075,6 +1064,11 @@ static	void	io_loop(void)
 	*/
 	if (nextconnect && timeofday >= nextconnect)
 		nextconnect = try_connections(timeofday);
+#ifdef DELAY_CLOSE
+	/* close all overdue delayed fds */
+	if (nextdelayclose && timeofday >= nextdelayclose)
+		nextdelayclose = delay_close(-1);
+#endif
 	/*
 	** Every once in a while, hunt channel structures that
 	** can be freed. Reop channels while at it, too.
@@ -1097,6 +1091,10 @@ static	void	io_loop(void)
 		delay = MIN(nextping, nextconnect);
 	else
 		delay = nextping;
+#ifdef DELAY_CLOSE
+	if (nextdelayclose)
+		delay = MIN(nextdelayclose, delay);
+#endif
 	delay = MIN(nextdnscheck, delay);
 	delay = MIN(nextexpire, delay);
 	delay -= timeofday;
@@ -1115,9 +1113,8 @@ static	void	io_loop(void)
 		delay = MIN(delay, TIMESEC);
 
 	/*
-	** First, try to drain traffic from servers (this includes listening
-	** ports).  Give up, either if there's no traffic, or too many
-	** iterations.
+	** First, try to drain traffic from servers and listening sockets.
+	** Give up either if there's no traffic or too many iterations.
 	*/
 	while (maxs--)
 		if (read_message(0, &fdas, 0))
@@ -1199,19 +1196,9 @@ static	void	open_debugfile()
 {
 #ifdef	DEBUGMODE
 	int	fd;
-	aClient	*cptr;
 
 	if (debuglevel >= 0)
 	    {
-		cptr = make_client(NULL);
-		cptr->fd = 2;
-		SetLog(cptr);
-		cptr->port = debuglevel;
-		cptr->flags = 0;
-		cptr->acpt = cptr;
-		local[2] = cptr;
-		(void)strcpy(cptr->sockhost, me.sockhost);
-
 		(void)printf("isatty = %d ttyname = %#x\n",
 			isatty(2), (u_int)ttyname(2));
 		if (!(bootopt & BOOT_TTY)) /* leave debugging output on fd 2 */
@@ -1225,17 +1212,12 @@ static	void	open_debugfile()
 				(void)dup2(fd, 2);
 				(void)close(fd); 
 			    }
-			strncpyzt(cptr->name, IRCDDBG_PATH,sizeof(cptr->name));
 		    }
-		else if (isatty(2) && ttyname(2))
-			strncpyzt(cptr->name, ttyname(2), sizeof(cptr->name));
-		else
-			(void)strcpy(cptr->name, "FD2-Pipe");
 		Debug((DEBUG_FATAL, "Debug: File <%s> Level: %d at %s",
-			cptr->name, cptr->port, myctime(time(NULL))));
+			( (!(bootopt & BOOT_TTY)) ? IRCDDBG_PATH :
+			(isatty(2) && ttyname(2)) ? ttyname(2) : "FD2-Pipe"),
+			debuglevel, myctime(time(NULL))));
 	    }
-	else
-		local[2] = NULL;
 #endif
 	return;
 }

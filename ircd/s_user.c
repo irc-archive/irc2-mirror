@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.187 2004/03/06 00:01:35 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.196 2004/03/11 02:38:51 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -345,7 +345,6 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 	aClient	*acptr;
 	aServer	*sp = NULL;
 	anUser	*user = sptr->user;
-	short	oldstatus = sptr->status;
 	char	*parv[3];
 #ifndef NO_PREFIX
 	char	prefix;
@@ -595,8 +594,6 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 			return exit_client(cptr, sptr, &me, (reason) ? buf :
 					   "K-lined");
 		    }
-		if (oldstatus == STAT_MASTER && MyConnect(sptr))
-			(void)m_oper(&me, sptr, 1, parv);
 		sp = user->servp;
 	    }
 	else
@@ -727,33 +724,62 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 	    }
 
 	for (i = fdas.highest; i >= 0; i--)
-	    {	/* Find my leaf servers and feed the new client to them */
-		if ((acptr = local[fdas.fd[i]]) == cptr || IsMe(acptr))
+	{
+		/* Find my leaf servers and feed the new client to them */
+		if (!(acptr = local[fdas.fd[i]]) || !IsServer(acptr) ||
+			acptr == cptr || IsMe(acptr))
+		{
 			continue;
-		if (ST_UID(acptr) && user->uid[0])
-			sendto_one(acptr,
-				   ":%s UNICK %s %s %s %s %s %s :%s",
-				   user->servp->sid, nick, user->uid,
-				   user->username, user->host,
-				   user->sip,
-				   (*buf) ? buf : "+",
-				   sptr->info);
-		else
-			if (ST_NOTUID(acptr) && (aconf = acptr->serv->nline) &&
-			    !match(my_name_for_link(ME, aconf->port),
-				   user->server))
-				sendto_one(acptr, "NICK %s %d %s %s %s %s :%s",
-					   nick, sptr->hopcount+1, 
-					   user->username, user->host, 
-					   me.serv->tok, (*buf) ? buf : "+",
-					   sptr->info);
+		}
+		/* this will get nicely reduced to UNICK only, when
+		 * we are fully 2.11 */
+		if (ST_UID(acptr))
+		{
+			/* remote server is 2.11 */
+			if (user->uid[0])
+			{
+				/* user has uid */
+				sendto_one(acptr,
+					":%s UNICK %s %s %s %s %s %s :%s",
+					user->servp->sid, nick, user->uid,
+					user->username, user->host, user->sip,
+					(*buf) ? buf : "+", sptr->info);
+			}
 			else
+			{
+				sendto_one(acptr,
+					"NICK %s %d %s %s %s %s :%s",
+					nick, sptr->hopcount+1,
+					user->username, user->host,
+					user->servp->tok,
+					(*buf) ? buf : "+", sptr->info);
+			}
+		}
+		else
+		{
+			/* remote server is 2.10 */
+			if ((aconf = acptr->serv->nline) &&
+				!match(my_name_for_link(ME, aconf->port),
+				user->server))
+			{
+				/* not masked */
 				sendto_one(acptr, "NICK %s %d %s %s %s %s :%s",
-					   nick, sptr->hopcount+1, 
-					   user->username, user->host, 
-					   user->servp->maskedby->serv->tok, 
-					   (*buf) ? buf : "+", sptr->info);
-	    }	/* for(my-leaf-servers) */
+					nick, sptr->hopcount+1,
+					user->username, user->host,
+					me.serv->tok,
+					(*buf) ? buf : "+", sptr->info);
+			}
+			else
+			{
+				/* masked */
+				sendto_one(acptr, "NICK %s %d %s %s %s %s :%s",
+					nick, sptr->hopcount+1,
+					user->username, user->host,
+					user->servp->maskedby->serv->tok,
+					(*buf) ? buf : "+", sptr->info);
+			}
+		}
+	}	/* for(my-leaf-servers) */
 #ifdef	USE_SERVICES
 #if 0
 	check_services_butone(SERVICE_WANT_NICK, user->server, NULL,
@@ -810,7 +836,7 @@ int	m_nick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	/* local clients' nick size can be ONICKLEN max */
 	strncpyzt(nick, parv[1], (MyConnect(sptr) ? ONICKLEN : NICKLEN)+1);
 
-	if (cptr->serv)	/* we later use 'IsServer(sptr), why not here? --B. */
+	if (IsServer(cptr))
 	{
 		if (parc != 8 && parc != 2)
 		{
@@ -1178,8 +1204,8 @@ nickkilldone:
 			*/
 			if (IsRestricted(sptr) && !isdigit(*parv[0]))
 			{
-				sendto_one(sptr,
-					replies[ERR_RESTRICTED], ME, BadTo(parv[0]));
+				sendto_one(sptr, replies[ERR_RESTRICTED],
+					ME, BadTo(parv[0]));
 				return 2;
 			}
 			/* Can the user speak on all channels? */
@@ -1187,6 +1213,16 @@ nickkilldone:
 				if (can_send(sptr, lp->value.chptr) &&
 				    !IsQuiet(lp->value.chptr))
 					break;
+			/* If (lp), we give bigger penalty at the end. */
+#ifdef DISABLE_NICKCHANGE_WHEN_BANNED
+			if (lp)
+			{
+				sendto_one(sptr, replies[ERR_CANNOTSENDTOCHAN],
+					ME, BadTo(parv[0]),
+					lp->value.chptr->chname);
+				return 2;
+			}
+#endif
 		}
 		/*
 		** Client just changing his/her nick. If he/she is
@@ -1314,7 +1350,7 @@ int	m_unick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	/*
 	** Check validity of UID.
 	*/
-	if (!check_uid(uid))
+	if (!check_uid(uid, sptr->serv->sid))
 	{
 		/* This is so bad, that I really don't want to deal with it! */
 		sendto_ops_butone(NULL, &me,
@@ -2381,7 +2417,8 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				    parv[0], server,
 				    get_client_name(cptr, FALSE));
 			ircstp->is_nosrv++;
-			return exit_client(NULL, sptr, &me, "No Such Server");
+			(void) exit_client(NULL, sptr, &me, "No Such Server");
+			return exit_client(cptr, cptr, &me, "USER without SERVER");
 		    }
 		user->servp = sp;
 		user->servp->refcnt++;
@@ -2446,9 +2483,6 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 		
 	}
-	/* *MUST* be after parse of user specified umodes */
-	if (sptr->flags & FLAGS_RESTRICT)
-		SetRestricted(sptr);
 	strncpyzt(user->host, host, sizeof(user->host));
 	user->server = find_server_string(me.serv->snum);
 	

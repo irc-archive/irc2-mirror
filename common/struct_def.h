@@ -17,7 +17,7 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *   $Id: struct_def.h,v 1.86 2004/03/05 22:06:09 chopin Exp $
+ *   $Id: struct_def.h,v 1.90 2004/03/10 15:28:26 chopin Exp $
  */
 
 typedef	struct	ConfItem aConfItem;
@@ -104,15 +104,13 @@ typedef struct        LineItem aExtData;
 #define	BOOT_DEBUG	0x004
 #define	BOOT_INETD	0x008
 #define	BOOT_TTY	0x010
-#define	BOOT_OPER	0x020
+
 #define	BOOT_AUTODIE	0x040
 #define	BOOT_BADTUNE	0x080
 #define	BOOT_PROT	0x100
 #define	BOOT_STRICTPROT	0x200
 #define	BOOT_NOIAUTH	0x400
 
-#define	STAT_LOG	-6	/* logfile for -x */
-#define	STAT_MASTER	-5	/* Local ircd master before identification */
 #define	STAT_CONNECTING	-4
 #define	STAT_HANDSHAKE	-3
 #define	STAT_UNKNOWN	-2
@@ -130,21 +128,17 @@ typedef struct        LineItem aExtData;
 #define	IsConnecting(x)		((x)->status == STAT_CONNECTING)
 #define	IsHandshake(x)		((x)->status == STAT_HANDSHAKE)
 #define	IsMe(x)			((x)->status == STAT_ME)
-#define	IsUnknown(x)		((x)->status == STAT_UNKNOWN || \
-				 (x)->status == STAT_MASTER)
+#define	IsUnknown(x)		((x)->status == STAT_UNKNOWN)
 #define	IsServer(x)		((x)->status == STAT_SERVER)
 #define	IsClient(x)		((x)->status == STAT_CLIENT)
-#define	IsLog(x)		((x)->status == STAT_LOG)
 #define	IsService(x)		((x)->status == STAT_SERVICE && (x)->service)
 
-#define	SetMaster(x)		((x)->status = STAT_MASTER)
 #define	SetConnecting(x)	((x)->status = STAT_CONNECTING)
 #define	SetHandshake(x)		((x)->status = STAT_HANDSHAKE)
 #define	SetMe(x)		((x)->status = STAT_ME)
 #define	SetUnknown(x)		((x)->status = STAT_UNKNOWN)
 #define	SetServer(x)		((x)->status = STAT_SERVER)
 #define	SetClient(x)		((x)->status = STAT_CLIENT)
-#define	SetLog(x)		((x)->status = STAT_LOG)
 #define	SetService(x)		((x)->status = STAT_SERVICE)
 
 #define	FLAGS_PINGSENT	0x0000001 /* Unreplied ping sent */
@@ -419,6 +413,7 @@ struct	User	{
 };
 
 struct	Server	{
+	char	namebuf[HOSTLEN+1];
 	anUser	*user;		/* who activated this connection */
 	aClient	*up;		/* uplink for this server */
 	aConfItem *nline;	/* N-line pointer for this server */
@@ -453,6 +448,7 @@ struct	Server	{
 };
 
 struct	Service	{
+	char	namebuf[HOSTLEN+1];
 	int	wants;
 	int	type;
 	char	*server;
@@ -473,7 +469,8 @@ struct Client	{
 	int	fd;		/* >= 0, for local clients */
 	int	hopcount;	/* number of servers to this 0 = local */
 	short	status;		/* Client type */
-	char	name[HOSTLEN+1]; /* Unique name of the client, nick or host */
+	char	*name;		/* Pointer to unique name of the client */
+	char	namebuf[NICKLEN+1]; /* nick of the client */
 	char	username[USERLEN+1]; /* username here now for auth stuff */
 	char	*info;		/* Free form additional client information */
 	/*
@@ -804,6 +801,10 @@ typedef	struct	{
 	u_long	is_m_myservice;	/* maximum local services */
 	u_long	is_l_myclnt;	/* last local user count */
 	time_t	is_l_myclnt_t;	/* timestamp for last count */
+#ifdef DELAY_CLOSE
+	u_long	is_delayclose;	/* number of fds that got delayed close() */
+	u_int	is_delayclosewait;	/* number of fds that wait for delayed close() */
+#endif
 } istat_t;
 
 /* String manipulation macros */

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.163 2004/03/05 16:24:55 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.171 2004/03/11 02:42:31 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -36,7 +36,6 @@ static	char	buf[BUFSIZE];
 static	int	check_link (aClient *);
 static	int	get_version (char *version, char *id);
 static	void	trace_one (aClient *sptr, aClient *acptr);
-static	int	check_servername (char *hostname);
 static	void	report_listeners(aClient *sptr, char *to);
 const	char	*check_servername_errors[3][2] = {
 	{ "too long", "Bogus servername - too long" },
@@ -606,7 +605,7 @@ int    m_smask(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		return exit_client(cptr, cptr, &me, "No more tokens");
 	}
 	acptr->hopcount = sptr->hopcount + 1;
-	strncpyzt(acptr->name, sptr->name, sizeof(acptr->name));
+	strncpyzt(acptr->serv->namebuf, sptr->name, sizeof(acptr->serv->namebuf));
 	acptr->info = mystrdup("Masked Server");
 	acptr->serv->up = sptr;
 	acptr->serv->snum = sptr->serv->maskedby->serv->snum;
@@ -866,7 +865,7 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			return exit_client(cptr, cptr, &me, "No more tokens");
 		}
 		acptr->hopcount = hop;
-		strncpyzt(acptr->name, host, sizeof(acptr->name));
+		strncpyzt(acptr->serv->namebuf, host, sizeof(acptr->serv->namebuf));
 		if (acptr->info != DefInfo)
 			MyFree(acptr->info);
 		acptr->info = mystrdup(info);
@@ -944,7 +943,18 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	** to be a SERVER. Check if this is allowed and change
 	** status accordingly...
 	*/
-	strncpyzt(cptr->name, host, sizeof(cptr->name));
+	/* Oh joy. :( I had to move this if() here from m_server_estab()
+	 * (it was there just before SetServer), because we no longer
+	 * use cptr->name, only cptr->serv->namebuf, which is allocated
+	 * in make_server()... --B. */
+	/* doesnt duplicate cptr->serv if allocated this struct already */
+	if (!make_server(cptr))
+	{
+		sendto_flag(SCH_ERROR, "Ran out of compatibility tokens for %s"
+				", dropping link", inpath);
+		return exit_client(cptr, cptr, &me, "No more tokens");
+	}
+	strncpyzt(cptr->serv->namebuf, host, sizeof(cptr->serv->namebuf));
 	/* cptr->name has to exist before check_version(), and cptr->info
 	 * may not be filled before check_version(). */
 	if ((hop = check_version(cptr)) < 1)
@@ -1312,20 +1322,6 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 			(cptr->flags & FLAGS_ZIP) ? "z" : "");
 	}
 	(void)add_to_client_hash_table(cptr->name, cptr);
-	/* doesnt duplicate cptr->serv if allocted this struct already */
-	if (!make_server(cptr))
-	{
-		sendto_flag(SCH_ERROR, "Ran out of compatibility tokens for %s"
-				", dropping link", inpath);
-		if (bysptr)
-		{
-			sendto_one(bysptr, ":%s NOTICE %s :Ran out of "
-				"compatibility tokens for %s, dropping link",
-				ME, bysptr->name, inpath);
-					
-		}
-		return exit_client(cptr, cptr, &me, "No more tokens");
-	}
 	cptr->serv->up = &me;
 	cptr->serv->maskedby = cptr;
 	cptr->serv->nline = aconf;
@@ -1400,7 +1396,9 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 			    match(mlname, acptr->user->server) == 0)
 				stok = me.serv->tok;
 			else
-				stok = acptr->user->servp->tok;
+				stok = ST_UID(cptr) ?
+					acptr->user->servp->tok :
+					acptr->user->servp->maskedby->serv->tok;
 			send_umode(NULL, acptr, 0, SEND_UMODES, buf);
 			if (ST_UID(cptr) && *acptr->user->uid)
 				sendto_one(cptr,
@@ -1747,7 +1745,7 @@ static	void	report_myservers(aClient *sptr, char *to)
 #ifdef	HUB
 	aServer *asptr;
 #endif
-	int users = 0, servers = 0;
+	int users, servers;
 
 	for (i = fdas.highest; i >= 0; i--)
 	{
@@ -1762,6 +1760,8 @@ static	void	report_myservers(aClient *sptr, char *to)
 		}
 		timeconnected = timeofday - acptr->firsttime;
 #ifdef HUB
+		servers = 0;
+		users = 0;
 		for (asptr = svrtop; asptr; asptr = asptr->nexts)
 		{
 			if (IsMasked(asptr->bcptr))
@@ -2799,11 +2799,6 @@ static	void	trace_one(aClient *sptr, aClient *acptr)
 				   acptr->service->type, acptr->service->wants);
                         break;
 
-                case STAT_LOG:
-                        sendto_one(sptr, replies[RPL_TRACELOG], ME, to, ME,
-                                   acptr->port);
-                        break;
-
                 default: /* ...we actually shouldn't come here... --msa */
                         sendto_one(sptr, replies[RPL_TRACENEWTYPE], ME, to,
 				   name);
@@ -3049,6 +3044,12 @@ int	m_close(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	sendto_one(sptr, replies[RPL_CLOSEEND], ME, BadTo(parv[0]), closed);
 	sendto_flag(SCH_NOTICE, "%s closed %d unknown connections", sptr->name,
 		    closed);
+#ifdef DELAY_CLOSE
+	closed = istat.is_delayclosewait;
+	delay_close(-2);
+	sendto_flag(SCH_NOTICE, "%s closed %d delayed connections", sptr->name,
+		    closed);
+#endif
 	return 1;
 }
 
@@ -3474,7 +3475,7 @@ static	int	check_link(aClient *cptr)
 ** Returns 0 if ok, all else is some kind of error, which serves
 ** as index in check_servername_errors[] table.
 */
-static	int	check_servername(char *hostname)
+int	check_servername(char *hostname)
 {
 	register char *ch;
 	int dots, chars, rc;
@@ -3787,14 +3788,21 @@ int	m_map(aClient *cptr, aClient *sptr, int parc, char *parv[])
 static void report_listeners(aClient *sptr, char *to)
 {
 	aConfItem *tmp;
+	aClient	*acptr;
+	int	i;
 
-	for (tmp = conf; tmp; tmp = tmp->next)
+	for (i = 0; i <= highest_fd; i++)
 	{
-		if ((tmp->status & CONF_LISTEN_PORT))
-		{
-			sendto_one(sptr, ":%s %d %s :%s %d %d", ME,
-				RPL_STATSDEFINE, to, BadTo(tmp->host), tmp->port,
-				tmp->clients);
-		}
+		if (!(acptr = listeners[i]))
+			continue;
+		tmp = acptr->confs->value.aconf;
+		sendto_one(sptr, ":%s %d %s %d %s %u %lu %llu %lu %llu %u %u",
+			ME, RPL_STATSLINKINFO, to,
+			tmp->port, BadTo(tmp->host),
+			(uint)DBufLength(&acptr->sendQ),
+			acptr->sendM, acptr->sendB,
+			acptr->receiveM, acptr->receiveB,
+			timeofday - acptr->firsttime,
+			acptr->confs->value.aconf->clients);
 	}
 }

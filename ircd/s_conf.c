@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.95 2004/03/05 22:06:10 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.97 2004/03/07 02:47:51 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -331,6 +331,17 @@ int	attach_Iline(aClient *cptr, struct hostent *hp, char *sockhost)
 
 		if (*aconf->host)
 		{
+#ifdef UNIXPORT
+			if (IsUnixSocket(cptr) && aconf->host[0] == '/')
+			{
+				if (match(aconf->host, uaddr+ulen))
+				{
+					/* Try another I:line. */
+					continue;
+				}
+			}
+			else
+#endif
 			if (strchr(aconf->host, '/'))	/* 1.2.3.0/24 */
 			{
 				
@@ -1499,9 +1510,9 @@ int 	initconf(int opt)
 				MyFree(me.info);
 			me.info = MyMalloc(REALLEN+1);
 			strncpyzt(me.info, aconf->name, REALLEN+1);
-			if (ME[0] == '\0' && aconf->host[0])
-				strncpyzt(ME, aconf->host,
-					  sizeof(ME));
+			if (me.serv->namebuf[0] == '\0' && aconf->host[0])
+				strncpyzt(me.serv->namebuf, aconf->host,
+					  sizeof(me.serv->namebuf));
 			if (me.serv->sid[0] == '\0' && tmp && *tmp)
 				strncpyzt(me.serv->sid, tmp,
 					sizeof(me.serv->sid));

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: parse.c,v 1.58 2004/02/26 21:25:44 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: parse.c,v 1.61 2004/03/07 17:43:27 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -104,7 +104,7 @@ struct Message msgtab[] = {
   { MSG_SQUERY,  m_squery,   MAXPARA, MSG_LAG|MSG_REGU, 0, 0, 0L},
   { MSG_SERVLIST,m_servlist, MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
   { MSG_HASH,    m_hash,     MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
-  { MSG_DNS,     m_dns,      MAXPARA, MSG_LAG|MSG_REG, 0, 0, 0L},
+  { MSG_DNS,     m_dns,      MAXPARA, MSG_LAG|MSG_REG|MSG_OP|MSG_LOP, 0, 0, 0L},
 #ifdef	OPER_REHASH
   { MSG_REHASH,  m_rehash,   MAXPARA, MSG_REGU|MSG_OP
 # ifdef	LOCOP_REHASH
@@ -544,7 +544,7 @@ static	int	find_sender(aClient *cptr, aClient **sptr, char *sender,
 	{
 		from = find_mask(sender, (aClient *) NULL);
 	}
-	if (isdigit(sender[0]) || sender[0] == '$')
+	if (from && (isdigit(sender[0]) || sender[0] == '$'))
 	{
 		para[0] = from->name;
 	}
@@ -1020,8 +1020,10 @@ static	void	remove_unknown(aClient *cptr, char *sender)
 	 * squit if it is a server because it means something is really
 	 * wrong.
 	 */
-	if (index(sender, '.') /* <- buggy, it could be a service! */
-	    && !index(sender, '@')) /* better.. */
+	/* Trying to find out if it's server prefix (contains '.' but no '@'
+	 * (services) or is valid SID. --B. */
+	if ((index(sender, '.') && !index(sender, '@'))
+		|| sid_valid(sender))
 	    {
 		sendto_flag(SCH_NOTICE, "Squitting unknown %s brought by %s.",
 			    sender, get_client_name(cptr, FALSE));
