@@ -1,3 +1,19 @@
+2.10.3p5
+
+2003-10-13  Piotr Kucharski
+
+	* mod_socks.c: deal with broken socks4 proxies.
+	* mod_socks.c: backported megaparanoid option.
+
+2003-10-12  Piotr Kucharski
+
+	* s_bsd.c/inetport(): report_error() should not be used.
+	* s_user.c/m_nick(): empty user and host in collisions.
+	* res.c/proc_answer(): possible buffer overflow.
+	* s_conf.c: erroneous IsIllegal() traps removed.
+	* res.c/get_res(): "Wrong reply type looking up..." fixed
+	  for IPv4 names on INET6 enabled servers.
+
 2.10.3p4
 
 2003-10-11  Piotr Kucharski

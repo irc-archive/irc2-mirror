@@ -24,7 +24,7 @@
 #undef RES_C
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: res.c,v 1.21.2.13 2003/10/11 13:25:14 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: res.c,v 1.21.2.15 2003/10/12 22:56:33 chopin Exp $";
 #endif
 
 /* #undef	DEBUG	/* because there is a lot of debug code in here :-) */
@@ -650,14 +650,22 @@ HEADER	*hptr;
 		len = strlen(hostbuf);
 		/* name server never returns with trailing '.' */
 		if (!index(hostbuf,'.') && (ircd_res.options & RES_DEFNAMES))
-		    {
-			(void)strcat(hostbuf, dot);
-			len++;
-			(void)strncat(hostbuf, ircd_res.defdname,
-				sizeof(hostbuf) - 1 - len);
-			len = MIN(len + strlen(ircd_res.defdname),
-				  sizeof(hostbuf) - 1);
-		    }
+		{
+			int tmplen = strlen(ircd_res.defdname);
+
+			if (len + 1 /* dot */ + tmplen + 1 /* \0 */
+				>= sizeof(hostbuf))
+			{
+				/* some SCH_ERROR perhaps? */
+				return -1;
+			}
+			if (len)
+			{
+				hostbuf[len++] = '.';
+			}
+			strcpy(hostbuf + len, ircd_res.defdname);
+			len += strlen(ircd_res.defdname);
+		}
 
 		/* Check that it's a possible reply to the request we send. */
 		if (rptr->type != type && type != T_CNAME)
@@ -1005,29 +1013,24 @@ getres_err:
 			 * set, then give it a try next.
 			 */
 			if (ircd_res.options & RES_DEFNAMES && ++rptr->srch == 0)
-			    {
+			{
 				rptr->retries = ircd_res.retry;
 				rptr->sends = 0;
 				rptr->resend = 1;
+			}
 #ifdef INET6
 /* Comment out this ifdef to get names like ::ffff:a.b.c.d */
 /* We always want to query for both IN A and IN AAAA */
-				if(rptr->type == T_AAAA)
-					query_name(rptr->name, C_IN, T_A, rptr);
-					Debug((DEBUG_DNS,"getres_err: didn't work with T_AAAA, now also trying with T_A for %s",rptr->name));
+			if(rptr->type == T_AAAA)
+			{
+				rptr->type = T_A;
+				query_name(rptr->name, C_IN, T_A, rptr);
+				Debug((DEBUG_DNS, "getres_err: didn't work "
+					"with T_AAAA, now also trying with "
+					"T_A for %s", rptr->name));
+			}
 #endif
-				resend_query(rptr);
-			    }
-			else
-			    {
-#ifdef INET6
-/* Comment out this ifdef to get names like ::ffff:a.b.c.d */
-				if(rptr->type == T_AAAA)
-					query_name(rptr->name, C_IN, T_A, rptr);
-					Debug((DEBUG_DNS,"getres_err: didn't work with T_AAAA, now also trying with T_A for %s",rptr->name));
-#endif
-				resend_query(rptr);
-			    }
+			resend_query(rptr);
 		    }
 		else if (lp)
 			bcopy((char *)&rptr->cinfo, lp, sizeof(Link));
