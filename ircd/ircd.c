@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: ircd.c,v 1.45 1999/03/05 02:05:07 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: ircd.c,v 1.51 1999/03/11 15:46:04 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -415,18 +415,42 @@ time_t	currenttime;
 					cptr->count = 0;
 					*cptr->buffer = '\0';
 				    }
-				Debug((DEBUG_NOTICE, "DNS/AUTH timeout %s",
-					get_client_name(cptr,TRUE)));
+				Debug((DEBUG_NOTICE, "%s/%c%s timeout %s",
+				       (DoingDNS(cptr)) ? "DNS" : "dns",
+				       (DoingXAuth(cptr)) ? "X" : "x",
+				       (DoingAuth(cptr)) ? "AUTH" : "auth",
+				       get_client_name(cptr,TRUE)));
 				del_queries((char *)cptr);
 				ClearAuth(cptr);
 #if defined(USE_IAUTH)
 				if (DoingDNS(cptr) || DoingXAuth(cptr))
+				    {
+					if (DoingDNS(cptr) &&
+					    (iauth_options & XOPT_EXTWAIT))
+					    {
+						/* iauth wants more time */
+						sendto_iauth("%d d", cptr->fd);
+						ClearDNS(cptr);
+						cptr->lasttime = currenttime;
+						continue;
+					    }
+					if (DoingXAuth(cptr) &&
+					    (iauth_options & XOPT_NOTIMEOUT))
+					    {
+						cptr->exitc = EXITC_AUTHTOUT;
+						sendto_iauth("%d T", cptr->fd);
+						ereject_user(cptr, " Timeout ",
+						     "Authentication Timeout");
+						continue;
+					    }
 					sendto_iauth("%d T", cptr->fd);
+					SetDoneXAuth(cptr);
+				    }
 #endif
 				ClearDNS(cptr);
 				ClearXAuth(cptr);
-				SetAccess(cptr);
 				cptr->firsttime = currenttime;
+				cptr->lasttime = currenttime;
 				continue;
 			    }
 			if (IsServer(cptr) || IsConnecting(cptr) ||
@@ -725,6 +749,31 @@ char	*argv[];
 	if (argc > 0)
 		bad_command(); /* This exits out */
 
+#ifndef IRC_UID
+	if ((uid != euid) && !euid)
+	    {
+		(void)fprintf(stderr,
+			"ERROR: do not run ircd setuid root. Make it setuid a\
+ normal user.\n");
+		exit(-1);
+	    }
+#endif
+
+#if !defined(CHROOTDIR)
+	(void)setuid((uid_t)euid);
+# if defined(IRC_UID) && defined(IRC_GID)
+	if ((int)getuid() == 0)
+	    {
+		/* run as a specified user */
+		(void)fprintf(stderr,"WARNING: running ircd with uid = %d\n",
+			IRC_UID);
+		(void)fprintf(stderr,"         changing to gid %d.\n",IRC_GID);
+		(void)setgid(IRC_GID);
+		(void)setuid(IRC_UID);
+	    } 
+# endif
+#endif /*CHROOTDIR/UID/GID*/
+
 #if defined(USE_IAUTH)
 	if ((bootopt & BOOT_NOIAUTH) == 0)
 		switch (vfork())
@@ -753,31 +802,6 @@ char	*argv[];
 #endif
 
 	setup_signals();
-
-#ifndef IRC_UID
-	if ((uid != euid) && !euid)
-	    {
-		(void)fprintf(stderr,
-			"ERROR: do not run ircd setuid root. Make it setuid a\
- normal user.\n");
-		exit(-1);
-	    }
-#endif
-
-#if !defined(CHROOTDIR)
-	(void)setuid((uid_t)euid);
-# if defined(IRC_UID) && defined(IRC_GID)
-	if ((int)getuid() == 0)
-	    {
-		/* run as a specified user */
-		(void)fprintf(stderr,"WARNING: running ircd with uid = %d\n",
-			IRC_UID);
-		(void)fprintf(stderr,"         changing to gid %d.\n",IRC_GID);
-		(void)setgid(IRC_GID);
-		(void)setuid(IRC_UID);
-	    } 
-# endif
-#endif /*CHROOTDIR/UID/GID*/
 
 	/* didn't set debuglevel */
 	/* but asked for debugging output to tty */

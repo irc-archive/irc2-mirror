@@ -37,6 +37,7 @@ struct Module
 struct Instance
 {
     AnInstance	*nexti;
+    u_char	in;
     aModule	*mod;			/* module */
     char	*opt;			/* options read from file */
     char	*popt;			/* options to send to ircd */
@@ -48,5 +49,7 @@ struct Instance
 struct Target
 {
     char	*value;
+    u_long	baseip, lmask;		/* a.b.c.d/z */
+    char	yes;
     aTarget	*nextt;
 };

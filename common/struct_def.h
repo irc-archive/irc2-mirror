@@ -148,7 +148,7 @@ typedef struct        LineItem aExtData;
 #define	FLAGS_UNIX	 0x0010	/* socket is in the unix domain, not inet */
 #define	FLAGS_CLOSING    0x0020	/* set when closing to suppress errors */
 #define	FLAGS_LISTEN     0x0040 /* used to mark clients which we listen() on */
-#define	FLAGS_CHKACCESS  0x0080 /* ok to check clients access if set [unused]*/
+#define	FLAGS_XAUTHDONE  0x0080 /* iauth is finished with this client */
 #define	FLAGS_DOINGDNS	 0x0100 /* client is waiting for a DNS response */
 #define	FLAGS_AUTH	 0x0200 /* client is waiting on rfc931 response */
 #define	FLAGS_WRAUTH	 0x0400	/* set if we havent writen to ident server */
@@ -192,7 +192,6 @@ typedef struct        LineItem aExtData;
 #define	SendWallops(x)		((x)->user->flags & FLAGS_WALLOP)
 #define	IsUnixSocket(x)		((x)->flags & FLAGS_UNIX)
 #define	IsListening(x)		((x)->flags & FLAGS_LISTEN)
-#define	DoAccess(x)		((x)->flags & FLAGS_CHKACCESS)
 #define	IsLocal(x)		(MyConnect(x) && (x)->flags & FLAGS_LOCAL)
 #define	IsDead(x)		((x)->flags & FLAGS_DEADSOCKET)
 #define	IsHeld(x)		((x)->flags & FLAGS_HELD)
@@ -205,10 +204,11 @@ typedef struct        LineItem aExtData;
 #define	SetWallops(x)  		((x)->user->flags |= FLAGS_WALLOP)
 #define	SetUnixSock(x)		((x)->flags |= FLAGS_UNIX)
 #define	SetDNS(x)		((x)->flags |= FLAGS_DOINGDNS)
+#define	SetDoneXAuth(x)		((x)->flags |= FLAGS_XAUTHDONE)
 #define	DoingDNS(x)		((x)->flags & FLAGS_DOINGDNS)
-#define	SetAccess(x)		((x)->flags |= FLAGS_CHKACCESS)
 #define	DoingAuth(x)		((x)->flags & FLAGS_AUTH)
 #define	DoingXAuth(x)		((x)->flags & FLAGS_XAUTH)
+#define	DoneXAuth(x)		((x)->flags & FLAGS_XAUTHDONE)
 #define	NoNewLine(x)		((x)->flags & FLAGS_NONL)
 
 #define	ClearOper(x)		((x)->user->flags &= ~FLAGS_OPER)
@@ -218,7 +218,6 @@ typedef struct        LineItem aExtData;
 #define	ClearDNS(x)		((x)->flags &= ~FLAGS_DOINGDNS)
 #define	ClearAuth(x)		((x)->flags &= ~FLAGS_AUTH)
 #define	ClearXAuth(x)		((x)->flags &= ~FLAGS_XAUTH)
-#define	ClearAccess(x)		((x)->flags &= ~FLAGS_CHKACCESS)
 
 /*
  * defined debugging levels
@@ -782,6 +781,13 @@ typedef	struct	{
 #define EXITC_REF	'R'	/* Refused */
 #define EXITC_AREF	'U'	/* Unauthorized by iauth */
 #define EXITC_AREFQ	'u'	/* Unauthorized by iauth, be quiet */
+#define EXITC_AUTHFAIL	'A'	/* Authentication failure (iauth problem) */
+#define EXITC_AUTHTOUT	'a'	/* Authentication time out */
+
+/* eXternal authentication slave OPTions */
+#define	XOPT_REQUIRED	0x01	/* require authentication be done by iauth */
+#define	XOPT_NOTIMEOUT	0x02	/* disallow iauth time outs */
+#define XOPT_EXTWAIT	0x10	/* extend registration ping timeout */
 
 /* misc defines */
 

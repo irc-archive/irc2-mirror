@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: a_conf.c,v 1.8 1999/02/21 00:33:45 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: a_conf.c,v 1.15 1999/03/11 21:04:47 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -27,8 +27,7 @@ static  char rcsid[] = "@(#)$Id: a_conf.c,v 1.8 1999/02/21 00:33:45 kalt Exp $";
 #include "a_externs.h"
 #undef A_CONF_C
 
-static aModule *Mlist[] =
-	{ &Module_rfc931, &Module_socks, &Module_pipe, (aModule *)NULL };
+static aModule *Mlist[16];
 
 u_int	debuglevel = 0;
 
@@ -42,20 +41,50 @@ char *msg, *chk;
 	if (chk)
 		printf("line %d: %s\n", nb, msg);
 	else
-		sendto_log(ALOG_DCONF, LOG_ERR,
+		sendto_log(ALOG_IRCD|ALOG_DCONF, LOG_ERR,
 			   "Configuration error line %d: %s", nb, msg);
 }
 
+/*
+ * Match address by #IP bitmask (10.11.12.128/27)
+ */
+static int
+match_ipmask(mask, ipaddr)
+aTarget	*mask;
+char	*ipaddr;
+{
+#ifdef INET6
+	return 1;
+#else
+        int i1, i2, i3, i4;
+	u_long iptested;
+
+        if (sscanf(ipaddr, "%d.%d.%d.%d", &i1, &i2, &i3, &i4) != 4) 
+		return -1;
+	iptested = htonl(i1 * 0x1000000 + i2 * 0x10000 + i3 * 0x100 + i4);
+        return ((iptested & mask->lmask) == mask->baseip) ? 0 : 1;
+#endif
+}
+
 /* conf_read: read the configuration file, instanciate modules */
-void
+char *
 conf_read(cfile)
 char *cfile;
 {
 	u_char ident = 0; /* make sure this module is used */
+	u_char needh = 0; /* do we need hostname information for any host? */
+	u_char o_req = 0, o_dto = 0;
+	static char o_all[5];
 	u_int lnnb = 0, i;
+	u_char icount = 0, Mcnt = 0;
 	char buffer[160], *ch;
 	AnInstance **last = &instances, *itmp;
 	FILE *cfh;
+
+	Mlist[Mcnt++] = &Module_rfc931;
+	Mlist[Mcnt++] = &Module_socks;
+	Mlist[Mcnt++] = &Module_pipe;
+	Mlist[Mcnt] = NULL;
 
 	cfh = fopen((cfile) ? cfile : IAUTHCONF_PATH, "r");
 	if (cfh)
@@ -79,6 +108,16 @@ char *cfile;
 			*ch = '\0';
 			if (ch = index(buffer, '#'))
 				*ch = '\0';
+			if (!strncmp("required", buffer, 8))
+			  {
+				o_req = 1;
+				continue;
+			  }
+			if (!strncmp("notimeout", buffer, 9))
+			  {
+				o_dto = 1;
+				continue;
+			  }
 			/* debugmode setting */
 			if (!strncmp("debuglvl = 0x", buffer, 13))
 			    {
@@ -92,6 +131,54 @@ char *cfile;
 						   debuglevel);
 				continue;
 			    }
+#if defined(USE_DSM)
+			if (!strncmp("shared ", buffer, 7))
+			    {
+				char lfname[80];
+				void *mod_handle;
+				aModule *(*load_func)();
+
+				ch = index(buffer+7, ' ');
+				if (ch == NULL)
+				    {
+					conf_err(lnnb, "Syntax error.", cfile);
+					continue;
+				    }
+				*ch++ = '\0';
+				mod_handle = dlopen(ch, RTLD_NOW);
+				if (mod_handle == NULL)
+				    {
+					conf_err(lnnb, dlerror(), cfile);
+					continue;
+				    }
+# if defined(DLSYM_NEEDS_UNDERSCORE)
+				sprintf(lfname, "_%s_load", buffer+7);
+# else
+				sprintf(lfname, "%s_load", buffer+7);
+# endif
+				load_func = (aModule *(*)())dlsym(mod_handle,
+								  lfname);
+				if (load_func == NULL)
+				    {
+					conf_err(lnnb,"Invalid shared object.",
+						 cfile);
+					dlclose(mod_handle);
+					continue;
+				    }
+				Mlist[Mcnt] = load_func();
+				if (Mlist[Mcnt])
+				    {
+					Mcnt += 1;
+					Mlist[Mcnt] = NULL;
+				    }
+				else
+				    {
+					conf_err(lnnb, "Failed.", cfile);
+					dlclose(mod_handle);
+				    }
+				continue;
+			    }
+#endif
 			if (buffer[0] == '\t')
 			    {
 				conf_err(lnnb, "Ignoring unexpected property.",
@@ -126,6 +213,7 @@ char *cfile;
 			    }
 			*last = (AnInstance *) malloc(sizeof(AnInstance));
 			(*last)->nexti = NULL;
+			(*last)->in = icount++;
 			(*last)->mod = Mlist[i];
 			(*last)->opt = NULL;
 			(*last)->data = NULL;
@@ -135,6 +223,7 @@ char *cfile;
 			while (fgets(buffer, 160, cfh))
 			    {
 				aTarget **ttmp;
+				u_long baseip = 0, lmask = 0;
 
 				if (ch = index(buffer, '\n'))
 					lnnb += 1;
@@ -173,6 +262,7 @@ char *cfile;
 				    }
 				if (!strncasecmp(buffer+1, "host = ", 7))
 				    {
+					needh = 1;
 					ttmp = &((*last)->hostname);
 					ch = buffer + 8;
 				    }
@@ -180,6 +270,31 @@ char *cfile;
 				    {
 					ttmp = &((*last)->address);
 					ch = buffer + 6;
+					if (strchr(ch, '/'))
+					    {
+						int i1, i2, i3, i4, m;
+						
+						if (sscanf(ch,"%d.%d.%d.%d/%d",
+							   &i1, &i2, &i3, &i4,
+							   &m) != 5 ||
+						    m < 1 || m > 31)
+						    {
+							conf_err(lnnb,
+								 "Bad mask.",
+								 cfile);
+							continue;
+						    }
+						lmask = htonl((u_long)0xffffffffL << (32 - m));
+						baseip = htonl(i1 * 0x1000000 +
+							       i2 * 0x10000 +
+							       i3 * 0x100 +
+							       i4);
+					    }
+					else
+					    {
+						lmask = 0;
+						baseip = 0;
+					    }
 				    }
 				else
 				    {
@@ -192,7 +307,19 @@ char *cfile;
 				while (*ttmp)
 					ttmp = &((*ttmp)->nextt);
 				*ttmp = (aTarget *) malloc(sizeof(aTarget));
+				if (*ch == '!')
+				    {
+					(*ttmp)->yes = -1;
+					ch++;
+				    }
+				else
+					(*ttmp)->yes = 0;
 				(*ttmp)->value = mystrdup(ch);
+				if ((*ttmp)->baseip)
+				    {
+					(*ttmp)->lmask = lmask;
+					(*ttmp)->baseip = baseip;
+				    }
 				(*ttmp)->nextt = NULL;
 			    }
 
@@ -227,16 +354,24 @@ char *cfile;
 			       (itmp->opt) ? itmp->opt : "");
 			if (ttmp = itmp->hostname)
 			    {
-				printf("\t\tHost = %s", ttmp->value);
+				printf("\t\tHost = %s%s",
+				       (ttmp->yes == 0) ? "" : "!",
+				       ttmp->value);
 				while (ttmp = ttmp->nextt)
-					printf(",%s", ttmp->value);
+					printf(",%s%s",
+					       (ttmp->yes == 0) ? "" : "!",
+					       ttmp->value);
 				printf("\n");
 			    }
 			if (ttmp = itmp->address)
 			    {
-				printf("\t\tIP   = %s", ttmp->value);
+				printf("\t\tIP   = %s",
+				       (ttmp->yes == 0) ? "" : "!",
+				       ttmp->value);
 				while (ttmp = ttmp->nextt)
-					printf(",%s", ttmp->value);
+					printf(",%s%s",
+					       (ttmp->yes == 0) ? "" : "!",
+					       ttmp->value);
 				printf("\n");
 			    }
 			if (itmp->mod->init)
@@ -255,33 +390,64 @@ char *cfile;
 				itmp->mod->init(itmp);
 			itmp = itmp->nexti;
 		    }
+	ch = o_all;
+	if (o_req) *ch++ = 'R';
+	if (o_dto) *ch++ = 'T';
+	if (needh) *ch++ = 'W';
+	*ch++ = '\0';
 }
 
 /* conf_match: check if an instance is to be applied to a connection */
 int
-conf_match(cl, inst, noipchk)
+conf_match(cl, inst)
 u_int cl;
 AnInstance *inst;
 {
 	aTarget *ttmp;
 
-	if (noipchk == 0 && inst->address == NULL && inst->hostname == NULL)
+	/* general case, always matches */
+	if (inst->address == NULL && inst->hostname == NULL)
 		return 0;
-	if ((ttmp = inst->hostname) && (cldata[cl].state & A_GOTH))
+	/* feature case, "host = *" to force to wait for DNS info */
+	if ((cldata[cl].state & A_NOH) && inst->hostname &&
+	    !strcmp(inst->hostname->value, "*"))
+		return 0;
+	/* check matches on IP addresses */
+	if (ttmp = inst->address)
 		while (ttmp)
 		    {
-			if (match(ttmp->value, cldata[cl].host) == 0)
-				return 0;
+			if (ttmp->baseip)
+			    {
+				if (match_ipmask(ttmp, cldata[cl].itsip) == 0)
+					return ttmp->yes;
+			    }
+			else
+				if (match(ttmp->value, cldata[cl].itsip) == 0)
+					return ttmp->yes;
 			ttmp = ttmp->nextt;
 		    }
-	if (noipchk == 0 && (ttmp = inst->address))
-		while (ttmp)
+	/* check matches on hostnames */
+	if (ttmp = inst->hostname)
+	    {
+		if (cldata[cl].state & A_GOTH)
 		    {
-			if (match(ttmp->value, cldata[cl].itsip) == 0)
-				return 0;
-			ttmp = ttmp->nextt;
+			while (ttmp)
+			    {
+				if (match(ttmp->value, cldata[cl].host) == 0)
+					return ttmp->yes;
+				ttmp = ttmp->nextt;
+			    }
+			/* no match, will never match */
+			return -1;
 		    }
-	return 1;
+		else if (cldata[cl].state & A_NOH)
+			return -1;
+		else
+			/* may be later, once we have DNS information */
+			return 1;
+	    }
+	/* fall through, no match, will never match */
+	return -1;
 }
 
 /* conf_ircd: send the configuration to the ircd daemon */

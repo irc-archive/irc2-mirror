@@ -1,5 +1,5 @@
-.\" @(#)$Id: iauth.conf.5,v 1.5 1999/01/13 02:32:40 kalt Exp $
-.TH IAUTH.CONF 5 "$Date: 1999/01/13 02:32:40 $"
+.\" @(#)$Id: iauth.conf.5,v 1.10 1999/03/11 20:22:07 kalt Exp $
+.TH IAUTH.CONF 5 "$Date: 1999/03/11 20:22:07 $"
 .SH NAME
 iauth.conf \- The Internet Relay Chat Authentication Configuration File
 .SH DESCRIPTION
@@ -10,8 +10,9 @@ particular connection.  The list is ordered, which means that the first
 module to successfully authenticate a connection will be the last to be
 tried.
 
-The file is divided in sections, each section specifies a module with
-eventual options using the following format:
+The file is divided in sections, the first section is used for iauth
+options, each subsequent section specifies a module with eventual options
+using the following format:
 
 .RS
 .nf
@@ -30,11 +31,27 @@ to find out if a module accepts any option.
 
 If \fIhost-name\fP and \fIip-address\fP fields are specified, then the
 module will only be used for connections matching one of the fields given
-in the configuration.  If none are specified, then the module will always
-be used.
+in the configuration.  An entry prefixed with the character ! indicates a
+negative match.  IP addresses are checked first.
+
+If no host nor ip entry is specified, then the module will always be used.
 
 When writing a configuration file, one should \fBalways\fP verify the
 syntax using the \fIiauth\fP program to avoid later problems.
+.SH IAUTH OPTIONS
+.TP
+.B required
+By specifying this keyword, the IRC server is told not to accept new user
+connections unless the authentication is handled by iauth.
+.TP
+.B notimeout
+By specifying this keyword, the IRC server is told not to accept new user
+connections if iauth hasn't finished its work in time.
+.TP
+.B shared <name> <mod_name.so>
+If iauth was compiled with Dynamically Shared Module support, it can be
+told to dynamically load a module using this option.  The module can then
+be loaded.
 .SH MODULES
 .TP
 .B pipe
@@ -73,27 +90,21 @@ to set the cache lifetime in minutes.  By default, caching is enabled for
 This module is for authentication TCP connections using the protocol
 defined in RFC 1413 (which obsoletes RFC 931).
 .SH EXAMPLE
-The following file will cause the IRC daemon to reject and log all
-connections originating from a system where an open proxy is running.  For
-all connections, an ident lookup (RFC 1413) will be performed.
+The following file will cause the IRC daemon to reject all connections
+originating from a system where an open proxy is running for hosts within
+*.fr and *.enserb.u-bordeaux.fr but not for other hosts matching
+*.u-bordeaux.fr.  For all connections, an ident lookup (RFC 1413) will be
+performed.
 
 .RS
 .nf
 module socks
-        option = log,reject
+        option = reject,paranoid
+        host = *.enserb.u-bordeaux.fr
+        host = !*.u-bordeaux.fr 
+        host = *.fr            
 
 module rfc931
-.fi
-.RE
-
-The following file will cause the IRC daemon to only attempt an ident
-lookup for connections originating from a host which has an internet
-address.
-
-.RS
-.nf
-module rfc931
-        host = *
 .fi
 .RE
 .SH COPYRIGHT

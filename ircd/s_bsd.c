@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.57 1999/03/05 02:05:08 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.64 1999/03/09 18:40:33 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -449,6 +449,7 @@ int rcvdsig;
 		sendto_flag(SCH_AUTH, "Starting iauth...");
 		last = time(NULL);
 		read_iauth(); /* to reset olen */
+		iauth_spawn += 1;
 	    }
 	else
 		return;
@@ -701,7 +702,6 @@ Reg	aClient	*cptr;
 	Reg	struct	hostent *hp = NULL;
 	Reg	int	i;
  
-	ClearAccess(cptr);
 #ifdef INET6
 	Debug((DEBUG_DNS, "ch_cl: check access for %s[%s]",
 		cptr->name, inet_ntop(AF_INET6, (char *)&cptr->ip, mydummy,
@@ -854,7 +854,6 @@ aClient	*cptr;
 			** get us here and we can't interrupt that very
 			** well.
 			*/
-			ClearAccess(cptr);
 			lin.value.aconf = aconf;
 			lin.flags = ASYNC_CONF;
 			nextdnscheck = 1;
@@ -881,7 +880,6 @@ int	estab;
 	Link	*lp = cptr->confs;
 	int	i;
 
-	ClearAccess(cptr);
 	if (check_init(cptr, sockname))
 		return -2;
 
@@ -1650,6 +1648,8 @@ add_con_refuse:
 				     acptr->hostp->h_aliases[i++]);
 		if (acptr->hostp->h_name)
 			sendto_iauth("%d N %s",acptr->fd,acptr->hostp->h_name);
+		else if (acptr->hostp->h_aliases[0])
+			sendto_iauth("%d n", acptr->fd);
 	    }
 #endif
 	return acptr;
@@ -1695,7 +1695,6 @@ int	fd;
 	add_client_to_list(acptr);
 	set_non_blocking(acptr->fd, acptr);
 	(void)set_sock_opts(acptr->fd, acptr);
-	SetAccess(acptr);
 	return;
 }
 #endif
@@ -2156,9 +2155,9 @@ int	ro;
 #endif
 	    TST_READ_EVENT(resfd))
 	    {
-		do_dns_async();
-		nfds--;
 		CLR_READ_EVENT(resfd);
+		nfds--;
+		do_dns_async();
 	    }
 	if (nfds > 0 &&
 #if ! USE_POLL
@@ -2168,9 +2167,9 @@ int	ro;
 #endif
 	    TST_READ_EVENT(udpfd))
 	    {
-		polludp();
-		nfds--;
 		CLR_READ_EVENT(udpfd);
+		nfds--;
+		polludp();
 	    }
 #if defined(USE_IAUTH)
 	if (nfds > 0 &&
@@ -2181,9 +2180,9 @@ int	ro;
 # endif
 	    TST_READ_EVENT(adfd))
 	    {
-		read_iauth();
-		nfds--;
 		CLR_READ_EVENT(adfd);
+		nfds--;
+		read_iauth();
 	    }
 #endif
 
@@ -2269,10 +2268,11 @@ deadsocket:
 			    }
 		    }
 		length = 1;	/* for fall through case */
-		if (!NoNewLine(cptr) || TST_READ_EVENT(fd)) {
-		    if (!DoingAuth(cptr))
-			    length = read_packet(cptr, TST_READ_EVENT(fd));
-		}
+		if (!NoNewLine(cptr) || TST_READ_EVENT(fd))
+		    {
+			if (!DoingAuth(cptr))
+				length = read_packet(cptr, TST_READ_EVENT(fd));
+		    }
 		readcalls++;
 		if (length == FLUSH_BUFFER)
 			continue;
@@ -3178,8 +3178,6 @@ static	void	do_dns_async()
 			    {
 				del_queries((char *)cptr);
 				ClearDNS(cptr);
-				if (!DoingAuth(cptr))
-					SetAccess(cptr);
 				cptr->hostp = hp;
 #if defined(USE_IAUTH)
 				if (hp)
@@ -3193,7 +3191,13 @@ static	void	do_dns_async()
 					if (hp->h_name)
 						sendto_iauth("%d N %s",
 							cptr->fd, hp->h_name);
+					else if (hp->h_aliases[0])
+						sendto_iauth("%d n", cptr->fd);
 				    }
+				else
+					sendto_iauth("%d d", cptr->fd);
+				if (iauth_options & XOPT_EXTWAIT)
+					cptr->lasttime = timeofday;
 #endif
 			    }
 			break;
