@@ -18,6 +18,10 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+/* -- Jto -- 09 Jul 1990
+ * Bug fix
+ */
+
 /* -- Jto -- 03 Jun 1990
  * Moved m_channel() and related functions from s_msg.c to here
  * Many changes to start changing into string channels...
@@ -121,13 +125,6 @@ char *parv[];
   aChannel *chptr;
 
   CheckRegistered(sptr);
-  if (!IsServer(sptr)) {
-    if (!sptr->user->channel) {
-      sendto_one(sptr, ":%s %d %s :You have not joined any channel",
-		 me.name, ERR_USERNOTINCHANNEL, sptr->name);
-      return -1;
-    }
-  }
   /* Now, try to find the channel in question */
   if (parc > 1)
     chptr = find_channel(parv[1], (aChannel *) 0);
@@ -143,7 +140,8 @@ char *parv[];
     return -1;
   }
   if (parc > 2)
-    if (IsServer(sptr) || (IsChanOp(sptr) && sptr->user->channel == chptr)) {
+    if (IsServer(sptr) || IsServer(cptr) ||
+	(IsChanOp(sptr) && sptr->user->channel == chptr)) {
       mcount = SetMode(sptr, chptr, parc - 2, parv + 2, modebuf, parabuf);
     } else {
       sendto_one(sptr, ":%s %d %s :You're not channel operator",
@@ -260,7 +258,7 @@ char *parabuf;
 	parv++;
 	who = find_person(parv[0], (aClient *) 0);
 	if (who) {
-	  if (ChanSame(cptr, who)) {
+	  if (IsServer(cptr) || ChanSame(cptr, who)) {
 	    if (whatt == MODE_ADD) {
 	      who->status |= STAT_CHANOP;
 	      modebuf[i++] = 'o';

@@ -17,6 +17,9 @@
 #*   along with this program; if not, write to the Free Software
 #*   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 #*/
+# 14 Jul 1990 - Jto
+# Applied Gonzo's fixes..
+#
 # 30 May 1990 - Jto
 # Changed Kimmo Suominen's mail address.
 # Added Heikki Piirainen's fix to creation
@@ -24,7 +27,8 @@
 # $Header$
 # $Log$
 
-if [ ! -f version.c ]; then
+if [ ! -f version.c ]
+then
 	generation=0
 else
 	generation=`sed -n 's/^char \*generation = \"\(.*\)\";/\1/p' < version.c`
@@ -32,7 +36,7 @@ else
 fi
 
 generation=`expr $generation + 1`
-creation=`date | awk '{if ($NF == 6) { print $1 " "  $2 " " $3 " "  $6 " at " $4 " " $5 } else { print $1 " "  $2 " " $3 " " $7 " at " $4 " " $5 " " $6 }}'`
+creation=`date | awk '{if (NF == 6) { print $1 " "  $2 " " $3 " "  $6 " at " $4 " " $5 } else { print $1 " "  $2 " " $3 " " $7 " at " $4 " " $5 " " $6 }}'`
 cat > version.c <<EOF
 /*
  *   IRC - Internet Relay Chat, ircd/version.c

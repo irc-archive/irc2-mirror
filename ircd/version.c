@@ -25,7 +25,7 @@
 #include "patchlevel.h"
 
 char *generation = "1";
-char *creation = "Mon Jul 9  at 01:04:22 JST 1990";
+char *creation = "Tue Jul 24 1990 at 21:54:37 JST";
 char *version = PATCHLEVEL;
 
 char *infotext[] =
