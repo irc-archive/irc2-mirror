@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.53 1999/01/28 23:50:17 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.57 1999/02/21 00:33:46 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -274,24 +274,10 @@ aClient	*cptr;
 	else
 		id = "";
 
-	if (!strncmp(cptr->info, "021", 3) ||
-	    !strncmp(cptr->info, "020999", 6))
+	if (!strncmp(cptr->info, "021", 3))
 		cptr->hopcount = SV_29|SV_NJOIN|SV_NMODE|SV_NCHAN; /* SV_2_10*/
 	else if (!strncmp(cptr->info, "0209", 4))
-	    {
 		cptr->hopcount = SV_29;	/* 2.9+ protocol */
-		if (!(cptr->info[4] == '0' &&
-		      (cptr->info[5] == '0' || cptr->info[5] == '1' ||
-		       cptr->info[5] == '2' || cptr->info[5] == '3' ||
-		       cptr->info[5] == '4' ||
-		       (cptr->info[5] == '5' && cptr->info[6] == '0' &&
-			cptr->info[7] == '0'))))
-			/*
-			** the NJOIN command appeared on 2.9.5
-			** Unfortunately, m_njoin() has a fatal bug in 2.9.5
-			*/
-			cptr->hopcount |= SV_NJOIN;
-	    }
 	else
 		cptr->hopcount = SV_OLD; /* uhuh */
 
@@ -838,8 +824,6 @@ Reg	aClient	*cptr;
 #endif
 	sendto_flag(SCH_SERVER, "Sending SERVER %s (%d %s)", cptr->name,
 		    1, cptr->info);
-	sendto_flag(SCH_DEBUG, "Burst to %s: %X%s", inpath,
-		    cptr->hopcount, (cptr->flags & FLAGS_ZIP) ? "z" : "");
 	/*
 	** Old sendto_serv_but_one() call removed because we now
 	** need to send different names to different servers
@@ -902,9 +886,6 @@ Reg	aClient	*cptr;
 				   acptr->hopcount+1, stok, acptr->info);
 	    }
 
-	sendto_flag(SCH_DEBUG, "SERVER phase complete: %u",
-		    (int)DBufLength(&cptr->sendQ));
-
 	for (acptr = &me; acptr; acptr = acptr->prev)
 	    {
 		/* acptr->from == acptr for acptr == cptr */
@@ -953,8 +934,7 @@ Reg	aClient	*cptr;
 		/* the previous if does NOT catch all services.. ! */
 	    }
 
-	sendto_flag(SCH_DEBUG, "client phase complete: %u",
-		    (int)DBufLength(&cptr->sendQ));
+	flush_connections(cptr->fd);
 
 	/*
 	** Last, pass all channels modes
@@ -970,9 +950,6 @@ Reg	aClient	*cptr;
 				send_channel_modes(cptr, chptr);
 			    }
 	    }
-
-	sendto_flag(SCH_DEBUG, "NJOIN/mode phase complete: %u",
-		    (int)DBufLength(&cptr->sendQ));
 
 	cptr->flags &= ~FLAGS_CBURST;
 #ifdef	ZIP_LINKS
@@ -1093,8 +1070,6 @@ char	*parv[];
 
 	if (parc > 2)
 	    {
-		int	qlen = strlen(parv[2]);
-
 		if (IsServer(cptr) && check_link(cptr) && !IsOper(sptr))
 		    {
 			sendto_one(sptr, rpl_str(RPL_TRYAGAIN, parv[0]),
@@ -2269,7 +2244,7 @@ char	*parv[];
 	 * 3 seconds. -avalon (curtesy of wumpus)
 	 */
 	(void)alarm(3);
-	fd = open(MPATH, O_RDONLY);
+	fd = open(IRCDMOTD_PATH, O_RDONLY);
 	(void)alarm(0);
 	if (fd == -1)
 	    {

@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: mod_socks.c,v 1.11.2.1 1999/02/18 13:06:19 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: mod_socks.c,v 1.13 1999/03/05 01:53:20 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -70,7 +70,7 @@ int cl;
     if (mydata->options & OPT_DENY)
 	{
 	    cldata[cl].state |= A_DENY;
-	    sendto_ircd("K %d %s %u ", cl, cldata[cl].itsip,
+	    sendto_ircd("k %d %s %u ", cl, cldata[cl].itsip,
 			cldata[cl].itsport);
 	}
     if (mydata->options & OPT_LOG)
@@ -195,7 +195,6 @@ AnInstance *self;
 	
 	mydata = (struct socks_private *) malloc(sizeof(struct socks_private));
 	bzero((char *) mydata, sizeof(struct socks_private));
-	mydata->options = 0;
 	mydata->cache = NULL;
 	mydata->lifetime = CACHETIME;
 
