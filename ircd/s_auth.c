@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_auth.c,v 1.33 1999/04/10 16:51:43 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_auth.c,v 1.42 1999/06/17 12:40:52 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -27,10 +27,74 @@ static  char rcsid[] = "@(#)$Id: s_auth.c,v 1.33 1999/04/10 16:51:43 kalt Exp $"
 #include "s_externs.h"
 #undef S_AUTH_C
 
+/*
+ * set_clean_username
+ *
+ *	As non OTHER type of usernames retrieved via ident lookup are forced as
+ *	usernames for the user, one has to be careful not to allow potentially
+ *	damaging characters in the username.
+ *	This procedure fills up cptr->username based on cptr->auth
+ *	Characters disallowed:
+ *		leading :	for obvious reasons
+ *		spaces		for obvious reasons
+ *		@		because of how get_sockhost() is implemented,
+ *				and because it's used from attached_Iline()
+ *		[		/trace parsing is impossible
+ */
+static void
+set_clean_username(cptr)
+aClient *cptr;
+{
+	int i = 0, dirty = 0;
+	char *s;
+
+	if (cptr->auth == NULL)
+		return;
+	s = cptr->auth;
+	if (index(cptr->auth, '[') || index(cptr->auth, '@') ||
+	    strlen(cptr->auth) > USERLEN)
+		dirty = 1;
+	else if (cptr->auth[0] == ':')
+	    {
+		dirty = 1;
+		s += 1;
+	    }
+	else
+	    {
+		char *r = cptr->auth;
+
+		while (*r)
+			if (isspace(*(r++)))
+				break;
+		if (*r)
+			dirty = 1;
+	    }
+	if (dirty)
+		cptr->username[i++] = '-';
+	while (i < USERLEN && *s)
+	    {
+		if (*s != '@' && *s != '[' && !isspace(*s))
+			cptr->username[i++] = *s;
+		s += 1;
+	    }
+	cptr->username[i] = '\0';
+	if (!strcmp(cptr->username, cptr->auth))
+	    {
+		MyFree(cptr->auth);
+		cptr->auth = cptr->username;
+	    }
+	else
+	    {
+		istat.is_authmem += sizeof(cptr->auth);
+		istat.is_auth += 1;
+	    }
+}
+
 #if defined(USE_IAUTH)
 
 u_char		iauth_options = 0;
 u_int		iauth_spawn = 0;
+char		*iauth_version = NULL;
 
 static aExtCf	*iauth_conf = NULL;
 static aExtData	*iauth_stats = NULL;
@@ -158,6 +222,16 @@ read_iauth()
 			    start = end;
 			    continue;
 			}
+		    if (*start == 'V') /* version */
+			{
+			    if (iauth_version)
+				    MyFree(iauth_version);
+			    iauth_version = mystrdup(start+2);
+			    sendto_flag(SCH_AUTH, "iauth version %s running.",
+					iauth_version);
+			    start = end;
+			    continue;
+			}
 		    if (*start == 'a')
 			{
 			    aExtCf *ectmp;
@@ -203,10 +277,11 @@ read_iauth()
 				    myctime(timeofday));
 			    iauth_stats->next = (aExtData *)
 				    MyMalloc(sizeof(aExtData));
-			    iauth_stats->next->line = MyMalloc(40);
+			    iauth_stats->next->line = MyMalloc(60);
 			    sprintf(iauth_stats->next->line,
-				    "spawned: %d, current options: %X",
-				    iauth_spawn, iauth_options);
+				    "spawned: %d, current options: %X (%.11s)",
+				    iauth_spawn, iauth_options,
+				    (iauth_version) ? iauth_version : "???");
 			    iauth_stats->next->next = NULL;
 			    start = end;
 			    continue;
@@ -223,7 +298,7 @@ read_iauth()
 			    start = end;
 			    continue;
 			}
-		    if (*start != 'U' && *start != 'u' &&
+		    if (*start != 'U' && *start != 'u' && *start != 'o' &&
 			*start != 'K' && *start != 'k' &&
 			*start != 'D')
 			{
@@ -289,10 +364,8 @@ read_iauth()
 				    istat.is_auth -= 1;
 				    MyFree(cptr->auth);
 				}
-			    cptr->auth = cptr->username;
-			    strncpy(cptr->username, start+strlen(tbuf),
-				    USERLEN+1);
-			    cptr->username[USERLEN] = '\0';
+			    cptr->auth = mystrdup(start+strlen(tbuf));
+			    set_clean_username(cptr);
 			    cptr->flags |= FLAGS_GOTID;
 			}
 		    else if (start[0] == 'u')
@@ -312,17 +385,32 @@ read_iauth()
 				    istat.is_auth -= 1;
 				    MyFree(cptr->auth);
 				}
-			    cptr->username[0] = '-';
-			    strncpy(cptr->username+1, start+strlen(tbuf),
-				    USERLEN);
-			    cptr->username[USERLEN] = '\0';
 			    cptr->auth = MyMalloc(strlen(start+strlen(tbuf))
 						  + 2);
 			    *cptr->auth = '-';
 			    strcpy(cptr->auth+1, start+strlen(tbuf));
-			    istat.is_authmem += sizeof(cptr->auth);
-			    istat.is_auth += 1;
+			    set_clean_username(cptr);
 			    cptr->flags |= FLAGS_GOTID;
+			}
+		    else if (start[0] == 'o')
+			{
+			    if (!WaitingXAuth(cptr))
+				{
+				    sendto_flag(SCH_AUTH,
+						"Early o message discarded!");
+				    sendto_iauth("%d E Early o [%s]", i,start);
+				    start = end;
+				    continue;
+				}
+			    if (cptr->user == NULL)
+				{
+				    /* just to be safe */
+				    sendto_flag(SCH_AUTH,
+						"Ack! cptr->user is NULL");
+				    start = end;
+				    continue;
+				}
+			    strncpyzt(cptr->user->username, tbuf, USERLEN+1);
 			}
 		    else if (start[0] == 'D')
 		      {
@@ -452,7 +540,14 @@ Reg	aClient	*cptr;
 
 	/* get remote host peer - so that we get right interface -- jrg */
 	tlen = ulen = sizeof(us);
-	(void)getpeername(cptr->fd, (struct sockaddr *)&them, &tlen);
+	if (getpeername(cptr->fd, (struct sockaddr *)&them, &tlen) < 0)
+	    {
+		/* we probably don't need this error message -kalt */
+		report_error("getpeername for auth request %s:%s", cptr);
+		close(cptr->authfd);
+		cptr->authfd = -1;
+		return;
+	    }
 	them.SIN_FAMILY = AFINET;
 
 	/* We must bind the local end to the interface that they connected
@@ -658,7 +753,7 @@ Reg	aClient	*cptr;
 				break;
 		strncpyzt(system, t, sizeof(system));
 		for (t = ruser; *s && (t < ruser + sizeof(ruser)); s++)
-			if (!isspace(*s) && *s != ':' && *s != '@' && *s !='[')
+			if (!isspace(*s) && *s != ':')
 				*t++ = *s;
 		*t = '\0';
 		Debug((DEBUG_INFO,"auth reply ok [%s] [%s]", system, ruser));
@@ -688,30 +783,19 @@ Reg	aClient	*cptr;
 		return;
 	    }
 	ircstp->is_asuc++;
-  	if (strncmp(system, "OTHER", 5))
- 		strncpy(cptr->username, ruser, USERLEN+1);
- 	else
+  	if (!strncmp(system, "OTHER", 5))
 	    { /* OTHER type of identifier */
- 		*cptr->username = '-';	/* -> add '-' prefix into ident */
- 		strncpy(&cptr->username[1], ruser, USERLEN);
-		if ((unsigned)strlen(ruser) > USERLEN)
+		if (cptr->auth != cptr->username)/*impossible, but...*/
 		    {
-			if (cptr->auth != cptr->username)/*impossible, but...*/
-			    {
-				istat.is_authmem -= sizeof(cptr->auth);
-				istat.is_auth -= 1;
-				MyFree(cptr->auth);
-			    }
-			cptr->auth = MyMalloc(strlen(ruser) + 2);
-			*cptr->auth = '-';
-			strcpy(cptr->auth+1, ruser);
-			istat.is_authmem += sizeof(cptr->auth);
-			istat.is_auth += 1;
+			istat.is_authmem -= sizeof(cptr->auth);
+			istat.is_auth -= 1;
+			MyFree(cptr->auth);
 		    }
-		else
-			cptr->auth = cptr->username;
+		cptr->auth = MyMalloc(strlen(ruser) + 2);
+		*cptr->auth = '-';
+		strcpy(cptr->auth+1, ruser);
 	    }
- 	cptr->username[USERLEN] = '\0';
+	set_clean_username(cptr);
  	cptr->flags |= FLAGS_GOTID;
 	Debug((DEBUG_INFO, "got username [%s]", ruser));
 	return;
