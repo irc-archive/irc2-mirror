@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: send.c,v 1.32 1999/04/10 16:22:28 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: send.c,v 1.34 1999/06/07 21:01:57 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -382,7 +382,10 @@ aClient *to;
 
 
 #ifndef CLIENT_COMPILE
-static	anUser	ausr = { NULL, NULL, NULL, NULL, 0, 0, 0, 0, NULL, NULL, NULL,
+static	anUser	ausr = { NULL, NULL, NULL, NULL, 0, 0, 0, 0, NULL,
+# ifndef NO_USRTOP			 
+			 NULL, NULL,
+# endif
 			 NULL, "anonymous", "anonymous.", "anonymous."};
 
 static	aClient	anon = { NULL, NULL, NULL, &ausr, NULL, NULL, 0, 0,/*flags*/
@@ -1121,6 +1124,61 @@ void	sendto_match_servs_v(aChannel *chptr, aClient *from, int ver,
 	    }
 }
 
+#if ! USE_STDARG
+/*VARARGS*/
+void	sendto_match_servs_notv(chptr, from, ver, format, p1, p2, p3, p4, p5,
+				p6, p7, p8, p9, p10, p11)
+aChannel *chptr;
+aClient	*from;
+char	*format, *p1, *p2, *p3, *p4, *p5, *p6, *p7, *p8, *p9, *p10, *p11;
+int	ver;
+#else
+void	sendto_match_servs_notv(aChannel *chptr, aClient *from, int ver,
+				char *format, ...)
+#endif
+{
+	Reg	int	i, len=0;
+	Reg	aClient	*cptr;
+	char	*mask;
+
+	if (chptr)
+	    {
+		if (*chptr->chname == '&')
+			return;
+		if ((mask = (char *)rindex(chptr->chname, ':')))
+			mask++;
+	    }
+	else
+		mask = (char *)NULL;
+
+	for (i = fdas.highest; i >= 0; i--)
+	    {
+		if (!(cptr = local[fdas.fd[i]]) || (cptr == from) ||
+		    IsMe(cptr))
+			continue;
+		if (!BadPtr(mask) && match(mask, cptr->name))
+			continue;
+		if ((ver & cptr->serv->version) != 0)
+			continue;
+		if (chptr &&
+		    *chptr->chname == '!' && !(cptr->serv->version & SV_NJOIN))
+			continue;
+		if (!len)
+		    {
+#if ! USE_STDARG
+			len = sendprep(format, p1, p2, p3, p4, p5, p6, p7,
+				       p8, p9, p10, p11);
+#else
+			va_list	va;
+			va_start(va, format);
+			len = vsendprep(format, va);
+			va_end(va);
+#endif
+		    }
+		(void)send_message(cptr, sendbuf, len);
+	    }
+}
+
 /*
  * sendto_match_butone
  *
@@ -1139,9 +1197,14 @@ void	sendto_match_butone(aClient *one, aClient *from, char *mask, int what, char
 
 #endif
 {
-	Reg	int	i;
-	Reg	aClient *cptr, *acptr = NULL;
-	Reg	anUser	*user;
+	int	i;
+	aClient *cptr,
+#ifndef NO_USRTOP
+		*acptr = NULL;
+	anUser	*user;
+#else
+		*srch;
+#endif
   
 	for (i = 0; i <= highest_fd; i++)
 	    {
@@ -1151,6 +1214,7 @@ void	sendto_match_butone(aClient *one, aClient *from, char *mask, int what, char
 			continue;
 		if (IsServer(cptr))
 		    {
+#ifndef NO_USRTOP			
 			for (user = usrtop; user; user = user->nextu)
 				if (IsRegisteredUser(acptr = user->bcptr) &&
 				    acptr->from == cptr &&
@@ -1158,6 +1222,25 @@ void	sendto_match_butone(aClient *one, aClient *from, char *mask, int what, char
 					break;
 			if (!user)
 				continue;
+#else
+			/*
+			** we can save some CPU here by not searching the
+			** entire list of users since it is ordered!
+			** original idea/code from pht.
+			** it could be made better by looping on the list of
+			** servers to avoid non matching blocks in the list
+			** (srch->from != cptr), but then again I never
+			** bothered to worry or optimize this routine -kalt
+			*/
+			for (srch = cptr->prev; srch; srch = srch->prev)
+			{
+				if (!IsRegisteredUser(srch))
+					continue;
+				if (srch->from == cptr &&
+				    match_it(srch, mask, what))
+					break;
+			}
+#endif
 		    }
 		/* my client, does he match ? */
 		else if (!(IsRegisteredUser(cptr) && 

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.74 1999/04/10 16:24:28 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.77 1999/06/07 21:26:33 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -395,15 +395,22 @@ char	*nick, *username;
 		if (!DoneXAuth(sptr) && (iauth_options & XOPT_REQUIRED))
 		    {
 			time_t last = 0;
+			char *reason;
 
-			if (timeofday - last > 300)
+			if (iauth_options & XOPT_NOTIMEOUT)
 			    {
-				sendto_flag(SCH_AUTH, 
+				if (timeofday - last > 300)
+				    {
+					sendto_flag(SCH_AUTH, 
 			    "iauth not running! (refusing new connections)");
-				last = timeofday;
+					last = timeofday;
+				    }
+				reason = "No iauth!";
 			    }
+			else
+				reason = "iauth t/o";
 			sptr->exitc = EXITC_AUTHFAIL;
-			return ereject_user(cptr, "No iauth!",
+			return ereject_user(cptr, reason,
 					    "Authentication failure!");
 		    }
 
@@ -938,8 +945,12 @@ char	*parv[];
 nickkilldone:
 	if (IsServer(sptr))
 	    {
+		if (parc != 8)
+			sendto_flag(SCH_NOTICE,
+			    "Bad NICK param count (%d) for %s from %s via %s",
+				    parc, parv[1], sptr->name,
+				    get_client_name(cptr, FALSE));
 		/* A server introducing a new client, change source */
-
 		sptr = make_client(cptr);
 		add_client_to_list(sptr);
 		if (parc > 2)
@@ -1513,7 +1524,10 @@ aClient	*sptr, *acptr;
 		0,	/* joined */
 		0,	/* flags */
 		NULL,	/* servp */
-		NULL, NULL, NULL,	/* next, prev, bcptr */
+#ifndef NO_USRTOP
+		NULL, NULL,
+#endif
+		NULL,	/* next, prev, bcptr */
 		"<Unknown>",	/* user */
 		"<Unknown>",	/* host */
 		"<Unknown>",	/* server */
@@ -1817,6 +1831,9 @@ char	*parv[];
 	user->server = find_server_string(me.serv->snum);
 
 user_finish:
+#ifdef NO_USRTOP
+	reorder_client_in_list(sptr);
+#else
 	/* 
 	** servp->userlist's are pointers into usrtop linked list.
 	** Users aren't added to the top always, but only when they come
@@ -1843,6 +1860,7 @@ user_finish:
 		user->servp->userlist->prevu = user; /* next user */
 	    }
 	user->servp->userlist = user;
+#endif
 	
 	if (sptr->info != DefInfo)
 		MyFree(sptr->info);

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.58 1999/04/15 21:32:02 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.61 1999/06/07 21:01:58 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -209,7 +209,7 @@ char	*parv[];
 		sendto_one(sptr, err_str(ERR_NOPRIVILEGES, parv[0]));
 		return 1;
 	    }
-	if (!MyConnect(acptr))
+	if (!MyConnect(acptr) && (cptr != acptr->from))
 	    {
 		sendto_one(acptr->from, ":%s SQUIT %s :%s", parv[0],
 			   acptr->name, comment);
@@ -904,12 +904,14 @@ Reg	aClient	*cptr;
 			** These are only true when *BOTH* NICK and USER have
 			** been received. -avalon
 			*/
+#ifndef NO_USRTOP
 			if (acptr->user->servp->userlist == NULL)
 				sendto_flag(SCH_ERROR,
 			    "ERROR: USER:%s without SERVER:%s(%d) (to %s)",
 					    acptr->name, acptr->user->server,
 					    acptr->user->servp->tok,
 					    cptr->name);
+#endif
 			if (*mlname == '*' &&
 			    match(mlname, acptr->user->server) == 0)
 				stok = me.serv->tok;
@@ -1267,7 +1269,8 @@ int	mask;
 	int	*p, port;
 	char	c, *host, *pass, *name;
 	
-	for (tmp = conf; tmp; tmp = tmp->next)
+	for (tmp = (mask & (CONF_KILL|CONF_OTHERKILL)) ? kconf : conf;
+	     tmp; tmp = tmp->next)
 		if (tmp->status & mask)
 		    {
 			for (p = &report_array[0][0]; *p; p += 3)

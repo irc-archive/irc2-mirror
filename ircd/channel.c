@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.96 1999/04/15 22:07:29 kalt Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.98 1999/06/07 00:49:35 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -2333,8 +2333,9 @@ char	*parv[];
 			*q++ = *target++;
 		/* send 2.9 style join to other servers */
 		if (*chptr->chname != '!')
-			sendto_serv_notv(cptr, SV_NJOIN, ":%s JOIN %s%s", name,
-					 parv[1], mbuf);
+			sendto_match_servs_notv(chptr, cptr, SV_NJOIN,
+						":%s JOIN %s%s", name,
+						parv[1], mbuf);
 		/* send join to local users on channel */
 		sendto_channel_butserv(chptr, acptr, ":%s JOIN %s", name,
 				       parv[1]);
@@ -2394,8 +2395,8 @@ char	*parv[];
 	/* send NJOIN to capable servers */
 	*q = '\0';
 	if (nbuf[0])
-		sendto_serv_v(cptr, SV_NJOIN, ":%s NJOIN %s :%s", parv[0],
-			      parv[1], nbuf);
+		sendto_match_servs_v(chptr, cptr, SV_NJOIN, ":%s NJOIN %s :%s",
+				     parv[0], parv[1], nbuf);
 	return 0;
 }
 
@@ -3151,10 +3152,16 @@ aChannel *chptr;
 			{
 			    mbuf[cnt] = '\0';
 			    if (lp != chptr->members)
-				    sendto_channel_butone(&me, &me, chptr,
-							  ":%s MODE %s +%s %s",
-							  ME, chptr->chname,
-							  mbuf, nbuf);
+				{
+				    sendto_match_servs_v(chptr, NULL, SV_NCHAN,
+							 ":%s MODE %s +%s %s",
+							 ME, chptr->chname,
+							 mbuf, nbuf);
+				    sendto_channel_butserv(chptr, &me,
+						   ":%s MODE %s +%s %s",
+							   ME, chptr->chname,
+							   mbuf, nbuf);
+				}
 			    cnt = 0;
 			    mbuf[0] = nbuf[0] = '\0';
 			}
@@ -3168,8 +3175,11 @@ aChannel *chptr;
 	    if (cnt)
 		{
 		    mbuf[cnt] = '\0';
-		    sendto_channel_butone(&me, &me, chptr,":%s MODE %s +%s %s",
-					  ME, chptr->chname, mbuf, nbuf);
+		    sendto_match_servs_v(chptr, NULL, SV_NCHAN,
+					 ":%s MODE %s +%s %s",
+					 ME, chptr->chname, mbuf, nbuf);
+		    sendto_channel_butserv(chptr, &me, ":%s MODE %s +%s %s",
+					   ME, chptr->chname, mbuf, nbuf);
 		}
 	}
     else
@@ -3199,7 +3209,9 @@ aChannel *chptr;
 					   chptr->chname, now - chptr->reop);
 	    op.flags = MODE_ADD|MODE_CHANOP;
 	    change_chan_flag(&op, chptr);
-	    sendto_channel_butone(&me, &me, chptr, ":%s MODE %s +o %s",
+	    sendto_match_servs_v(chptr, NULL, SV_NCHAN, ":%s MODE %s +o %s",
+				 ME, chptr->chname, op.value.cptr->name);
+	    sendto_channel_butserv(chptr, &me, ":%s MODE %s +o %s",
 				   ME, chptr->chname, op.value.cptr->name);
 	}
     chptr->reop = 0;
