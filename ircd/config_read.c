@@ -1,3 +1,4 @@
+/* "@(#)$Id: config_read.c,v 1.30 2004/12/12 19:10:07 chopin Exp $"; */
 
 /* used in config_error() */
 #define CF_NONE 0
@@ -274,7 +275,7 @@ void config_error(int level, char *filename, int line, char *pattern, ...)
 #ifdef CHKCONF_COMPILE
 	if (level == CF_NONE)
 	{
-		fprintf(stdout, "%s", vbuf);
+		fprintf(stdout, "%s\n", vbuf);
 	}
 	else
 	{
