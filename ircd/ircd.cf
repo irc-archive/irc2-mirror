@@ -16,9 +16,6 @@
 #*   along with this program; if not, write to the Free Software
 #*   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 #*/
-# -- Jto -- 03 Jun 1990
-# Added some Kill line documentation
-#
 # IRC example configuration file
 #
 # This file describes the information that should be present in your IRC
@@ -28,30 +25,35 @@
 #    unused, a text name, and the port number for it to operate on. The port
 #    number should, except in extraordinary circumstances, be 6667
 #
-M:BUCSD.BU.EDU:*:Boston University Hoopy Test Server:6667
+#M:choshi.kaba.or.jp:*:Kyoto Artificial Brain Associates, Kyoto, Japan:6667
+M:choshi.kaba.or.jp:*:KABA, Kyoto, Japan <2.5>:6667
 #
 # A: administrative information. This line should have three fields, which
 #    may contain any arbitrary text. It is printed by the /ADMIN command.
 #    Some older versions of IRC have problems handling long fields in this
 #    line. You may find that they have been truncated.
 #
-A:Boston University Computer Science:Boston, MA, USA:Bill Wisner <wisner@mica.Berkeley.EDU>
+#A:Boston University Computer Science:Boston, MA, USA:Bill Wisner <wisner@mica.Berkeley.EDU>
+A:Kyoto Artificial Brain Associates, Kyoto, Japan:Takahiro Kikuchi <kick@kaba.or.jp>:Let's join JIRCC(Japan Internet-Relay-Chat Club)!!
 #
 # I: authorize clients to connect to your server. You can use domains,
 #    IP addresses, and asterisk wildcards. The second field can contain a
 #    password that the client must use in order to be allowed to connect.
 #
-I:*.bu.edu::*.bu.edu
-I:128.197.*.*::128.197.*.*
-I:fenchurch.mit.edu:xyzzy:fenchurch.mit.edu
+I:192.51.37.*::*.kaba.or.jp
+I:133.18.*.*::*.astem.or.jp
+I:130.54.*.*::*.kyoto-u.ac.jp
+I:*::*.jp
 #
 # O: authorize operators. Fields are, in order, host name the operator must
 #    be logged in from (wildcards allowed), operator's password, operator's
 #    nickname. The first example allows me to become an operator from any
 #    machine in BU.EDU by typing /oper wisner foo.
 #
-O:*.bu.edu:foo:wisner
-O:bu-cs.bu.edu:bar:jsol
+O:*.kaba.or.jp:AllRight:kick
+O:*.kaba.or.jp:chocoball:kume
+O:*.tom.astem.or.jp:AllRight:kick
+O:*.kurims.kyoto-u.ac.jp:AllRight:kick
 #
 # U: tell IRC clients what server to connect to. This line can contain
 #    a password in the second field, although passwords are rarely (if ever) 
@@ -59,7 +61,7 @@ O:bu-cs.bu.edu:bar:jsol
 #    Newer versions of IRC allow you to permanently set the server name by
 #    defining UPHOST in struct.h.
 #
-U:bucsd.bu.edu::bucsd.bu.edu:6667
+U:192.51.37.14::choshi.kaba.or.jp:6667
 #
 # C:, N: set up connections to other servers.
 #
@@ -76,18 +78,17 @@ U:bucsd.bu.edu::bucsd.bu.edu:6667
 #
 # The following two lines instruct my server to try connecting to bu-cs.bu.edu.
 #
-C:bu-cs.bu.edu::bu-cs.bu.edu:6667
-N:bu-cs.bu.edu::bu-cs.bu.edu
+#C:133.11.7.250::utsun.s.u-tokyo.ac.jp:9000
+#N:133.11.7.250::utsun.s.u-tokyo.ac.jp
+C:133.18.192.1::jerry.tom.astem.or.jp:6667
+N:133.18.192.1::jerry.tom.astem.or.jp
+##C:128.114.129.6::ucscb.UCSC.EDU:6667
+##N:128.114.129.6::ucscb.UCSC.EDU
 #
 # The following two lines allow a server to connect to my server, but my
 # server will not make any attempt to connect to it.
 #
-C:buit5.bu.edu::buit5.bu.edu
-N:buit5.bu.edu::buit5.bu.edu
-#
-# Kill lines
-#
-# All users on tuminfo3 cannot connect to server during
-# 9 am and 12 am, and 2 pm till 5 pm.
-# K:tuminfo3.informatik.tu-muenchen.de:0900-1200,1400-1700:*
-# Just leaving the time field emply disallows access day around
+C:130.54.30.164::kimura4.kuee.kyoto-u.ac.jp
+N:130.54.30.164::kimura4.kuee.kyoto-u.ac.jp
+C:130.54.16.1::kurims.kurims.kyoto-u.ac.jp
+N:130.54.16.1::kurims.kurims.kyoto-u.ac.jp
