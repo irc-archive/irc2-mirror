@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.73.2.19 2001/06/30 20:18:55 q Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.73.2.26 2003/10/11 13:57:53 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -108,7 +108,9 @@ int	size;
 			Debug((DEBUG_DNS,"ircd_res_init()"));
 			ircd_res_init();
 		    }
-		if (ircd_res.defdname[0])
+		if (ircd_res.defdname[0] &&
+			sizeof(hname) - 2 /* dot and ending \0 */ >= 
+			strlen(ircd_res.defdname) + strlen(hname))
 		    {
 			(void)strncat(hname, ".", size-1);
 			(void)strncat(hname, ircd_res.defdname, size-2);
@@ -195,6 +197,11 @@ int	port;
 	 * easy conversion of "*" to 0.0.0.0 or 134.* to 134.0.0.0 :-)
 	 */
 	(void)sscanf(ipmask, "%d.%d.%d.%d", &ad[0], &ad[1], &ad[2], &ad[3]);
+	if (ad[0]>>8 || ad[1]>>8 || ad[2]>>8 || ad[3]>>8)
+	{
+		report_error("invalid ipmask %s", ipmask);
+		return -1;
+	}
 	(void)sprintf(ipname, "%d.%d.%d.%d", ad[0], ad[1], ad[2], ad[3]);
 
 	(void)sprintf(cptr->sockhost, "%-.42s.%u", ip ? ip : ME,
@@ -618,6 +625,8 @@ void	init_sys()
 #if defined(HPUX) || defined(SVR4) || defined(DYNIXPTX) || \
     defined(_POSIX_SOURCE) || defined(SGI)
 		(void)setsid();
+#elif defined (__CYGWIN32__)
+    		(void)setpgrp();
 #else
 		(void)setpgrp(0, (int)getpid());
 #endif
@@ -1015,6 +1024,16 @@ check_serverback:
 	(void)attach_conf(cptr, n_conf);
 	(void)attach_conf(cptr, c_conf);
 	(void)attach_confs(cptr, name, CONF_HUB|CONF_LEAF);
+	if (IsIllegal(n_conf) || IsIllegal(c_conf))
+	{
+		sendto_flag(SCH_DEBUG, "Illegal class!");
+		return -2;
+	}
+	if (!n_conf->host || !c_conf->host)
+	{
+		sendto_flag(SCH_DEBUG, "Null host in class!");
+		return -2;
+	}
 
 #ifdef INET6
 	if ((AND16(c_conf->ipnum.s6_addr) == 255) && !IsUnixSocket(cptr))
@@ -1237,14 +1256,15 @@ aClient *cptr;
 	 */
 	del_queries((char *)cptr);
 	/*
-	 * If the connection has been up for a long amount of time, schedule
-	 * a 'quick' reconnect, else reset the next-connect cycle.
+	 * If the server connection has been up for a long amount of time,
+	 * schedule a 'quick' reconnect, else reset the next-connect cycle.
 	 */
-	if ((aconf = find_conf_exact(cptr->name, cptr->username,
-				    cptr->sockhost, CFLAG)))
+	if (IsServer(cptr) &&
+		(aconf = find_conf_exact(cptr->name, cptr->username,
+		cptr->sockhost, CFLAG)))
 	    {
 		/*
-		 * Reschedule a faster reconnect, if this was a automaticly
+		 * Reschedule a faster reconnect, if this was a automatically
 		 * connected configuration entry. (Note that if we have had
 		 * a rehash in between, the status has been changed to
 		 * CONF_ILLEGAL). But only do this if it was a "good" link.
@@ -1343,7 +1363,7 @@ aClient	*cptr;
 		report_error("setsockopt(SO_DEBUG) %s:%s", cptr);
 #endif /* SOLARIS_2 */
 #endif
-#ifdef	SO_USELOOPBACK
+#if defined(SO_USELOOPBACK) && !defined(__CYGWIN32__)
 	opt = 1;
 	if (SETSOCKOPT(fd, SOL_SOCKET, SO_USELOOPBACK, &opt, opt) < 0)
 		report_error("setsockopt(SO_USELOOPBACK) %s:%s", cptr);
@@ -3078,6 +3098,7 @@ static	void	polludp()
 	    }
 	Debug((DEBUG_DEBUG,"udp poll"));
 
+	memset(&from, 0, fromlen);
 	n = recvfrom(udpfd, readbuf, mlen, 0, (SAP)&from, &fromlen);
 	if (n == -1)
 	    {
@@ -3086,16 +3107,25 @@ static	void	polludp()
 			return;
 		else
 		    {
+#if 0 /* seems to create more confusion than it's worth */
 			char buf[100];
 
 			sprintf(buf, "udp port recvfrom() from %s to %%s: %%s",
 #ifdef INET6
-				inetntop(AF_INET6, (char *)&from.sin6_addr, mydummy, MYDUMMY_SIZE)
+				from.sin6_addr.s6_addr
+#else
+				from.sin_addr.s_addr
+#endif
+				== 0 ? "unknown" :
+#ifdef INET6
+				inetntop(AF_INET6, (char *)&from.sin6_addr,
+					mydummy, MYDUMMY_SIZE)
 #else
 				inetntoa((char *)&from.sin_addr)
 #endif
 				);
 			report_error(buf, &me);
+#endif
 			return;
 		    }
 	    }

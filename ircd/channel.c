@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.109.2.21 2001/07/07 14:29:33 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.109.2.24 2003/10/11 11:03:23 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1220,7 +1220,7 @@ char	*parv[], *mbuf, *pbuf;
 			    }
 			else if (whatt == MODE_DEL)
 			    {
-				if (ischop || IsServer(cptr))
+				if (*mode->key && (ischop || IsServer(cptr)))
 				    {
 					lp = &chops[opcnt++];
 					lp->value.cp = mode->key;
@@ -2001,7 +2001,7 @@ char	*parv[];
 	Reg	Link	*lp;
 	Reg	aChannel *chptr;
 	Reg	char	*name, *key = NULL;
-	int	i, flags = 0;
+	int	i, tmplen, flags = 0;
 	char	*p = NULL, *p2 = NULL, *s, chop[5];
 
 	if (parc < 2 || *parv[1] == '\0')
@@ -2150,10 +2150,21 @@ char	*parv[];
 					   parv[0]), name);
 			continue;
 		    }
+		tmplen = strlen(name);
+		if (i + tmplen + 2 /* comma and \0 */
+			>= sizeof(jbuf) )
+		{
+			/* We would overwrite the jbuf with comma and
+			** channel name (possibly shortened), so we just
+			** silently ignore it and the rest of JOIN --B. */
+			break;
+		}
 		if (*jbuf)
-			(void)strcat(jbuf, ",");
-		(void)strncat(jbuf, name, sizeof(jbuf) - i - 1);
-		i += strlen(name)+1;
+		{
+			jbuf[i++] = ',';
+		}
+		(void)strcpy(jbuf + i, name);
+		i += tmplen;
 	    }
 
 	p = NULL;
@@ -2305,6 +2316,16 @@ char	*parv[];
 					   parv[0], name, chop);
 		else if (*chptr->chname != '&')
 		    {
+			/* ":" (1) "nick" (NICKLEN) " JOIN :" (7), comma (1)
+			** possible chop (4), ending \r\n\0 (3) = 16
+			** must fit in the cbuf as well! --B. */
+			if (strlen(cbuf) + strlen(name) + NICKLEN + 16
+				 >= sizeof(cbuf))
+			{
+				sendto_serv_butone(cptr, ":%s JOIN :%s",
+					parv[0], cbuf);
+				cbuf[0] = '\0';
+			}
 			if (*cbuf)
 				strcat(cbuf, ",");
 			strcat(cbuf, name);

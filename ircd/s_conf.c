@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.42.2.15 2001/07/05 22:08:58 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.42.2.18 2003/10/11 09:59:59 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -271,6 +271,7 @@ aClient *cptr;
 aConfItem *aconf;
 {
 	Reg	Link	**lp, *tmp;
+	aConfItem **aconf2,*aconf3;
 
 	lp = &(cptr->confs);
 
@@ -291,7 +292,22 @@ aConfItem *aconf;
 				    }
 			     }
 			if (aconf && !--aconf->clients && IsIllegal(aconf))
-				free_conf(aconf);
+			{
+				/* Remove the conf entry from the Conf linked list */
+				for (aconf2 = &conf; (aconf3 = *aconf2); )
+				{
+					if (aconf3 == aconf)
+					{
+						*aconf2 = aconf3->next;
+						aconf3->next = NULL;
+						free_conf(aconf);
+					}
+					else
+					{
+						aconf2 = &aconf3->next;
+					}
+				}
+			}
 			tmp = *lp;
 			*lp = tmp->next;
 			free_link(tmp);
@@ -526,6 +542,8 @@ int	statmask;
 
 	for (tmp = conf; tmp; tmp = tmp->next)
 	    {
+		if (IsIllegal(tmp))
+			continue;
 		if (!(tmp->status & statmask) || !tmp->name || !tmp->host ||
 		    mycmp(tmp->name, name))
 			continue;
@@ -599,6 +617,8 @@ int	statmask;
  
 	for (tmp = conf; tmp; tmp = tmp->next)
 	    {
+		if (IsIllegal(tmp))
+			continue;
 		/*
 		** Accept if the *real* hostname (usually sockecthost)
 		** matches *either* host or name field of the configuration.
@@ -624,6 +644,8 @@ int	statmask;
 	for (; lp; lp = lp->next)
 	    {
 		tmp = lp->value.aconf;
+		if (IsIllegal(tmp))
+			continue;
 		if ((tmp->status & statmask) &&
 		    (((tmp->status & (CONF_SERVER_MASK|CONF_HUB)) &&
 	 	     tmp->name && !mycmp(tmp->name, name)) ||
@@ -650,6 +672,8 @@ Reg	int	statmask;
 	for (; lp; lp = lp->next)
 	    {
 		tmp = lp->value.aconf;
+		if (IsIllegal(tmp))
+			continue;
 		if (tmp->status & statmask &&
 		    (!(tmp->status & CONF_SERVER_MASK || tmp->host) ||
 	 	     (tmp->host && !match(tmp->host, host))))
@@ -675,6 +699,8 @@ int	statmask;
 	for (; lp; lp = lp->next)
 	    {
 		tmp = lp->value.aconf;
+		if (IsIllegal(tmp))
+			continue;
 		if (!(tmp->status & statmask))
 			continue;
 		s = index(tmp->host, '@');
@@ -828,18 +854,18 @@ int	sig;
 	close_listeners();
 
 	/*
-	 * flush out deleted I and P lines although still in use.
+	 * Flush *unused* config entries.
 	 */
 	for (tmp = &conf; (tmp2 = *tmp); )
-		if (!(tmp2->status & CONF_ILLEGAL))
+		if (!(tmp2->status & CONF_ILLEGAL) || tmp2->clients)
 			tmp = &tmp2->next;
 		else
-		    {
+		{
 			*tmp = tmp2->next;
 			tmp2->next = NULL;
-			if (!tmp2->clients)
-				free_conf(tmp2);
-		    }
+			free_conf(tmp2);
+		}
+	
 #ifdef CACHED_MOTD
 	read_motd(IRCDMOTD_PATH);
 #endif
@@ -1232,7 +1258,7 @@ int	opt;
 			if (MaxLinks(Class(aconf)) < 0)
 				Class(aconf) = find_class(0);
 		    }
-		if (aconf->status & (CONF_LISTEN_PORT|CONF_CLIENT))
+		if (aconf->status & (CONF_LISTEN_PORT|CONF_CLIENT|CONF_RCLIENT))
 		    {
 			aConfItem *bconf;
 
@@ -1441,6 +1467,15 @@ char	**comment;
 	if (!strcmp(host, ip))
 		ip = NULL; /* we don't have a name for the ip# */
 	name = cptr->user->username;
+	if (IsRestricted(cptr) && name[0] == '+')
+	{
+		/*
+		** since we added '+' at the begining of valid
+		** ident response, remove it here for kline
+		** comparison --Beeth
+		*/
+		name++;
+	}
 	ident = cptr->auth;
 
 	if (strlen(host)  > (size_t) HOSTLEN ||
