@@ -27,7 +27,7 @@
 
 #include "setup.h"
 
-#if defined(linux)
+#if defined(linux) || defined(__CYGWIN32__)
 # define _GNU_SOURCE 1
 #endif
 
@@ -53,6 +53,8 @@
 
 #if USE_STDARG
 # include <stdarg.h>
+#else
+#error You need working stdarg.
 #endif
 
 #if HAVE_UNISTD_H
@@ -222,8 +224,7 @@
 #endif
 
 #if defined(INET6) && defined(CLIENT_COMPILE)
-# if (defined(linux) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__osf__)) && \
-	HAVE_RESOLV_H
+# ifdef HAVE_RESOLV_H
 #  include <resolv.h>
 # endif
 # if HAVE_ARPA_NAMESER_H
@@ -249,18 +250,6 @@
 # include <sys/sioctl.h>
 # include <sys/stream.h>
 # include <net/errno.h>
-#endif
-
-/*  Definition of __P for handling possible prototype-syntax problems.
- */
-
-#ifdef __P
-# undef __P
-#endif
-#if __STDC__
-# define __P(x) x
-#else
-# define __P(x) ()
 #endif
 
 /*  Some additional system-relative defines that make the code easier.
@@ -429,36 +418,36 @@
 #if HAVE_INET_NTOA
 # ifdef inet_ntoa
 #  undef inet_ntoa
-extern char *inet_ntoa __P((struct in_addr in));
+extern char *inet_ntoa (struct in_addr in);
 # endif
 # define inetntoa(x) inet_ntoa(*(struct in_addr *)(x))
 #endif
 #if HAVE_INET_ATON
 # ifdef inet_aton
 #  undef inet_aton
-extern int inet_aton __P((const char *cp, struct in_addr *addr));
+extern int inet_aton (const char *cp, struct in_addr *addr);
 # endif
 # define inetaton inet_aton
 #endif
 #if HAVE_INET_ADDR
 # ifdef inet_addr
 #  undef inet_addr
-extern unsigned long int inet_addr __P((const char *cp));
+extern unsigned long int inet_addr (const char *cp);
 # endif
 # define inetaddr inet_addr
 #endif
 #if HAVE_INET_NETOF
 # ifdef inet_netof
 #  undef inet_netof
-extern int inet_netof __P((struct in_addr in));
+extern int inet_netof (struct in_addr in);
 # endif
 # define inetnetof inet_netof
 #endif
 #if ! HAVE_ARPA_INET_H
-extern unsigned long int inet_addr __P((const char *cp));
-extern int inet_aton __P((const char *cp, struct in_addr *addr));
-extern int inet_netof __P((struct in_addr in));
-extern char *inet_ntoa __P((struct in_addr in));
+extern unsigned long int inet_addr (const char *cp);
+extern int inet_aton (const char *cp, struct in_addr *addr);
+extern int inet_netof (struct in_addr in);
+extern char *inet_ntoa (struct in_addr in);
 #endif
 
 /*  Signals portability problems.
@@ -537,7 +526,7 @@ extern char *inet_ntoa __P((struct in_addr in));
  * gethostbyname() has a bug, it always returns null in h->aliases.
  * Workaround: use the undocumented __switch_gethostbyname(...).
  */
-extern struct hostent *__switch_gethostbyname __P((const char *name));
+extern struct hostent *__switch_gethostbyname (const char *name);
 #define gethostbyname __switch_gethostbyname
 #endif
 
@@ -547,10 +536,10 @@ extern struct hostent *__switch_gethostbyname __P((const char *name));
  * returns null in h->aliases.  Workaround: use the undocumented
  * _switch_gethostbyname_r(...).
  */
-extern struct hostent *_switch_gethostbyname_r __P((const char *name,
+extern struct hostent *_switch_gethostbyname_r (const char *name,
 						    struct hostent *hp,
 						    char *buf, int size,
-						    int *h_errno));
+						    int *h_errno);
 #define gethostbyname solaris_gethostbyname
 #endif
 
@@ -606,9 +595,9 @@ extern struct hostent *_switch_gethostbyname_r __P((const char *name,
 
 #if ! HAVE_SYS_WAIT_H
 # if USE_UNION_WAIT
-extern pid_t wait __P((union wait *));
+extern pid_t wait (union wait *);
 # else
-extern pid_t wait __P((int *));
+extern pid_t wait (int *);
 # endif
 #endif
 
@@ -718,8 +707,7 @@ extern int h_errno;
 #ifdef INET6
 
 # define AND16(x) ((x)[0]&(x)[1]&(x)[2]&(x)[3]&(x)[4]&(x)[5]&(x)[6]&(x)[7]&(x)[8]&(x)[9]&(x)[10]&(x)[11]&(x)[12]&(x)[13]&(x)[14]&(x)[15])
-static unsigned char minus_one[]={ 255, 255, 255, 255, 255, 255, 255, 255, 255,
-					255, 255, 255, 255, 255, 255, 255, 0};
+extern unsigned char minus_one[];
 # define WHOSTENTP(x) ((x)[0]|(x)[1]|(x)[2]|(x)[3]|(x)[4]|(x)[5]|(x)[6]|(x)[7]|(x)[8]|(x)[9]|(x)[10]|(x)[11]|(x)[12]|(x)[13]|(x)[14]|(x)[15])
 
 # define	AFINET		AF_INET6
@@ -734,15 +722,6 @@ static unsigned char minus_one[]={ 255, 255, 255, 255, 255, 255, 255, 255, 255,
 # define MYDUMMY_SIZE 128
 char mydummy[MYDUMMY_SIZE];
 char mydummy2[MYDUMMY_SIZE];
-
-# if defined(linux) \
-	&& (((defined(__GLIBC__) \
-	&& (__GLIBC_MAJOR__ == 2) && (__GLIBC_MINOR__ < 1) \
-	|| __GLIBC_MAJOR__ < 2)) \
-	|| !defined(__GLIBC__))
-static const struct in6_addr in6addr_any={ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
-						0, 0, 0, 0, 0};
-# endif
 
 # define IRCDCONF_DELIMITER '%'
 

@@ -17,7 +17,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: hash.c,v 1.15.2.10 2003/10/10 22:32:05 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: hash.c,v 1.34 2003/10/22 19:10:14 jv Exp $";
 #endif
 
 #include "os.h"
@@ -27,15 +27,24 @@ static  char rcsid[] = "@(#)$Id: hash.c,v 1.15.2.10 2003/10/10 22:32:05 chopin E
 #undef HASH_C
 
 static	aHashEntry	*clientTable = NULL;
+static	aHashEntry	*uidTable = NULL;
 static	aHashEntry	*channelTable = NULL;
 static	aHashEntry	*serverTable = NULL;
+static	aHashEntry	*sidTable = NULL;
+static  aHashEntry      *hostnameTable = NULL;
 static	unsigned int	*hashtab = NULL;
 static	int	clhits = 0, clmiss = 0, clsize = 0;
+static	int	uidhits = 0, uidmiss = 0, uidsize = 0;
 static	int	chhits = 0, chmiss = 0, chsize = 0;
+static	int	sidhits = 0, sidmiss = 0, sidsize = 0;
+static  int     cnhits = 0, cnmiss = 0 ,cnsize = 0;
 static	int	svsize = 0;
 int	_HASHSIZE = 0;
+int	_UIDSIZE = 0;
 int	_CHANNELHASHSIZE = 0;
 int	_SERVERSIZE = 0;
+int	_SIDSIZE = 0;
+int     _HOSTNAMEHASHSIZE = 0;
 
 /*
  * Hashing.
@@ -70,9 +79,7 @@ int	_SERVERSIZE = 0;
  * or division or modulus in the inner loop.  subtraction and other bit
  * operations allowed.
  */
-static	u_int	hash_nick_name(nname, store)
-char	*nname;
-int	*store;
+static	u_int	hash_nick_name(char *nname, u_int *store)
 {
 	Reg	u_char	*name = (u_char *)nname;
 	Reg	u_char	ch;
@@ -94,6 +101,52 @@ int	*store;
 }
 
 /*
+ * hash_uid
+ *
+ * this function must be *quick*.  Thus there should be no multiplication
+ * or division or modulus in the inner loop.  subtraction and other bit
+ * operations allowed.
+ */
+static	u_int	hash_uid(char *uid, u_int *store)
+{
+	Reg	u_char	ch;
+	Reg	u_int	hash = 1;
+
+	for (; (ch = *uid); uid++)
+	{
+		hash <<= 1;
+		hash += hashtab[(int)ch];
+	}
+	if (store)
+	{
+		*store = hash;
+	}
+	hash %= _UIDSIZE;
+	return (hash);
+}
+
+/*
+** hash_sid
+*/
+static	u_int	hash_sid(char *sid, u_int *store)
+{
+	Reg	u_char	ch;
+	Reg	u_int	hash = 1;
+
+	for (; (ch = *sid); sid++)
+	{
+		hash <<= 1;
+		hash += hashtab[(int)ch];
+	}
+	if (store)
+	{
+		*store = hash;
+	}
+	hash %= _SIDSIZE;
+	return (hash);
+}
+
+/*
  * hash_channel_name
  *
  * calculate a hash value on at most the first 30 characters of the channel
@@ -101,9 +154,7 @@ int	*store;
  * is little or no point hashing on a full channel name which maybe 255 chars
  * long.
  */
-static	u_int	hash_channel_name(hname, store, shortname)
-char	*hname, shortname;
-int	*store;
+static	u_int	hash_channel_name(char *hname, u_int *store, int shortname)
 {
 	Reg	u_char	*name = (u_char *)hname;
 	Reg	u_char	ch;
@@ -123,14 +174,33 @@ int	*store;
 	return (hash);
 }
 
+/*
+ * hash_host_name
+ */
+static	u_int	hash_host_name(char *hname, u_int *store)
+{
+
+	Reg	u_char	*name = (u_char *)hname;
+	Reg	u_int	hash = 0;
+	
+	for (; *name; name++)
+	{
+		hash = 31 * hash + hashtab[*name];
+	}
+	
+	if (store)
+		*store = hash;
+	hash %= _HOSTNAMEHASHSIZE;
+	return (hash);
+}
+
 /* bigger prime
  *
  * given a positive integer, return a prime number that's larger
  *
  * 13feb94 gbl
  */
-static	int	bigger_prime(size)
-int	size;
+static	int	bigger_prime(int size)
 {
 	int	trial, failure, sq;
 
@@ -166,8 +236,7 @@ int	size;
  *
  * Nullify the hashtable and its contents so it is completely empty.
  */
-static	void	clear_client_hash_table(size)
-int	size;
+static	void	clear_client_hash_table(int size)
 {
 	_HASHSIZE = bigger_prime(size);
 	clhits = 0;
@@ -181,8 +250,20 @@ int	size;
 		_HASHSIZE, size));
 }
 
-static	void	clear_channel_hash_table(size)
-int	size;
+static	void	clear_uid_hash_table(int size)
+{
+	_UIDSIZE = bigger_prime(size);
+	uidhits = 0;
+	uidmiss = 0;
+	uidsize = 0;
+	if (!uidTable)
+		uidTable = (aHashEntry *)MyMalloc(_UIDSIZE *
+						  sizeof(aHashEntry));
+	bzero((char *)uidTable, sizeof(aHashEntry) * _UIDSIZE);
+	Debug((DEBUG_DEBUG, "uid Hash Table Init: %d (%d)", _UIDSIZE, size));
+}
+
+static	void	clear_channel_hash_table(int size)
 {
 	_CHANNELHASHSIZE = bigger_prime(size);
 	chmiss = 0;
@@ -196,8 +277,7 @@ int	size;
 		_CHANNELHASHSIZE, size));
 }
 
-static	void	clear_server_hash_table(size)
-int	size;
+static	void	clear_server_hash_table(int size)
 {
 	_SERVERSIZE = bigger_prime(size);
 	svsize = 0;
@@ -209,15 +289,48 @@ int	size;
 		_SERVERSIZE, size));
 }
 
+
+static	void	clear_sid_hash_table(int size)
+{
+	_SIDSIZE = bigger_prime(size);
+	sidhits = 0;
+	sidmiss = 0;
+	sidsize = 0;
+	if (!sidTable)
+		sidTable = (aHashEntry *)MyMalloc(_SERVERSIZE *
+						     sizeof(aHashEntry));
+	bzero((char *)sidTable, sizeof(aHashEntry) * _SIDSIZE);
+	Debug((DEBUG_DEBUG, "Sid Hash Table Init: %d (%d)", _SIDSIZE, size));
+}
+
+static	void	clear_hostname_hash_table(int size)
+{
+	_HOSTNAMEHASHSIZE = bigger_prime(size);
+	cnhits = 0;
+	cnmiss = 0;
+	cnsize = 0;
+	if (!hostnameTable)
+		hostnameTable = (aHashEntry *)MyMalloc(_HOSTNAMEHASHSIZE *
+						     sizeof(aHashEntry));
+	bzero((char *)hostnameTable, sizeof(aHashEntry) * _HOSTNAMEHASHSIZE);
+	Debug((DEBUG_DEBUG, "Hostname Hash Table Init: %d (%d)",
+		_HOSTNAMEHASHSIZE, size));
+}
+
 void	inithashtables()
 {
 	Reg int i;
 
 	clear_client_hash_table((_HASHSIZE) ? _HASHSIZE : HASHSIZE);
+	_UIDSIZE = _HASHSIZE;
+	clear_uid_hash_table(_UIDSIZE);
 	clear_channel_hash_table((_CHANNELHASHSIZE) ? _CHANNELHASHSIZE
                                  : CHANNELHASHSIZE);
 	clear_server_hash_table((_SERVERSIZE) ? _SERVERSIZE : SERVERSIZE);
-
+	_SIDSIZE = _SERVERSIZE;
+	clear_sid_hash_table(_SIDSIZE);
+	clear_hostname_hash_table((_HOSTNAMEHASHSIZE) ? _HOSTNAMEHASHSIZE : 
+				   HOSTNAMEHASHSIZE);
 	/*
 	 * Moved multiplication out from the hashfunctions and into
 	 * a pre-generated lookup table. Should save some CPU usage
@@ -228,10 +341,7 @@ void	inithashtables()
 		hashtab[i] = tolower((char)i) * 109;
 }
 
-static	void	bigger_hash_table(size, table, new)
-int	*size;
-aHashEntry	*table;
-int	new;
+static	void	bigger_hash_table(int *size, aHashEntry *table, int new)
 {
 	Reg	aClient	*cptr;
 	Reg	aChannel *chptr;
@@ -295,6 +405,49 @@ int	new;
 		    }
 		MyFree(otab);
 	    }
+	else if (otab == uidTable)
+	    {
+		Debug((DEBUG_ERROR, "uid Hash Table from %d to %d (%d)",
+			    osize, new, uidsize));
+		sendto_flag(SCH_HASH, "uid Hash Table from %d to %d (%d)",
+			    osize, new, uidsize);
+		uidmiss = 0;
+		uidhits = 0;
+		uidsize = 0;
+		uidTable = table;
+		for (cptr = client; cptr; cptr = cptr->next)
+			if (cptr->user)
+				cptr->user->uhnext = NULL;
+		for (cptr = client; cptr; cptr = cptr->next)
+			if (cptr->user)
+				add_to_uid_hash_table(cptr->user->uid, cptr);
+		MyFree(otab);
+	    }
+	else if (otab == hostnameTable)
+	    {
+		int	i;
+		anUser	*next,*user;
+		Debug((DEBUG_ERROR, "Hostname Hash Table from %d to %d (%d)",
+			    osize, new, clsize));
+		sendto_flag(SCH_HASH, "Hostname Hash Table from %d to %d (%d)",
+			    osize, new, clsize);
+		cnmiss = 0;
+		cnhits = 0;
+		cnsize = 0;
+		hostnameTable = table;
+
+		for (i = 0; i < osize; i++)
+		    {
+			for (user = (anUser *)otab[i].list; user;
+				user = next)
+			    {
+				next = user->hhnext;
+				(void)add_to_hostname_hash_table(user->host,
+					user);
+			    }
+		    }
+		MyFree(otab);
+	    }
 	else if (otab == serverTable)
 	    {
 		Debug((DEBUG_ERROR, "Server Hash Table from %d to %d (%d)",
@@ -307,16 +460,34 @@ int	new;
 			(void)add_to_server_hash_table(sptr, sptr->bcptr);
 		MyFree(otab);
 	    }
+	else if (otab == sidTable)
+	{
+		Debug((DEBUG_ERROR, "sid Hash Table from %d to %d (%d)",
+			osize, new, sidsize));
+		sendto_flag(SCH_HASH, "sid Hash Table from %d to %d (%d)",
+			osize, new, sidsize);
+		sidmiss = 0;
+		sidhits = 0;
+		sidsize = 0;
+		sidTable = table;
+		for (sptr = svrtop; sptr; sptr = sptr->nexts)
+		{
+			if (sptr->version & SV_UID)
+			{
+				(void) add_to_sid_hash_table(sptr->sid,
+					sptr->bcptr);
+			}
+		}
+		MyFree(otab);
+	}
+    
 	return;
 }
-
 
 /*
  * add_to_client_hash_table
  */
-int	add_to_client_hash_table(name, cptr)
-char	*name;
-aClient	*cptr;
+int	add_to_client_hash_table(char *name, aClient *cptr)
 {
 	Reg	u_int	hashv;
 
@@ -332,11 +503,27 @@ aClient	*cptr;
 }
 
 /*
+ * add_to_uid_hash_table
+ */
+int	add_to_uid_hash_table(char *uid, aClient *cptr)
+{
+	Reg	u_int	hashv;
+
+	hashv = hash_uid(uid, &cptr->user->hashv);
+	cptr->user->uhnext = (aClient *)uidTable[hashv].list;
+	uidTable[hashv].list = (void *)cptr;
+	uidTable[hashv].links++;
+	uidTable[hashv].hits++;
+	uidsize++;
+	if (uidsize > _UIDSIZE)
+		bigger_hash_table(&_UIDSIZE, uidTable, 0);
+	return 0;
+}
+
+/*
  * add_to_channel_hash_table
  */
-int	add_to_channel_hash_table(name, chptr)
-char	*name;
-aChannel	*chptr;
+int	add_to_channel_hash_table(char *name, aChannel *chptr)
 {
 	Reg	u_int	hashv;
 
@@ -354,9 +541,7 @@ aChannel	*chptr;
 /*
  * add_to_server_hash_table
  */
-int	add_to_server_hash_table(sptr, cptr)
-aServer	*sptr;
-aClient	*cptr;
+int	add_to_server_hash_table(aServer *sptr, aClient *cptr)
 {
 	Reg	u_int	hashv;
 
@@ -375,11 +560,48 @@ aClient	*cptr;
 }
 
 /*
+** add_to_sid_hash_table
+*/
+int	add_to_sid_hash_table(char *sid, aClient *cptr)
+{
+	Reg	u_int	hashv;
+
+	hashv = hash_sid(sid, &cptr->serv->sidhashv);
+	cptr->serv->sidhnext = (aServer *)sidTable[hashv].list;
+	sidTable[hashv].list = (void *)cptr->serv;
+	sidTable[hashv].links++;
+	sidTable[hashv].hits++;
+	sidsize++;
+	if (sidsize > _SIDSIZE)
+	{
+		bigger_hash_table(&_SIDSIZE, sidTable, 0);
+	}
+	return 0;
+}
+
+/*
+ * add_to_hostname_hash_table
+ */
+int	add_to_hostname_hash_table(char *hostname, anUser *user)
+{
+	Reg	u_int	hashv;
+
+	hashv = hash_host_name(hostname, &user->hhashv);
+	user->hhnext = (anUser *)hostnameTable[hashv].list;
+	hostnameTable[hashv].list = (void *)user;
+	hostnameTable[hashv].links++;
+	hostnameTable[hashv].hits++;
+	cnsize++;
+	if (cnsize > _HOSTNAMEHASHSIZE)
+		bigger_hash_table(&_HOSTNAMEHASHSIZE, hostnameTable, 0);
+	return 0;
+}
+
+
+/*
  * del_from_client_hash_table
  */
-int	del_from_client_hash_table(name, cptr)
-char	*name;
-aClient	*cptr;
+int	del_from_client_hash_table(char *name, aClient *cptr)
 {
 	Reg	aClient	*tmp, *prev = NULL;
 	Reg	u_int	hashv;
@@ -419,11 +641,52 @@ aClient	*cptr;
 }
 
 /*
+ * del_from_uid_hash_table
+ */
+int	del_from_uid_hash_table(char *uid, aClient *cptr)
+{
+	Reg	aClient	*tmp, *prev = NULL;
+	Reg	u_int	hashv;
+
+	hashv = cptr->user->hashv;
+	hashv %= _UIDSIZE;
+	for (tmp = (aClient *)uidTable[hashv].list; tmp;
+	     tmp = tmp->user->uhnext)
+	    {
+		if (tmp == cptr)
+		    {
+			if (prev)
+				prev->user->uhnext = tmp->user->uhnext;
+			else
+				uidTable[hashv].list=(void *)tmp->user->uhnext;
+			tmp->user->uhnext = NULL;
+			if (uidTable[hashv].links > 0)
+			    {
+				uidTable[hashv].links--;
+				uidsize--;
+				return 1;
+			    }
+			else
+			    {
+				sendto_flag(SCH_ERROR, "id-hash table failure");
+				Debug((DEBUG_ERROR, "id-hash table failure")); 
+				/*
+				 * Should never actually return from here and
+				 * if we do it is an error/inconsistency in the
+				 * hash table.
+				 */
+				return -1;
+			    }
+		    }
+		prev = tmp;
+	    }
+	return 0;
+}
+
+/*
  * del_from_channel_hash_table
  */
-int	del_from_channel_hash_table(name, chptr)
-char	*name;
-aChannel	*chptr;
+int	del_from_channel_hash_table(char *name, aChannel *chptr)
 {
 	Reg	aChannel	*tmp, *prev = NULL;
 	Reg	u_int	hashv;
@@ -461,9 +724,7 @@ aChannel	*chptr;
 /*
  * del_from_server_hash_table
  */
-int	del_from_server_hash_table(sptr, cptr)
-aServer	*sptr;
-aClient	*cptr;
+int	del_from_server_hash_table(aServer *sptr, aClient *cptr)
 {
 	Reg	aServer	*tmp, *prev = NULL;
 	Reg	u_int	hashv;
@@ -496,13 +757,92 @@ aClient	*cptr;
 	return 0;
 }
 
+/*
+** del_from_sid_hash_table
+*/
+int	del_from_sid_hash_table(aServer *sptr)
+{
+	Reg	aServer	*tmp, *prev = NULL;
+	Reg	u_int	hashv;
+
+	hashv = sptr->sidhashv;
+	hashv %= _SIDSIZE;
+	for (tmp = (aServer *)sidTable[hashv].list; tmp; tmp = tmp->sidhnext)
+	{
+		if (tmp == sptr)
+		{
+			if (prev)
+			{
+				prev->sidhnext = tmp->sidhnext;
+			}
+			else
+			{
+				sidTable[hashv].list = (void *)tmp->sidhnext;
+			}
+			tmp->sidhnext = NULL;
+			if (sidTable[hashv].links > 0)
+			{
+				sidTable[hashv].links--;
+				sidsize--;
+				return 1;
+			}
+			else
+			{
+                                sendto_flag(SCH_ERROR, "sid-hash failure");
+				return -1;
+			}
+		}
+		prev = tmp;
+	}
+	return 0;
+}
+
+/*
+ * del_from_hostname_hash_table
+ */
+int	del_from_hostname_hash_table(char *hostname, anUser *user)
+{
+	Reg	anUser	*tmp, *prev = NULL;
+	Reg	u_int	hashv;
+
+	hashv = user->hhashv;
+	hashv %= _HOSTNAMEHASHSIZE;
+	for (tmp = (anUser *)hostnameTable[hashv].list; tmp; tmp = tmp->hhnext)
+	    {
+		if (tmp == user)
+		    {
+			if (prev)
+				prev->hhnext = tmp->hhnext;
+			else
+				hostnameTable[hashv].list = (void *)tmp->hhnext;
+			tmp->hhnext = NULL;
+			if (hostnameTable[hashv].links > 0)
+			    {
+				hostnameTable[hashv].links--;
+				cnsize--;
+				return 1;
+			    }
+			else
+			    {
+				sendto_flag(SCH_ERROR, "hn-hash table failure");
+				Debug((DEBUG_ERROR, "hn-hash table failure")); 
+				/*
+				 * Should never actually return from here and
+				 * if we do it is an error/inconsistency in the
+				 * hash table.
+				 */
+				return -1;
+			    }
+		    }
+		prev = tmp;
+	    }
+	return 0;
+}
 
 /*
  * hash_find_client
  */
-aClient	*hash_find_client(name, cptr)
-char	*name;
-aClient	*cptr;
+aClient	*hash_find_client(char *name, aClient *cptr)
 {
 	Reg	aClient	*tmp;
 	Reg	aClient	*prv = NULL;
@@ -546,11 +886,56 @@ aClient	*cptr;
 }
 
 /*
+ * hash_find_uid
+ */
+aClient	*hash_find_uid(char *uid, aClient *cptr)
+{
+	Reg	aClient	*tmp;
+	Reg	aClient	*prv = NULL;
+	Reg	aHashEntry	*tmp3;
+	u_int	hashv, hv;
+
+	hashv = hash_uid(uid, &hv);
+	tmp3 = &uidTable[hashv];
+
+	/*
+	 * Got the bucket, now search the chain.
+	 */
+	for (tmp = (aClient *)tmp3->list; tmp;
+	     prv = tmp, tmp = tmp->user->uhnext)
+		if (hv == tmp->user->hashv && mycmp(uid, tmp->user->uid) == 0)
+		    {
+			uidhits++;
+			/*
+			 * If the member of the hashtable we found isnt at
+			 * the top of its chain, put it there.  This builds
+			 * a most-frequently used order into the chains of
+			 * the hash table, giving speadier lookups on those
+			 * nicks which are being used currently.  This same
+			 * block of code is also used for channels and
+			 * servers for the same performance reasons.
+			 */
+#if 0
+			if (prv)
+			    {
+				aClient *tmp2;
+
+				tmp2 = (aClient *)tmp3->list;
+				tmp3->list = (void *)tmp;
+				prv->user->uhnext = tmp->user->uhnext;
+				tmp->user->uhnext = tmp2;
+			    }
+#endif
+			return (tmp);
+		    }
+	uidmiss++;
+	return (cptr);
+}
+
+/*
  * hash_find_server
  */
-aClient	*hash_find_server(server, cptr)
-char	*server;
-aClient *cptr;
+aClient	*hash_find_server(char *server, aClient *cptr)
 {
 	Reg	aClient	*tmp, *prv = NULL;
 	Reg	char	*t;
@@ -618,9 +1003,7 @@ aClient *cptr;
 /*
  * hash_find_channel
  */
-aChannel	*hash_find_channel(name, chptr)
-char	*name;
-aChannel *chptr;
+aChannel	*hash_find_channel(char *name, aChannel *chptr)
 {
 	Reg	aChannel	*tmp, *prv = NULL;
 	Reg	aHashEntry	*tmp3;
@@ -655,9 +1038,7 @@ aChannel *chptr;
  *
  * look up matches for !?????name instead of a real match.
  */
-aChannel	*hash_find_channels(name, chptr)
-char	*name;
-aChannel *chptr;
+aChannel	*hash_find_channels(char *name, aChannel *chptr)
 {
 	aChannel	*tmp;
 	u_int	hashv, hv;
@@ -692,10 +1073,7 @@ aChannel *chptr;
 /*
  * hash_find_stoken
  */
-aServer	*hash_find_stoken(tok, cptr, dummy)
-int	tok;
-aClient *cptr;
-void	*dummy;
+aServer	*hash_find_stoken(int tok, aClient *cptr, void *dummy)
 {
 	Reg	aServer	*tmp, *prv = NULL;
 	Reg	aHashEntry	*tmp3;
@@ -723,235 +1101,395 @@ void	*dummy;
 }
 
 /*
+** hash_find_sid
+*/
+aClient	*hash_find_sid(char *sid, aClient *cptr)
+{
+	Reg     aServer *tmp;
+	Reg     aServer *prv = NULL;
+	Reg     aHashEntry      *tmp3;
+	u_int   hashv, hv;
+
+	hashv = hash_sid(sid, &hv);
+	tmp3 = &sidTable[hashv];
+
+	for (tmp = (aServer *)tmp3->list; tmp; prv = tmp, tmp = tmp->sidhnext)
+	{
+		if (hv == tmp->sidhashv && mycmp(sid, tmp->sid) == 0)
+		{
+			sidhits++;
+			return (tmp->bcptr);
+		}
+	}
+	sidmiss++;
+	return (cptr);
+}
+
+/*
+ * hash_find_hostname
+ */
+anUser	*hash_find_hostname(char *hostname, anUser *user)
+{
+	Reg	anUser	*tmp, *prv = NULL;
+	Reg	aHashEntry	*tmp3;
+	u_int	hashv, hv;
+
+	hashv = hash_host_name(hostname, &hv);
+	tmp3 = &hostnameTable[hashv];
+
+	for (tmp = (anUser *)tmp3->list; tmp; prv = tmp, tmp = tmp->hhnext)
+		if (hv == tmp->hhashv && !mycmp(hostname, tmp->host))
+		    {
+			cnhits++;
+			return (tmp);
+		    }
+	cnmiss++;
+	return user;
+}
+
+/*
  * NOTE: this command is not supposed to be an offical part of the ircd
  *       protocol.  It is simply here to help debug and to monitor the
  *       performance of the hash functions and table, enabling a better
  *       algorithm to be sought if this one becomes troublesome.
  *       -avalon
  */
-
-int	m_hash(cptr, sptr, parc, parv)
-aClient	*cptr, *sptr;
-int	parc;
-char	*parv[];
+struct HashTable_s
 {
-#ifdef DEBUGMODE
-	register	int	l, i;
-	register	aHashEntry	*tab;
-	int	deepest = 0, deeplink = 0, showlist = 0, tothits = 0;
-	int	mosthit = 0, mosthits = 0, used = 0, used_now = 0, totlink = 0;
-	int	link_pop[10], size = _HASHSIZE;
-	char	ch;
-	aHashEntry	*table;
+	char hash;
+	char *hashname;
+	aHashEntry **table;
+	int *hits;
+	int *miss;
+	int *nentries;
+	int *size;
+	u_int (*hashfunc)(char *name, u_int *store);
+};
 
-	if (parc > 1) {
-		ch = *parv[1];
-		if (islower(ch))
-			table = clientTable;
-		else {
-			table = channelTable;
-			size = _CHANNELHASHSIZE;
+#if defined(DEBUGMODE) || defined(HASHDEBUG)
+static	void	show_hash_bucket(aClient *sptr, struct HashTable_s *HashTables,
+	int shash, int bucket)
+{
+	int j = 1;
+	aHashEntry *htab, *tab;
+	aClient *acptr;
+	anUser *auptr;
+	aServer *asptr;
+	aChannel *chptr;
+	
+	htab = *(HashTables[shash].table);
+	tab = &htab[bucket];
+	
+	/* Nothing in bucket, skip */
+	if (!tab->links)
+	{
+		sendto_one(sptr, ":%s NOTICE %s :Hash bucket %d is empty",
+				ME, sptr->name, bucket);
+		return;
+	}
+	if (htab == clientTable)
+	{
+		acptr = (aClient *) tab->list;
+		while (acptr)
+		{
+			sendto_one(sptr,
+			 	":%s NOTICE %s :Bucket %d entry %d - %s",
+			 	ME, sptr->name, bucket, j, acptr->name);	
+	
+			j++;
+			acptr = acptr->hnext;
 		}
-		if (ch == 'L' || ch == 'l')
-			showlist = 1;
-	} else {
-		ch = '\0';
-		table = clientTable;
+	}
+	else if (htab == uidTable)
+	{
+		acptr = (aClient *) tab->list;
+		while (acptr)
+		{
+			sendto_one(sptr,
+			 	":%s NOTICE %s :Bucket %d entry %d - %s (%s)",
+			 	ME, sptr->name, bucket, j, acptr->user->uid,
+			 	acptr->name);
+			j++;
+			acptr = acptr->user->uhnext;
+		}
+	}
+	else if (htab == channelTable)
+	{
+		chptr = (aChannel *) tab->list;
+		while (chptr)
+		{
+			sendto_one(sptr,
+			 	":%s NOTICE %s :Bucket %d entry %d - %s",
+			 	ME, sptr->name, bucket, j, chptr->chname);
+			j++;
+			chptr = chptr->hnextch;
+		}
+
+	}
+	else if (htab == serverTable)
+	{
+		asptr = (aServer *) tab->list;
+		while (asptr)
+		{
+			sendto_one(sptr,
+			 	":%s NOTICE %s :Bucket %d entry %d - %s (%d)",
+			 	ME, sptr->name, bucket, j, asptr->bcptr->name,
+			 	asptr->stok);
+			j++;
+			asptr = asptr->shnext;
+		}
+
+	}
+	else if (htab == sidTable)
+	{
+		asptr = (aServer *) tab->list;
+		while (asptr)
+		{
+			sendto_one(sptr,
+			 	":%s NOTICE %s :Bucket %d entry %d - %s (%s)",
+			 	ME, sptr->name, bucket, j, asptr->sid,
+			 	asptr->bcptr->name);
+			j++;
+			asptr = asptr->sidhnext;
+		}
+	
+	}
+	else if (htab == hostnameTable)
+	{
+		auptr = (anUser *) tab->list;
+		while (auptr)
+		{
+			sendto_one(sptr,
+			 	":%s NOTICE %s :Bucket %d entry %d - %s (%s)",
+			 	ME, sptr->name, bucket, j, auptr->host,
+				auptr->bcptr->name);	
+	
+			j++;
+			auptr = auptr->hhnext;
+		}
+	
+	}
+	return;
+}
+#endif /* DEBUGMODE || HASHDEBUG */
+
+int	m_hash(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+	aHashEntry *hashtab = NULL, *tab;
+	int shash = -1, i, l;
+	int deepest = 0 , deeplink = 0, totlink = 0, mosthits = 0, mosthit = 0;
+	int tothits = 0, used = 0, used_now = 0, link_pop[11];
+	static int unavailable = -1;
+	
+	struct HashTable_s HashTables[] =
+	{
+		{'c', "client", &clientTable, &clhits, &clmiss, &clsize,
+			&_HASHSIZE, hash_nick_name},
+		{'u', "UID", &uidTable, &uidhits, &uidmiss, &uidsize, &_UIDSIZE,
+			hash_uid},
+		{'C', "channel", &channelTable, &chhits, &chmiss, &sidsize,
+			&_CHANNELHASHSIZE, NULL},
+		{'s', "server", &serverTable, &unavailable, &unavailable,
+			&svsize, &_SERVERSIZE, NULL },
+		{'S', "SID", &sidTable, &sidhits, &sidmiss, &sidsize, &_SIDSIZE,
+			hash_sid },
+		{'h', "hostname", &hostnameTable, &cnhits, &cnmiss, &cnsize,
+			&_HOSTNAMEHASHSIZE, hash_host_name},
+		{0, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
+	};
+	
+	if (!IsAnOper(sptr))
+	{
+		sendto_one(sptr, replies[ERR_NOPRIVILEGES], ME, BadTo(parv[0]));
+
+		return 2;
+	}
+	
+	if (parc < 2)
+	{
+		sendto_one(sptr, ":%s NOTICE %s: Syntax: HASH <hash> [command]"
+				,ME, sptr->name);
+		i = 0;
+		while (HashTables[i].hash)
+		{
+			sendto_one(sptr, ":%s NOTICE %s:  %c - %s hash ",
+				ME, sptr->name, HashTables[i].hash,
+				HashTables[i].hashname);
+			i++;
+		}
+		sendto_one(sptr, ":%s NOTICE %s: Commands: ",
+				ME, sptr->name);
+		sendto_one(sptr, ":%s NOTICE %s: hash <string> - hashes given "
+				"string with appropriate hashing function",
+				ME, sptr->name);
+#if defined(DEBUGMODE) || defined(HASHDEBUG)
+		sendto_one(sptr, ":%s NOTICE %s: show <number> - dumps bucket"
+				" of given hash", ME, sptr->name);
+		sendto_one(sptr, ":%s NOTICE %s: list [number] - dumps entire"
+				" hash, displays buckets with more nodes than"
+				" number if given", ME, sptr->name);
+		
+#endif
+
+		return 2;
 	}
 
-	for (i = 0; i < 10; i++)
-		link_pop[i] = 0;
-	for (i = 0; i < size; i++) {
-		tab = &table[i];
-		l = tab->links;
-		if (showlist)
-		    sendto_one(sptr,
-			   "NOTICE %s :Hash Entry:%6d Hits:%7d Links:%6d",
-			   parv[0], i, tab->hits, l);
-		if (l > 0) {
-			if (l < 10)
-				link_pop[l]++;
+	/* select hash */
+	for (i = 0; HashTables[i].hashname != NULL; i++)
+	{
+		if (parv[1][0] == HashTables[i].hash)
+		{
+			shash = i;
+			hashtab = *(HashTables[i].table);
+			break;
+		}
+	}
+	
+	if (shash == -1)
+	{
+		return 1;
+	}
+#if defined(DEBUGMODE) || defined(HASHDEBUG)
+	if (parc > 2)
+	{
+		/* dumps whole hash, a bit suicidal (check for sendq!) */
+		if (!strcasecmp(parv[2], "list"))
+		{
+			int j = 1;
+			/* Display buckets with more than j members */
+			if (parc > 3)
+			{
+				j = atoi(parv[3]);
+			}
+			for (i = 0; i < *(HashTables[shash].size); i++)
+			{
+				if ((&hashtab[i])->links < j)
+				{
+					continue;
+				}
+				show_hash_bucket(sptr, HashTables, shash, i);
+			}
+			return 1;
+		}
+	}
+#endif	
+	if (parc > 3)
+	{
+#if defined(DEBUGMODE) || defined(HASHDEBUG)
+		/* Print hash entry */
+		if (!strcasecmp(parv[2], "show") && (i = atoi(parv[3])))
+		{
+			show_hash_bucket(sptr, HashTables, shash, i);
+			return 1;
+		}
+#endif
+		/* Hash given string with appropriate hashing function */
+		if (!strcasecmp(parv[2], "hash"))
+		{
+			int hval;
+			
+			/* Server hash doesn't have hashfunc
+			 * Also make an exception for channel hashfunc
+			 * which takes 3 params
+			 */
+			if (!HashTables[shash].hashfunc &&
+				(HashTables[shash].hash != 'C'))
+			{
+				sendto_one(sptr, ":%s NOTICE %s :Hash function"
+						" unavailable", ME, parv[0]);
+				return 2;
+			}
+			if (HashTables[shash].hash != 'C')
+			{
+				hval = HashTables[shash].hashfunc(parv[3],
+								  NULL);
+			}
 			else
-				link_pop[9]++;
+			{
+				hval = hash_channel_name(parv[3], NULL, 0);
+			}
+			sendto_one(sptr, ":%s NOTICE %s :Hash value of %s"
+				" using %s hash function is %d ", ME, parv[0],
+				parv[3], HashTables[shash].hashname, hval);
+			return 1;
+		}
+	}
+
+	/* Create hash statistics */
+	memset(link_pop, 0, sizeof(link_pop));
+	for (i = 0; i < *(HashTables[shash].size); i++)
+	{
+		tab = &hashtab[i];
+		l = tab->links;
+		/* How populated buckets are... */
+		if (l > 0)
+		{
+			if (l < 10)
+			{
+				link_pop[l]++;
+			}
+			else
+			{
+				link_pop[10]++;
+			}
 			used_now++;
 			totlink += l;
-			if (l > deepest) {
+			if (l > deepest)
+			{
 				deepest = l;
 				deeplink = i;
 			}
 		}
 		else
+		{
 			link_pop[0]++;
+		}
+		
 		l = tab->hits;
-		if (l) {
+		if (l)
+		{
 			used++;
 			tothits += l;
-			if (l > mosthits) {
+			if (l > mosthits)
+			{
 				mosthits = l;
 				mosthit = i;
 			}
 		}
 	}
-	switch((int)ch)
+	
+	sendto_one(sptr,"NOTICE %s :%s hash statistics",
+			parv[0], HashTables[shash].hashname);
+	sendto_one(sptr,"NOTICE %s :---------------------------------------",
+			parv[0]);
+        sendto_one(sptr,"NOTICE %s :Entries Hashed: %d NonEmpty: %d of %d",
+                   parv[0], totlink, used_now, *(HashTables[shash].size));
+        sendto_one(sptr,"NOTICE %s :Hash Ratio (av. depth): %f %%Full: %f",
+                  parv[0], (float)((1.0 * totlink) / (1.0 * used_now)),
+                  (float)((1.0 * used_now) / (1.0 * *(HashTables[shash].size))));
+        sendto_one(sptr,"NOTICE %s :Deepest Link: %d Links: %d",
+                   parv[0], deeplink, deepest);
+        sendto_one(sptr,"NOTICE %s :Total Hits: %d Unhit: %d Av Hits: %f",
+                   parv[0], tothits, *(HashTables[shash].size) - used,
+                   (float)((1.0 * (float)tothits) / (1.0 * (float)used)));
+        sendto_one(sptr,"NOTICE %s :Entry Most Hit: %d Hits: %d",
+                   parv[0], mosthit, mosthits);
+        sendto_one(sptr,"NOTICE %s :hits %d miss %d entries %d size %d",
+                   parv[0], *(HashTables[shash].hits),
+			    *(HashTables[shash].miss),
+			    *(HashTables[shash].nentries),
+			    *(HashTables[shash].size));
+
+	for (i = 0; i < 10; i++)
 	{
-	case 'V' : case 'v' :
-	    {
-		register	aClient	*acptr;
-		int	bad = 0, listlength = 0;
-
-		for (acptr = client; acptr; acptr = acptr->next) {
-			if (hash_find_client(acptr->name,acptr) != acptr) {
-				if (ch == 'V')
-				sendto_one(sptr, "NOTICE %s :Bad hash for %s",
-					   parv[0], acptr->name);
-				bad++;
-			}
-			listlength++;
-		}
-		sendto_one(sptr,"NOTICE %s :List Length: %d Bad Hashes: %d",
-			   parv[0], listlength, bad);
-	    }
-	case 'P' : case 'p' :
-		for (i = 0; i < 10; i++)
-			sendto_one(sptr,"NOTICE %s :Entires with %d links : %d",
-			parv[0], i, link_pop[i]);
-		return (2);
-	case 'r' :
-	    {
-		Reg	aClient	*acptr;
-
-		sendto_one(sptr,"NOTICE %s :Rehashing Client List.", parv[0]);
-		clear_client_hash_table(_HASHSIZE);
-		for (acptr = client; acptr; acptr = acptr->next)
-			(void)add_to_client_hash_table(acptr->name, acptr);
-		break;
-	    }
-	case 'R' :
-	    {
-		Reg	aChannel	*acptr;
-
-		sendto_one(sptr,"NOTICE %s :Rehashing Channel List.", parv[0]);
-		clear_channel_hash_table(_CHANNELHASHSIZE);
-		for (acptr = channel; acptr; acptr = acptr->nextch)
-			(void)add_to_channel_hash_table(acptr->chname, acptr);
-		break;
-	    }
-	case 'H' :
-		if (parc > 2)
-			sendto_one(sptr,"NOTICE %s :%s hash to entry %d",
-				   parv[0], parv[2],
-				   hash_channel_name(parv[2], NULL, 0));
-		return (2);
-	case 'h' :
-		if (parc > 2)
-			sendto_one(sptr,"NOTICE %s :%s hash to entry %d",
-				   parv[0], parv[2],
-				   hash_nick_name(parv[2], NULL));
-		return (2);
-	case 'n' :
-	    {
-		aClient	*tmp;
-		int	max;
-
-		if (parc <= 2 || !IsAnOper(sptr))
-			return (1);
-		l = atoi(parv[2]) % _HASHSIZE;
-		if (parc > 3)
-			max = atoi(parv[3]) % _HASHSIZE;
-		else
-			max = l;
-		for (;l <= max; l++)
-			for (i = 0, tmp = (aClient *)clientTable[l].list; tmp;
-			     i++, tmp = tmp->hnext)
-			    {
-				if (parv[1][2] == '1' && tmp != tmp->from)
-					continue;
-				sendto_one(sptr,"NOTICE %s :Node: %d #%d %s",
-					   parv[0], l, i, tmp->name);
-			    }
-		return (2);
-	    }
-	case 'N' :
-	    {
-		aChannel *tmp;
-		int	max;
-
-		if (parc <= 2 || !IsAnOper(sptr))
-			return (1);
-		l = atoi(parv[2]) % _CHANNELHASHSIZE;
-		if (parc > 3)
-			max = atoi(parv[3]) % _CHANNELHASHSIZE;
-		else
-			max = l;
-		for (;l <= max; l++)
-			for (i = 0, tmp = (aChannel *)channelTable[l].list; tmp;
-			     i++, tmp = tmp->hnextch)
-				sendto_one(sptr,"NOTICE %s :Node: %d #%d %s",
-					   parv[0], l, i, tmp->chname);
-		return (2);
-	    }
-	case 'S' :
-#else
-	if (parc>1&&!strcmp(parv[1],"sums")){
-#endif
-	sendto_one(sptr, "NOTICE %s :[SBSDC] [SUSER]", parv[0]);
-	sendto_one(sptr, "NOTICE %s :[SSERV] [IRCDC]", parv[0]);
-	sendto_one(sptr, "NOTICE %s :[CHANC] [SMISC]", parv[0]);
-	sendto_one(sptr, "NOTICE %s :[HASHC] [VERSH]", parv[0]);
-	sendto_one(sptr, "NOTICE %s :[MAKEF] HOSTID", parv[0]);
-#ifndef	DEBUGMODE
+	        sendto_one(sptr,"NOTICE %s :Nodes with %d entries: %d",
+                   parv[0],i,link_pop[i]);
+	
 	}
-#endif
-	    return 2;
-#ifdef	DEBUGMODE
-	case 'z' :
-	    {
-		if (parc <= 2 || !IsAnOper(sptr))
-			return 1;
-		l = atoi(parv[2]);
-		if (l < 256)
-			return 1;
-		bigger_hash_table(&_HASHSIZE, clientTable, l);
-		sendto_one(sptr, "NOTICE %s :HASHSIZE now %d", parv[0], l);
-		break;
-	    }
-	case 'Z' :
-	    {
-		if (parc <= 2 || !IsAnOper(sptr))
-			return 1;
-		l = atoi(parv[2]);
-		if (l < 256)
-			return 1;
-		bigger_hash_table(&_CHANNELHASHSIZE, channelTable, l);
-		sendto_one(sptr, "NOTICE %s :CHANNELHASHSIZE now %d",
-			   parv[0], l);
-		break;
-	    }
-	default :
-		break;
-	}
-	sendto_one(sptr,"NOTICE %s :Entries Hashed: %d NonEmpty: %d of %d",
-		   parv[0], totlink, used_now, size);
-	if (!used_now)
-		used_now = 1;
-	sendto_one(sptr,"NOTICE %s :Hash Ratio (av. depth): %f %%Full: %f",
-		  parv[0], (float)((1.0 * totlink) / (1.0 * used_now)),
-		  (float)((1.0 * used_now) / (1.0 * size)));
-	sendto_one(sptr,"NOTICE %s :Deepest Link: %d Links: %d",
-		   parv[0], deeplink, deepest);
-	if (!used)
-		used = 1;
-	sendto_one(sptr,"NOTICE %s :Total Hits: %d Unhit: %d Av Hits: %f",
-		   parv[0], tothits, size-used,
-		   (float)((1.0 * (float)tothits) / (1.0 * (float)used)));
-	sendto_one(sptr,"NOTICE %s :Entry Most Hit: %d Hits: %d",
-		   parv[0], mosthit, mosthits);
-	sendto_one(sptr,"NOTICE %s :Client hits %d miss %d",
-		   parv[0], clhits, clmiss);
-	sendto_one(sptr,"NOTICE %s :Channel hits %d miss %d",
-		   parv[0], chhits, chmiss);
-	return 2;
-#endif
+	        sendto_one(sptr,"NOTICE %s :Nodes with >10 entries: %d",
+                   parv[0],link_pop[10]);
+
+        return 1;
+
 }
-
 

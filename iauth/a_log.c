@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: a_log.c,v 1.6.2.2 2001/05/06 00:48:40 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: a_log.c,v 1.10 2003/10/18 15:31:29 q Exp $";
 #endif
 
 #include "os.h"
@@ -27,10 +27,12 @@ static  char rcsid[] = "@(#)$Id: a_log.c,v 1.6.2.2 2001/05/06 00:48:40 chopin Ex
 #include "a_externs.h"
 #undef A_LOG_C
 
-static FILE	*debug = NULL, *authlog = NULL;
+#if defined(IAUTH_DEBUG)
+static FILE	*debug = NULL;
+#endif
+static FILE	*authlog = NULL;
 
-void
-init_filelogs()
+void	init_filelogs(void)
 {
 #if defined(IAUTH_DEBUG)
 	if (debug)
@@ -55,32 +57,19 @@ init_filelogs()
 #endif
 }
 
-void
-init_syslog()
+void	init_syslog(void)
 {
 #if defined(USE_SYSLOG)
 	openlog("iauth", LOG_PID|LOG_NDELAY, LOG_FACILITY);
 #endif
 }
 
-#if ! USE_STDARG
-void
-sendto_log(flags, slflag, pattern, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
-int flags, slflag;
-char    *pattern, *p1, *p2, *p3, *p4, *p5, *p6, *p7, *p8, *p9, *p10;
-#else
-void
-vsendto_log(int flags, int slflag, char *pattern, va_list va)
-#endif
+void	vsendto_log(int flags, int slflag, char *pattern, va_list va)
 {
 	char	logbuf[4096];
 
 	logbuf[0] = '>';
-#if ! USE_STDARG
-	sprintf(logbuf+1, pattern, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
-#else
 	vsprintf(logbuf+1, pattern, va);
-#endif
 
 #if defined(USE_SYSLOG)
 	if (slflag)
@@ -114,13 +103,11 @@ vsendto_log(int flags, int slflag, char *pattern, va_list va)
 	    }
 }
 
-#if USE_STDARG
-void
-sendto_log(int flags, int slflag, char *pattern, ...)
+void	sendto_log(int flags, int slflag, char *pattern, ...)
 {
         va_list va;
         va_start(va, pattern);
         vsendto_log(flags, slflag, pattern, va);
         va_end(va);
 }
-#endif
+

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: str.c,v 1.2 1997/09/03 17:45:43 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: str.c,v 1.4 2003/10/18 16:26:39 q Exp $";
 #endif
  
 #include "os.h"
@@ -28,29 +28,36 @@ static  char rcsid[] = "@(#)$Id: str.c,v 1.2 1997/09/03 17:45:43 kalt Exp $";
 #include "c_externs.h"
 #undef STR_C
 
-char * center(buf,str,len)
-char *buf, *str;
-int len;
+char	*center(char *buf, char *str, int len)
 {
-  char i,j,k;
-  if ((i = strlen(str)) > len) {
-    buf[len-1] = '\0';
-    for(len--; len > 0; len--) buf[len-1] = str[len-1];
-    return(buf);
-  }
-  j = (len-i)/2;
-  for (k=0; k<j; k++) buf[k] = ' ';
-  buf[k] = '\0';
-  strcat(buf,str);
-  for (k=j+i; k<len; k++) buf[k] = ' ';
-  buf[len] = '\0';
-  return (buf);
+	int	i, j, k;
+
+	if ((i = strlen(str)) > len)
+	{
+		buf[len-1] = '\0';
+		for(len--; len > 0; len--)
+		{
+			buf[len-1] = str[len-1];
+		}
+		return(buf);
+	}
+	j = (len-i)/2;
+	for (k=0; k<j; k++)
+	{
+		buf[k] = ' ';
+	}
+	buf[k] = '\0';
+	strcat(buf,str);
+	for (k=j+i; k<len; k++)
+	{
+		buf[k] = ' ';
+	}
+	buf[len] = '\0';
+	return (buf);
 }
 
 /* William Wisner <wisner@b.cc.umich.edu>, 16 March 1989 */
-char *
-real_name(user)
-     struct passwd *user;
+char	*real_name(struct passwd *user)
 {
   char *bp, *cp;
   static char name[REALLEN+1];

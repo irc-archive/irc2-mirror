@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: class.c,v 1.6 1997/12/19 13:35:57 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: class.c,v 1.10 2003/10/18 15:31:24 q Exp $";
 #endif
 
 #include "os.h"
@@ -33,8 +33,7 @@ static  char rcsid[] = "@(#)$Id: class.c,v 1.6 1997/12/19 13:35:57 kalt Exp $";
 
 aClass	*classes;
 
-int	get_conf_class(aconf)
-aConfItem	*aconf;
+int	get_conf_class(aConfItem *aconf)
 {
 	if ((aconf) && Class(aconf))
 		return (ConfClass(aconf));
@@ -46,8 +45,7 @@ aConfItem	*aconf;
 
 }
 
-static	int	get_conf_ping(aconf)
-aConfItem	*aconf;
+static	int	get_conf_ping(aConfItem *aconf)
 {
 	if ((aconf) && Class(aconf))
 		return (ConfPingFreq(aconf));
@@ -60,8 +58,7 @@ aConfItem	*aconf;
 
 
 
-int	get_client_class(acptr)
-aClient	*acptr;
+int	get_client_class(aClient *acptr)
 {
 	Reg	Link	*tmp;
 	Reg	aClass	*cl;
@@ -82,8 +79,7 @@ aClient	*acptr;
 	return (retc);
 }
 
-int	get_client_ping(acptr)
-aClient	*acptr;
+int	get_client_ping(aClient *acptr)
 {
 	int	ping = 0, ping2;
 	aConfItem	*aconf;
@@ -117,8 +113,7 @@ aClient	*acptr;
 	return (ping);
 }
 
-int	get_con_freq(clptr)
-aClass	*clptr;
+int	get_con_freq(aClass *clptr)
 {
 	if (clptr)
 		return (MAX(60, ConFreq(clptr)));
@@ -133,10 +128,8 @@ aClass	*clptr;
  * if no present entry is found, then create a new one and add it in
  * immeadiately after the first one (class 0).
  */
-void	add_class(class, ping, confreq, maxli, sendq, hlocal, uhlocal,
-		  hglobal, uhglobal)
-int	class, ping, confreq, maxli, hlocal, uhlocal, hglobal, uhglobal;
-long	sendq;
+void	add_class(int class, int ping, int confreq, int maxli, int sendq,
+		int hlocal, int uhlocal, int hglobal, int uhglobal)
 {
 	aClass *t, *p;
 
@@ -152,7 +145,7 @@ long	sendq;
 	else
 		p = t;
 	Debug((DEBUG_DEBUG,
-"Add Class %d: p %x t %x - cf: %d pf: %d ml: %d sq: %l ml: %d.%d mg: %d.%d",
+"Add Class %d: p %x t %x - cf: %d pf: %d ml: %d sq: %d ml: %d.%d mg: %d.%d",
 		class, p, t, confreq, ping, maxli, QUEUELEN, hlocal, uhlocal,
 	       hglobal, uhglobal));
 	Class(p) = class;
@@ -169,8 +162,7 @@ long	sendq;
 		Links(p) = 0;
 }
 
-aClass	*find_class(cclass)
-int	cclass;
+aClass	*find_class(int cclass)
 {
 	aClass *cltmp;
 
@@ -220,22 +212,19 @@ void	initclass()
 	NextClass(FirstClass()) = NULL;
 }
 
-void	report_classes(sptr, to)
-aClient	*sptr;
-char	*to;
+void	report_classes(aClient *sptr, char *to)
 {
 	Reg	aClass	*cltmp;
 
 	for (cltmp = FirstClass(); cltmp; cltmp = NextClass(cltmp))
-		sendto_one(sptr, rpl_str(RPL_STATSYLINE, to), 'Y',
+		sendto_one(sptr, replies[RPL_STATSYLINE], ME, BadTo(to), 'Y',
 			   Class(cltmp), PingFreq(cltmp), ConFreq(cltmp),
 			   MaxLinks(cltmp), MaxSendq(cltmp),
 			   MaxHLocal(cltmp), MaxUHLocal(cltmp),
 			   MaxHGlobal(cltmp), MaxUHGlobal(cltmp));
 }
 
-long	get_sendq(cptr)
-aClient	*cptr;
+int	get_sendq(aClient *cptr)
 {
 	Reg	int	sendq = QUEUELEN, retc = BAD_CLIENT_CLASS;
 	Reg	Link	*tmp;
@@ -254,3 +243,4 @@ aClient	*cptr;
 		    }
 	return sendq;
 }
+

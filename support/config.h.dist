@@ -61,6 +61,8 @@
 /* CHROOTDIR
  *
  * Define for value added security if you are a rooter.
+ * WARNING! Better to use external chroot and then run ircd without
+ * this option.
  *
  * CPATH, MPATH, LPATH, PPATH, TPATH, QPATH, OPATH, 
  * FNAME_USERLOG, FNAME_OPERLOG, FNAME_CONNLOG, FNAME_AUTHLOG
@@ -108,10 +110,9 @@
  * commands however.  OPER_REHASH and OPER_RESTART allow operators to
  * issue the REHASH and RESTART commands when connected to your server.
  * Left undefined they increase the security of your server from wayward
- * operators and accidents.  Defining OPER_REMOTE removes the restriction
- * that O-lines only become fully effective for people on the 'same network'
- * as the server.  Undefined, it increases the security of the server by
- * placing restrictions on where people can use operator powers from.
+ * operators and accidents.  
+ * OPER_SET enables SET command which can be used for fine-tuning of certain
+ * aspects of ircd behaviour during runtime.
  * The 'LOCOP_' #defines are for making the respective commands available
  * to 'local' operators. Note that the 'OPER_' #defines affect both global
  * (big O) and local (little o) operators.  Defining 'LOCOP_x' has no effect
@@ -122,10 +123,11 @@
 #define	OPER_REHASH
 #undef	OPER_RESTART
 #define	OPER_DIE
-#undef	OPER_REMOTE
+#undef	OPER_SET
 #undef	LOCOP_REHASH
 #undef	LOCOP_RESTART
 #undef	LOCOP_DIE
+#undef	LOCOP_SET
 
 /*
  * Maximum number of network connections your server will allow.  This should
@@ -197,29 +199,9 @@
  */
 #undef TIMEDKLINES
 
-/* R_LINES:  The conf file now allows the existence of R lines, or
- * restrict lines.  These allow more freedom in the ability to restrict
- * who is to sign on and when.  What the R line does is call an outside
- * program which returns a reply indicating whether to let the person on.
- * Because there is another program involved, Delays and overhead could
- * result. It is for this reason that there is a line in config.h to
- * decide whether it is something you want or need. -Hoppie
- *
- * The default is no R_LINES as most people probably don't need it. --Jto
+/* 
+ * R lines were removed. Use iauth module instead.
  */
-#undef	R_LINES
-
-#ifdef	R_LINES
-/* Also, even if you have R lines defined, you might not want them to be 
-   checked everywhere, since it could cost lots of time and delay.  Therefore, 
-   The following two options are also offered:  R_LINES_REHASH rechecks for 
-   R lines after a rehash, and R_LINES_OFTEN, which rechecks it as often
-   as it does K lines.  Note that R_LINES_OFTEN is *very* likely to cause 
-   a resource drain, use at your own risk.  R_LINES_REHASH shouldn't be too
-   bad, assuming the programs are fairly short. */
-#define R_LINES_REHASH
-#define R_LINES_OFTEN
-#endif
 
 /*
  * NOTE: defining CMDLINE_CONFIG and installing ircd SUID or SGID is a MAJOR
@@ -242,7 +224,7 @@
  * If you wish to have the server send 'vital' messages about server
  * through syslog, define USE_SYSLOG. Only system errors and events critical
  * to the server are logged although if this is defined with FNAME_USERLOG,
- * syslog() is used instead of the above file. It is not recommended that
+ * syslog() is used additionally to the above file. It is not recommended that
  * this option is used unless you tell the system administrator beforehand
  * and obtain their permission to send messages to the system log files.
  */
@@ -268,7 +250,20 @@
 #endif /* USE_SYSLOG */
 
 /*
- * define this if you want to use crypted passwords for operators in your
+ * LOG_OLDFORMAT
+ *
+ * Define this if you want old format of logs. (Mind, you will lose
+ * additional information, like remote ip, port, etc.)
+ */
+#undef	LOG_OLDFORMAT
+
+/*
+ * Define this if you want to log failed /oper attempts.
+ */
+#undef FAILED_OPERLOG
+
+/*
+ * Define this if you want to use crypted passwords for operators in your
  * ircd.conf file. See contrib/mkpasswd/README for more details on this.
  */
 #undef	CRYPT_OPER_PASSWORD
@@ -303,18 +298,15 @@
 
 /*
  * IRC_UID
+ * IRC_GID
  *
  * If you start the server as root but wish to have it run as another user,
- * define IRC_UID to that UID.  This should only be defined if you are running
- * as root and even then perhaps not.
+ * define IRC_UID to that user id (and IRC_GID to the desired group id).
+ * This should only be defined if you are running as root...
+ * and even then perhaps not.
  */
-#undef	IRC_UID
-#undef	IRC_GID
-
-#ifdef	notdef
-#define	IRC_UID	65534	/* eg for what to do to enable this feature */
-#define	IRC_GID	65534
-#endif
+/* #undef	IRC_UID	65534 */
+/* #undef	IRC_GID	65534 */
 
 /*
  * CLIENT_FLOOD
@@ -384,10 +376,21 @@
 #define	CLONE_CHECK
 
 /*
- * Because ip6.arpa is still not delegated for the 6bone (3ffe::/16)
- * this options allows you to still resolve it using ip6.int.
+ * Because it takes a while for IANA to delegate reverse mappings,
+ * this option allows you to resolve 2001 block using ip6.arpa.
+ * and the rest via ip6.int.
  */
 #define SIXBONE_HACK
+
+/*
+** Servers with many clients and lots of K:lines are having noticable
+** lag after rehash. Define this to the number of clients you want to
+** be checked each time (all clients will eventually be checked, of course).
+** This will lessen the load and eliminate the lag during rehash.
+** Undefine (or define to bigger than MAXCONNECTIONS) to check all clients
+** in one sweep.
+*/
+#define MAXDELAYEDKILLS 200
 
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
@@ -409,7 +412,11 @@
 /* Default server port, used by client. */
 #define	PORTNUM	6667
 
-/* Maximum length the queue of pending connections to one port may grow to. */ 
+/* Maximum length the queue of pending connections to one port may grow to.
+ * Note that your system limits this, too. FreeBSD, for instance, has sysctl
+ * kern.ipc.somaxconn for that. Such must be bigger than this define prior to
+ * ircd start.
+ */ 
 #define LISTENQUEUE 128
 
 /* define DEBUGMODE to enable debugging mode.*/
@@ -484,7 +491,7 @@
 /*
  * Max number of channels a user is allowed to join.
  */
-#define MAXCHANNELSPERUSER  10	/* Recommended value: 10 */
+#define MAXCHANNELSPERUSER  21	/* Recommended value: 21 */
 
 /*
  * USE_IAUTH makes ircd use the iauth program for authentication.
@@ -519,6 +526,33 @@
 /* #undef	NO_IDENT */
 /* #undef	NO_PREFIX */
 
+/* Following notice is sent before and after /LIST output.
+ * If you do not want such behaviour, undefine.
+ */
+#define LIST_ALIS_NOTE "Usage of /list for listing all channels is " \
+		       "deprecated. Please use \"/squery alis help\" instead."
+
+/* Define this to see when a channel topic was set and who it was set by.
+** Warning: eats memory (around 5MB)
+*/
+#define TOPIC_WHO_TIME 1
+
+/*
+** Define this to see local clients signon time
+*/
+#define WHOIS_SIGNON_TIME 1
+
+/*
+** Split detection
+*/
+#define SPLIT_USERS	15000
+#define SPLIT_SERVERS	15
+
+/*
+** Notice sent to connecting users if the server is in the split-mode. 
+*/
+#define SPLIT_CONNECT_NOTICE "Server is currently in split-mode."
+
 /* ------------------------- END CONFIGURATION SECTION -------------------- */
 #ifndef ENABLE_SUMMON
 #  undef LEAST_IDLE
@@ -537,15 +571,15 @@
 
 #if defined(CLIENT_FLOOD)
 # if	(CLIENT_FLOOD > 8000) || (CLIENT_FLOOD < 512)
-error CLIENT_FLOOD needs redefining.
+#error CLIENT_FLOOD needs redefining.
 # endif
 #else
-error CLIENT_FLOOD undefined
+#error CLIENT_FLOOD undefined
 #endif
 
 #if defined(ZIP_LINKS)
 # if	(ZIP_MINIMUM > ZIP_MAXIMUM)
-error ZIP_MINIMUM needs redefining.
+#error ZIP_MINIMUM needs redefining.
 # endif
 #endif
 
@@ -565,7 +599,7 @@ error ZIP_MINIMUM needs redefining.
 
 #if ! USE_POLL
 # if (MAXCONNECTIONS > FD_SETSIZE)
-error FD_SETSIZE must be bigger than MAXCONNECTIONS
+#error FD_SETSIZE must be bigger than MAXCONNECTIONS
 # endif
 #endif
 
@@ -585,28 +619,57 @@ error FD_SETSIZE must be bigger than MAXCONNECTIONS
 #undef	ZIP_LINKS
 #endif
 
-/*
-** Make sure TIMEDKLINES is defined along with R_LINES_OFTEN
-**
-*/
-#if defined(R_LINES_OFTEN) && !defined(TIMEDKLINES)
-error TIMEDKLINES must be defined for R_LINES_OFTEN to work (are you sure you need them?)
-#endif
-
 #if defined(TIMEDKLINES)
-# if (TIMEDKLINES + 0 < 60)
-#  error TIMEDKLINES must be bigger than 60 seconds
+# if (TIMEDKLINES < 60)
+# error TIMEDKLINES must be bigger than 60 seconds
 # endif
 #endif
-
-/*
-** You should not want to change this. ;)
-*/
-#define	NOWRITEALARM	1
 
 /*
 ** Accept only hostnames conforming to RFC1034/1035/1123.
 ** Conformance of the internal resolver to RFC1123.
 */
-#define	RESTRICT_HOSTNAMES	1
+#define	RESTRICT_HOSTNAMES
 
+/*
+** Allow only "proper" chars in username.
+** Disallow '^', '~', '+', '=', '-' as a first char.
+** Require at least one alphanum and no more than one nonalphanum.
+*/
+#define	RESTRICT_USERNAMES
+
+/*
+** CLCHNO defines changes in local clients count, which are shown
+** as "Local in/de-crease"
+*/
+# if (MAXCONNECTIONS <= 200)
+  #define CLCHNO 10
+# else
+  # if (MAXCONNECTIONS <= 1000)
+     #define CLCHNO 50
+  # else
+     #define CLCHNO 100
+  # endif
+# endif
+
+/*
+** CLCHSEC defines minimum time in seconds between two consecutive
+** "New highest local/global clients count" messages
+*/
+#define CLCHSEC 300
+
+#ifndef SPLIT_USERS
+#error SPLIT_USERS must be defined
+#endif
+
+#ifndef SPLIT_SERVERS
+#error SPLIT_SERVERS must be defined
+#endif
+/*
+ * Undefining NO_OPER_REMOTE removes the restriction that O-lines only become 
+ * fully effective for people on the 'same network' as the server.  
+ * Defined, it increases the security of the server by
+ * placing restrictions on where people can use operator powers from.
+ * Dubious consideration, IMO.
+ */
+#undef	NO_OPER_REMOTE

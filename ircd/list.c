@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: list.c,v 1.9.2.4 2004/05/09 19:30:27 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: list.c,v 1.28 2003/10/18 16:26:39 q Exp $";
 #endif
 
 #include "os.h"
@@ -41,6 +41,25 @@ aServer	*svrtop = NULL;
 
 int	numclients = 0;
 
+/*
+** There is a max of CHIDNB ^ (SIDLEN - 1) servers
+** with tokens (ie. 2.10).
+*/
+
+#if CHIDNB == 36 && SIDLEN == 4
+# define MAX210SERVERS 46656
+#else
+# error Fix MAX210SERVERS.
+#endif
+
+/* we keep tokens in a bit array, hence /8 */
+/* +7 to make sure it's big enough */
+unsigned char	used_tokens[(MAX210SERVERS + 7 ) / 8];
+
+#define	IsBitSet(x)	(used_tokens[x / 8] & (1 << (x % 8)))
+#define	SetBit(x)	(used_tokens[x / 8] |= (1 << (x % 8)))
+#define	ClearBit(x)	(used_tokens[x / 8] &= ~(1 << (x % 8)))
+
 void	initlists()
 {
 #ifdef	DEBUGMODE
@@ -56,6 +75,12 @@ void	initlists()
 
 void	outofmemory()
 {
+	if (serverbooting)
+	{
+
+		fprintf(stderr,"Fatal Error: Out of memory.\n");
+		exit(-1);
+	}
 	Debug((DEBUG_FATAL, "Out of memory: restarting server..."));
 	sendto_flag(SCH_NOTICE, "Ouch!!! Out of memory...");
 	restart("Out of Memory");
@@ -65,7 +90,6 @@ void	outofmemory()
 void	checklists()
 {
 	aServer	*sp;
-	anUser	*up;
 
 	for (sp = svrtop; sp; sp = sp->nexts)
 		if (sp->bcptr->serv != sp)
@@ -84,8 +108,7 @@ void	checklists()
 **			associated with the client defined by
 **			'from'). ('from' is a local client!!).
 */
-aClient	*make_client(from)
-aClient	*from;
+aClient	*make_client(aClient *from)
 {
 	Reg	aClient *cptr = NULL;
 	Reg	unsigned size = CLIENT_REMOTE_SIZE;
@@ -128,6 +151,7 @@ aClient	*from;
 		cptr->authfd = -1;
 		cptr->auth = cptr->username;
 		cptr->exitc = EXITC_UNDEF;
+		cptr->receiveB = cptr->sendB = cptr->receiveM = cptr->sendM = 0;
 #ifdef	ZIP_LINKS
 		cptr->zip = NULL;
 #endif
@@ -135,8 +159,7 @@ aClient	*from;
 	return (cptr);
 }
 
-void	free_client(cptr)
-aClient	*cptr;
+void	free_client(aClient *cptr)
 {
 	if (cptr->info != DefInfo)
 		MyFree(cptr->info);
@@ -147,22 +170,32 @@ aClient	*cptr;
 		istat.is_auth -= 1;
 		MyFree(cptr->auth);
 	}
-	MyFree((char *)cptr);
+	/* True only for local clients */
+	if (cptr->hopcount == 0)
+	{
+		if (cptr->reason)
+		{
+			MyFree(cptr->reason);
+		}
+	}
+	MyFree(cptr);
 }
 
 /*
 ** 'make_user' add's an User information block to a client
 ** if it was not previously allocated.
+** iplen is lenght of the IP we want to allocate.
 */
-anUser	*make_user(cptr)
-aClient *cptr;
+anUser	*make_user(aClient *cptr, int iplen)
 {
 	Reg	anUser	*user;
 
 	user = cptr->user;
 	if (!user)
 	    {
-		user = (anUser *)MyMalloc(sizeof(anUser));
+		user = (anUser *)MyMalloc(sizeof(anUser) + iplen);
+		memset(user, 0, sizeof(anUser) + iplen);
+
 #ifdef	DEBUGMODE
 		users.inuse++;
 #endif
@@ -174,6 +207,9 @@ aClient *cptr;
 		user->invited = NULL;
 		user->uwas = NULL;
 		cptr->user = user;
+		user->hashv = 0;
+		user->uhnext = NULL;
+		user->uid[0] = '\0';
 		user->servp = NULL;
 		user->bcptr = cptr;
 		if (cptr->next)	/* the only cptr->next == NULL is me */
@@ -182,17 +218,19 @@ aClient *cptr;
 	return user;
 }
 
-aServer	*make_server(cptr)
-aClient	*cptr;
+aServer	*make_server(aClient *cptr)
 {
-	Reg	aServer	*serv = cptr->serv, *sp, *spp = NULL;
+	aServer	*serv = cptr->serv;
+	int	tok;
 
 	if (!serv)
 	    {
 		serv = (aServer *)MyMalloc(sizeof(aServer));
+		memset(serv, 0, sizeof(aServer));
 #ifdef	DEBUGMODE
 		servs.inuse++;
 #endif
+		cptr->serv = serv;
 		serv->user = NULL;
 		serv->snum = -1;
 		*serv->by = '\0';
@@ -201,30 +239,36 @@ aClient	*cptr;
 		serv->up = NULL;
 		serv->refcnt = 1;
 		serv->nexts = NULL;
-		cptr->serv = serv;
+		serv->prevs = NULL;
 
-		for (sp = svrtop; sp; spp = sp, sp = sp->nexts)
-			if (spp && ((spp->ltok) + 1 < sp->ltok))
+		if (svrtop)
+		{
+			svrtop->prevs = serv;
+			serv->nexts = svrtop;
+		}
+		svrtop = serv;
+
+		/* 
+		** me is number 1 and is first added.
+		** There is a max of MAX210SERVERS.
+		*/
+		for (tok = 1; tok < MAX210SERVERS ; tok++)
+		{
+			if (!IsBitSet(tok))
+			{
 				break;
-		serv->prevs = spp;
-		if (spp)
-		    {
-			serv->ltok = spp->ltok + 1;
-			spp->nexts = serv;
-		    }
-		else
-		    {	/* Me, myself and I alone */
-			svrtop = serv;
-			serv->ltok = 1;
-		    }
+			}
+		}
+		if (tok == MAX210SERVERS)
+		{
+			sendto_flag(SCH_ERROR, "No more tokens");
+			return NULL;
+		}
 
-		if (sp)
-		    {
-			serv->nexts = sp;
-			sp->prevs = serv;
-		    }
+		SetBit(tok);
+		serv->ltok = tok;
+		sprintf(serv->tok, "%d", serv->ltok);
 		serv->bcptr = cptr;
-		SPRINTF(serv->tok, "%d", serv->ltok);
 		serv->lastload = 0;
 	    }
 	return cptr->serv;
@@ -235,9 +279,7 @@ aClient	*cptr;
 **	Decrease user reference count by one and realease block,
 **	if count reaches 0
 */
-void	free_user(user, cptr)
-Reg	anUser	*user;
-aClient	*cptr;
+void	free_user(anUser *user, aClient *cptr)
 {
 	aServer *serv;
 
@@ -252,7 +294,7 @@ aClient	*cptr;
 		    {
 			istat.is_away--;
 			istat.is_awaymem -= (strlen(user->away) + 1);
-			MyFree((char *)user->away);
+			MyFree(user->away);
 		    }
 		/*
 		 * sanity check
@@ -263,32 +305,31 @@ aClient	*cptr;
 		    {
 			char buf[512];
 			/*too many arguments for dumpcore() and sendto_flag()*/
-			SPRINTF(buf, "%#x %#x %#x %#x %d %d %#x (%s)",
-				user, user->invited, user->channel, user->uwas,
+			sprintf(buf, "%p %p %p %p %d %d %p (%s)",
+				(void *)user, (void *)user->invited,
+				(void *)user->channel, (void *)user->uwas,
 				user->joined, user->refcnt,
-				user->bcptr,
+				(void *)user->bcptr,
 				(user->bcptr) ? user->bcptr->name :"none");
 #ifdef DEBUGMODE
-			dumpcore("%#x user (%s!%s@%s) %s",
-				 cptr, cptr ? cptr->name : "<noname>",
-				 user->username, user->host, buf);
+			dumpcore("%p user (%s!%s@%s) %s",
+				(void *)cptr, cptr ? cptr->name : "<noname>",
+				user->username, user->host, buf);
 #else
 			sendto_flag(SCH_ERROR,
-				    "* %#x user (%s!%s@%s) %s *",
-				    cptr, cptr ? cptr->name : "<noname>",
-				    user->username, user->host, buf);
+				"* %p user (%s!%s@%s) %s *",
+				(void *)cptr, cptr ? cptr->name : "<noname>",
+				user->username, user->host, buf);
 #endif
 		    }
-		MyFree((char *)user);
+		MyFree(user);
 #ifdef	DEBUGMODE
 		users.inuse--;
 #endif
 	    }
 }
 
-void	free_server(serv, cptr)
-aServer	*serv;
-aClient	*cptr;
+void	free_server(aServer *serv, aClient *cptr)
 {
 	if (--serv->refcnt <= 0)
 	    {
@@ -296,9 +337,10 @@ aClient	*cptr;
 		    serv->bcptr || serv->user)
 		    {
 			char buf[512];
-			SPRINTF(buf, "%d %#x %#x %#x %#x (%s)",
-				serv->refcnt, serv->prevs, serv->nexts,
-				serv->user, serv->bcptr,
+			sprintf(buf, "%d %p %p %p %p (%s)",
+				serv->refcnt, (void *)serv->prevs,
+				(void *)serv->nexts, (void *)serv->user,
+				(void *)serv->bcptr,
 				(serv->bcptr) ? serv->bcptr->name : "none");
 #ifdef DEBUGMODE
 			dumpcore("%#x server %s %s",
@@ -309,7 +351,7 @@ aClient	*cptr;
 				    cptr, cptr ? cptr->name : "<noname>", buf);
 #endif
 		    }
-		MyFree((char *)serv);
+		MyFree(serv);
 	    }
 }
 
@@ -319,13 +361,10 @@ aClient	*cptr;
  * remove client **AND** _related structures_ from lists,
  * *free* them too. -krys
  */
-void	remove_client_from_list(cptr)
-Reg	aClient	*cptr;
+void	remove_client_from_list(aClient *cptr)
 {
 	checklist();
-	/* is there another way, at this point? */
-	if (cptr->hopcount == 0 || 
-		cptr->hopcount == 1 && IsServer(cptr))
+	if (cptr->hopcount == 0) /* is there another way, at this point? */
 		istat.is_localc--;
 	else
 		istat.is_remc--;
@@ -365,6 +404,7 @@ Reg	aClient	*cptr;
 			cptr->serv->user = NULL;
 		    }
 
+		ClearBit(cptr->serv->ltok);
 		/* decrement reference counter, and eventually free it */
 		cptr->serv->bcptr = NULL;
 		free_server(cptr->serv, cptr);
@@ -393,8 +433,7 @@ Reg	aClient	*cptr;
 /*
  * move the client aClient struct before its server's
  */
-void	reorder_client_in_list(cptr)
-aClient	*cptr;
+void	reorder_client_in_list(aClient *cptr)
 {
     if (cptr->user == NULL && cptr->service == NULL)
 	    return;
@@ -438,8 +477,7 @@ aClient	*cptr;
  * in this file, shouldnt they ?  after all, this is list.c, isnt it ?
  * -avalon
  */
-void	add_client_to_list(cptr)
-aClient	*cptr;
+void	add_client_to_list(aClient *cptr)
 {
 	/*
 	 * since we always insert new clients to the top of the list,
@@ -465,9 +503,7 @@ aClient	*cptr;
 /*
  * Look for ptr in the linked listed pointed to by link.
  */
-Link	*find_user_link(lp, ptr)
-Reg	Link	*lp;
-Reg	aClient *ptr;
+Link	*find_user_link(Link *lp, aClient *ptr)
 {
 	if (ptr)
 		for (; lp; lp = lp->next)
@@ -476,9 +512,7 @@ Reg	aClient *ptr;
 	return NULL;
 }
 
-Link  *find_channel_link(lp, ptr)
-Reg   Link    *lp;
-Reg   aChannel *ptr; 
+Link  *find_channel_link(Link *lp, aChannel *ptr)
 { 
 	if (ptr)
 		for (; lp; lp = lp->next)
@@ -499,15 +533,33 @@ Link	*make_link()
 	return lp;
 }
 
-void	free_link(lp)
-Reg	Link	*lp;
+invLink	*make_invlink()
 {
-	MyFree((char *)lp);
+	Reg	invLink	*lp;
+
+	lp = (invLink *)MyMalloc(sizeof(invLink));
+#ifdef	DEBUGMODE
+	links.inuse++;
+#endif
+	lp->flags = 0;
+	return lp;
+}
+
+void	free_link(Link *lp)
+{
+	MyFree(lp);
 #ifdef	DEBUGMODE
 	links.inuse--;
 #endif
 }
 
+void	free_invlink(invLink *lp)
+{
+	MyFree(lp);
+#ifdef	DEBUGMODE
+	links.inuse--;
+#endif
+}
 
 aClass	*make_class()
 {
@@ -520,10 +572,9 @@ aClass	*make_class()
 	return tmp;
 }
 
-void	free_class(tmp)
-Reg	aClass	*tmp;
+void	free_class(aClass *tmp)
 {
-	MyFree((char *)tmp);
+	MyFree(tmp);
 #ifdef	DEBUGMODE
 	classs.inuse--;
 #endif
@@ -549,12 +600,12 @@ aConfItem	*make_conf()
 	aconf->status = CONF_ILLEGAL;
 	aconf->pref = -1;
 	aconf->hold = time(NULL);
+	aconf->source_ip = NULL;
 	Class(aconf) = NULL;
 	return (aconf);
 }
 
-void	delist_conf(aconf)
-aConfItem	*aconf;
+void	delist_conf(aConfItem *aconf)
 {
 	if (aconf == conf)
 		conf = conf->next;
@@ -569,8 +620,7 @@ aConfItem	*aconf;
 	aconf->next = NULL;
 }
 
-void	free_conf(aconf)
-aConfItem *aconf;
+void	free_conf(aConfItem *aconf)
 {
 	del_queries((char *)aconf);
 
@@ -585,10 +635,12 @@ aConfItem *aconf;
 	if (aconf->passwd)
 		bzero(aconf->passwd, strlen(aconf->passwd));
 	if (aconf->ping)
-		MyFree((char *)aconf->ping);
+		MyFree(aconf->ping);
+	if (aconf->source_ip)
+		MyFree(aconf->source_ip);
 	MyFree(aconf->passwd);
 	MyFree(aconf->name);
-	MyFree((char *)aconf);
+	MyFree(aconf);
 #ifdef	DEBUGMODE
 	aconfs.inuse--;
 #endif
@@ -596,9 +648,7 @@ aConfItem *aconf;
 }
 
 #ifdef	DEBUGMODE
-void	send_listinfo(cptr, name)
-aClient	*cptr;
-char	*name;
+void	send_listinfo(aClient *cptr, char *name)
 {
 	int	inuse = 0, mem = 0, tmp = 0;
 
@@ -642,9 +692,7 @@ char	*name;
 #endif
 
 
-void	add_fd(fd, ary)
-int	fd;
-FdAry	*ary;
+void	add_fd(int fd, FdAry *ary)
 {
 	Debug((DEBUG_DEBUG,"add_fd(%d,%#x)", fd, ary));
 	if (fd >= 0)
@@ -652,9 +700,7 @@ FdAry	*ary;
 }
 
 
-int	del_fd(fd, ary)
-int	fd;
-FdAry	*ary;
+int	del_fd(int fd, FdAry *ary)
 {
 	int	i;
 
@@ -674,3 +720,4 @@ FdAry	*ary;
 	ary->highest--;
 	return 0;
 }
+

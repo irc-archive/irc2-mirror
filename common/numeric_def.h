@@ -17,6 +17,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+/* perhaps let's get rid of all comments here? :> */
 /*
  * -- Avalon -- 1 Sep 1992
  *
@@ -123,7 +124,13 @@
 #define	RPL_YOURHOST         002
 #define	RPL_CREATED          003
 #define	RPL_MYINFO           004
-#define	RPL_BOUNCE           005
+#define RPL_ISUPPORT         005
+#define	RPL_BOUNCE            10
+#define RPL_MAP               15
+#define RPL_MAPEND            17
+#define RPL_MAPSTART          18
+#define	RPL_YOURID            42
+#define RPL_SAVENICK          43
 
 /*
  * Errors are in the range from 400-599 currently and are grouped by what
@@ -232,9 +239,13 @@
 
 #define RPL_NOTOPIC          331
 #define RPL_TOPIC            332
+#define RPL_TOPIC_WHO_TIME   333
 
 #define RPL_INVITING         341
 #define	RPL_SUMMONING        342
+
+#define RPL_REOPLIST         344
+#define RPL_ENDOFREOPLIST    345
 
 #define RPL_INVITELIST       346
 #define RPL_ENDOFINVITELIST  347
@@ -288,7 +299,6 @@
 #define RPL_TRACESERVICE     207
 #define RPL_TRACENEWTYPE     208
 #define RPL_TRACECLASS       209
-#define RPL_TRACERECONNECT   210
 
 #define RPL_STATSLINKINFO    211
 #define RPL_STATSCOMMANDS    212
@@ -318,11 +328,11 @@
 #define	RPL_STATSPING        246
 #define	RPL_STATSBLINE       247
 #define	RPL_STATSDEFINE      248
-#define	RPL_STATSDEBUG	     249
+#define	RPL_STATSDEBUG       249
 #define	RPL_STATSDLINE       250
 
 #define	RPL_LUSERCLIENT      251
-#define RPL_LUSEROP          252
+#define	RPL_LUSEROP          252
 #define	RPL_LUSERUNKNOWN     253
 #define	RPL_LUSERCHANNELS    254
 #define	RPL_LUSERME          255
@@ -335,3 +345,5 @@
 #define	RPL_TRACEEND         262
 #define	RPL_TRYAGAIN         263
 
+#define	RPL_LOCALUSERS       265
+#define	RPL_GLOBALUSERS      266

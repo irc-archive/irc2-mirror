@@ -55,7 +55,7 @@
 
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "@(#)res_init.c	8.1 (Berkeley) 6/7/93";
-static char rcsid[] = "$Id: res_init.c,v 1.10.4.1 1999/11/03 22:00:00 kalt Exp $";
+static char rcsid[] = "$Id: res_init.c,v 1.13 2003/10/18 15:31:25 q Exp $";
 #endif /* LIBC_SCCS and not lint */
 
 #include "os.h"
@@ -89,18 +89,18 @@ static char rcsid[] = "$Id: res_init.c,v 1.10.4.1 1999/11/03 22:00:00 kalt Exp $
 #if defined(NEXT)
 #  define NI_PATH_RESCONF "/locations/resolver"
 #  define NI_TIMEOUT 10
-static int ircd_netinfo_res_init __P((int *haveenv, int *havesearch));
+static int ircd_netinfo_res_init (int *haveenv, int *havesearch);
 #endif
 
-static void ircd_res_setoptions __P((char *, char *));
+static void ircd_res_setoptions (char *, char *);
 
 #ifdef RESOLVSORT
 static const char sort_mask[] = "/&";
 #define ISSORTMASK(ch) (strchr(sort_mask, ch) != NULL)
 #ifdef INET6
-static u_int32_t ircd_net_mask __P((struct in_addr));
+static u_int32_t ircd_net_mask (struct in_addr);
 #else
-static u_int32_t ircd_net_mask __P((struct in_addr));
+static u_int32_t ircd_net_mask (struct in_addr);
 #endif
 #endif
 
@@ -139,8 +139,7 @@ struct __res_state ircd_res
  *
  * Return 0 if completes successfully, -1 on error
  */
-int
-ircd_res_init()
+int	ircd_res_init()
 {
 	register FILE *fp;
 	register char *cp, **pp;
@@ -414,9 +413,7 @@ ircd_res_init()
 	return (0);
 }
 
-static void
-ircd_res_setoptions(options, source)
-	char *options, *source;
+static	void	ircd_res_setoptions(char *options, char *source)
 {
 	char *cp = options;
 	int i;
@@ -465,9 +462,8 @@ ircd_res_setoptions(options, source)
 
 #ifdef RESOLVSORT
 /* XXX - should really support CIDR which means explicit masks always. */
-static u_int32_t
-ircd_net_mask(in)		/* XXX - should really use system's version of this */
-	struct in_addr in;
+/* XXX - should really use system's version of this */
+static	u_int32_t	ircd_net_mask(struct in_addr in)
 {
 	register u_int32_t i = ntohl(in.s_addr);
 
@@ -480,10 +476,7 @@ ircd_net_mask(in)		/* XXX - should really use system's version of this */
 #endif
 
 #ifdef	NEXT
-static int
-ircd_netinfo_res_init(haveenv, havesearch)
-	int *haveenv;
-	int *havesearch;
+static int	ircd_netinfo_res_init(int *haveenv, int *havesearch)
 {
     register	int n;
     void	*domain, *parent;
@@ -634,11 +627,11 @@ ircd_netinfo_res_init(haveenv, havesearch)
 }
 #endif	/* NEXT */
 
-u_int
-ircd_res_randomid()
+u_int	ircd_res_randomid()
 {
 	struct timeval now;
 
 	gettimeofday(&now, NULL);
 	return (0xffff & (now.tv_sec ^ now.tv_usec ^ getpid()));
 }
+

@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: support.c,v 1.17.2.7 2001/05/31 14:00:02 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: support.c,v 1.36 2004/01/02 15:35:00 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -35,8 +35,11 @@ static  char rcsid[] = "@(#)$Id: support.c,v 1.17.2.7 2001/05/31 14:00:02 chopin
 #endif
 #undef SUPPORT_C
 
-char	*mystrdup(s)
-char	*s;
+unsigned char minus_one[]={ 255, 255, 255, 255, 255, 255, 255, 255, 255,
+                                        255, 255, 255, 255, 255, 255, 255, 0};
+
+
+char	*mystrdup(char *s)
 {
 	/* Portable strdup(), contributed by mrg, thanks!  -roy */
 
@@ -55,9 +58,7 @@ char	*s;
 **			argv 9/90
 */
 
-char *strtoken(save, str, fs)
-char **save;
-char *str, *fs;
+char	*strtoken(char **save, char *str, char *fs)
 {
     char *pos = *save;	/* keep last position across calls */
     Reg char *tmp;
@@ -91,12 +92,11 @@ char *str, *fs;
 ** NOT encouraged to use!
 */
 
-char *strtok(str, fs)
-char *str, *fs;
+char	*strtok(char *str, char *fs)
 {
-    static char *pos;
+	static char *pos;
 
-    return strtoken(&pos, str, fs);
+	return strtoken(&pos, str, fs);
 }
 
 #endif /* HAVE_STRTOK */
@@ -108,8 +108,7 @@ char *str, *fs;
 **		   argv 11/90
 */
 
-char *strerror(err_no)
-int err_no;
+char	*strerror(int err_no)
 {
 	static	char	buff[40];
 	char	*errp;
@@ -119,7 +118,7 @@ int err_no;
 	if (errp == (char *)NULL)
 	    {
 		errp = buff;
-		SPRINTF(errp, "Unknown Error %d", err_no);
+		sprintf(errp, "Unknown Error %d", err_no);
 	    }
 	return errp;
 }
@@ -138,8 +137,7 @@ int err_no;
  **
  **/
 
-char	*myctime(value)
-time_t	value;
+char	*myctime(time_t value)
 {
 	static	char	buf[28];
 	Reg	char	*p;
@@ -155,14 +153,14 @@ time_t	value;
 ** mybasename()
 **	removes path from a filename
 */
-char *
-mybasename(path)
-char *path;
+char	*mybasename(char *path)
 {
 	char *lastslash;
 
-	if (lastslash = rindex(path, '/'))
+	if ((lastslash = rindex(path, '/')))
+	{
 		return lastslash + 1;
+	}
 	return path;
 }
 
@@ -172,14 +170,15 @@ char *path;
  *	     or the dotted-decimal notation for IPv4
  *           make sure the compressed representation (rfc 1884) isn't used.
  */
-char *inetntop(af, in, out, the_size)
-int af;
-const void *in;
-char *out;
-size_t the_size;
+char	*inetntop(int af, const void *in, char *out, size_t the_size)
 {
 	static char local_dummy[MYDUMMY_SIZE];
 
+	if (the_size > sizeof(local_dummy))
+	{
+		the_size = sizeof(local_dummy);
+	}
+	
 	if (!inet_ntop(af, in, local_dummy, the_size))
 	{
 		/* good that every function calling this one
@@ -188,7 +187,7 @@ size_t the_size;
 	}	
 	/* quick and dirty hack to give ipv4 just ipv4 instead of
 	 * ::ffff:ipv4 - Q */
-	if (af == AF_INET6 && IN6_IS_ADDR_V4MAPPED((struct in6_addr *)in))
+	if (af == AF_INET6 && IN6_IS_ADDR_V4MAPPED((const struct in6_addr *)in))
 	{
 		char	*p;
 
@@ -243,7 +242,8 @@ size_t the_size;
 #endif
 	    }
 	else
-		bcopy(local_dummy, out, 64);
+		bcopy(local_dummy, out,	the_size);
+
 	return out;
 }
 
@@ -262,9 +262,9 @@ int	inetpton(int af, const char *src, void *dst)
 		i = inet_pton(AF_INET, src, dst);
 
 		/* ugly hack */
-		memcpy(dst + 12, dst, 4);
+		memcpy((char *)dst + 12, dst, 4);
 		memset(dst, 0, 10);
-		memset(dst + 10, 0xff, 2);
+		memset((char *)dst + 10, 0xff, 2);
 		return i;
 	    }
 	return inet_pton(af, src, dst);
@@ -282,8 +282,7 @@ int	inetpton(int af, const char *src, void *dst)
 **	inet_ntoa --	its broken on some Ultrix/Dynix too. -avalon
 */
 
-char	*inetntoa(in)
-char	*in;
+char	*inetntoa(char *in)
 {
 	static	char	buf[16];
 	Reg	u_char	*s = (u_char *)in;
@@ -304,8 +303,7 @@ char	*in;
 **	inet_netof --	return the net portion of an internet number
 **			argv 11/90
 */
-int inetnetof(in)
-struct in_addr in;
+int inetnetof(struct in_addr in)
 {
     register u_long i = ntohl(in.s_addr);
     
@@ -326,9 +324,7 @@ struct in_addr in;
  * Ascii internet address interpretation routine.
  * The value returned is in network order.
  */
-u_long
-inetaddr(cp)
-	register const char *cp;
+u_long	inetaddr(const char *cp)
 {
 	struct in_addr val;
 
@@ -346,10 +342,7 @@ inetaddr(cp)
  * This replaces inet_addr, the return value from which
  * cannot distinguish between failure and a local broadcast address.
  */
-int
-inetaton(cp, addr)
-	register const char *cp;
-	struct in_addr *addr;
+int	inetaton(const char *cp, struct in_addr *addr)
 {
 	register u_long val;
 	register int base, n;
@@ -442,14 +435,15 @@ inetaton(cp, addr)
 #endif
 
 #if defined(DEBUGMODE) && !defined(CLIENT_COMPILE)
-void	dumpcore(msg, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11)
-char	*msg, *p1, *p2, *p3, *p4, *p5, *p6, *p7, *p8, *p9, *p10, *p11;
+void	dumpcore(char *msg, ...)
 {
 	static	time_t	lastd = 0;
 	static	int	dumps = 0;
 	char	corename[12];
 	time_t	now;
 	int	p;
+	va_list	va;
+	char	s[BUFSIZE];
 
 	now = time(NULL);
 
@@ -470,12 +464,15 @@ char	*msg, *p1, *p2, *p3, *p4, *p5, *p6, *p7, *p8, *p9, *p10, *p11;
 		kill(p, 9);
 	}
 	write_pidfile();
-	SPRINTF(corename, "core.%d", p);
+	sprintf(corename, "core.%d", p);
 	(void)rename("core", corename);
-	Debug((DEBUG_FATAL, "Dumped core : core.%d", p));
+	va_start(va, msg);
+	vsprintf(s, msg, va);
+	va_end(va);
+	Debug((DEBUG_FATAL, s));
 	sendto_flag(SCH_ERROR, "Dumped core : core.%d", p);
-	Debug((DEBUG_FATAL, msg, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,p11));
-	sendto_flag(SCH_ERROR, msg, p1, p2, p3, p4, p5, p6, p7, p8,p9,p10,p11);
+	Debug((DEBUG_FATAL, s));
+	sendto_flag(SCH_ERROR, s);
 	(void)s_die(0);
 }
 #endif
@@ -490,8 +487,7 @@ static	int	mindex = 0;
 #define	SZ_CH	(sizeof(char *))
 #define	SZ_ST	(sizeof(size_t))
 
-char	*MyMalloc(x)
-size_t	x;
+char	*MyMalloc(size_t x)
 {
 	register int	i;
 	register char	**s;
@@ -522,12 +518,10 @@ size_t	x;
 			mindex++;
 	    }
 	return ret + SZ_CHST;
-    }
+}
 
-char    *MyRealloc(x, y)
-char	*x;
-size_t	y;
-    {
+char    *MyRealloc(char *x, size_t y)
+{
 	register int	l;
 	register char	**s;
 	char	*ret, *cp;
@@ -573,13 +567,12 @@ size_t	y;
 			mindex++;
 	    }
 	return ret + SZ_CHST;
-    }
+}
 
-void	MyFree(x)
-char	*x;
+void	MyFree(void *p)
 {
 	size_t	i;
-	char	*j;
+	char	*j, *x = p;
 	u_char	k[4];
 	register int	l;
 	register char	**s;
@@ -609,8 +602,7 @@ char	*x;
 		Debug((DEBUG_MALLOC, "%#x !found", x));
 }
 #else
-char	*MyMalloc(x)
-size_t	x;
+char	*MyMalloc(size_t x)
 {
 	char *ret = (char *)malloc(x);
 
@@ -626,10 +618,8 @@ size_t	x;
 	return	ret;
 }
 
-char	*MyRealloc(x, y)
-char	*x;
-size_t	y;
-    {
+char	*MyRealloc(char *x, size_t y)
+{
 	char *ret = (char *)realloc(x, y);
 
 	if (!ret)
@@ -642,7 +632,7 @@ size_t	y;
 # endif
 	    }
 	return ret;
-    }
+}
 #endif
 
 
@@ -658,9 +648,7 @@ size_t	y;
 **	dgets(x,y,0);
 ** to mark the buffer as being empty.
 */
-int	dgets(fd, buf, num)
-int	fd, num;
-char	*buf;
+int	dgets(int fd, char *buf, int num)
 {
 	static	char	dgbuf[8192];
 	static	char	*head = dgbuf, *tail = dgbuf;
@@ -756,97 +744,10 @@ dgetsreturnbuf:
 	goto dgetsagain;
 }
 
-#if ! USE_STDARG
-/*
- * By Mika
- */
-int	irc_sprintf(outp, formp,
-		    i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11)
-char	*outp;
-char	*formp;
-char	*i0, *i1, *i2, *i3, *i4, *i5, *i6, *i7, *i8, *i9, *i10, *i11;
-{
-	/* rp for Reading, wp for Writing, fp for the Format string */
-	/* we could hack this if we know the format of the stack */
-	char	*inp[12];
-	Reg	char	*rp, *fp, *wp, **pp = inp;
-	Reg	char	f;
-	Reg	long	myi;
-	int	i;
-
-	inp[0] = i0;
-	inp[1] = i1;
-	inp[2] = i2;
-	inp[3] = i3;
-	inp[4] = i4;
-	inp[5] = i5;
-	inp[6] = i6;
-	inp[7] = i7;
-	inp[8] = i8;
-	inp[9] = i9;
-	inp[10] = i10;
-	inp[11] = i11;
-
-	/*
-	 * just scan the format string and puke out whatever is necessary
-	 * along the way...
-	 */
-
-	for (i = 0, wp = outp, fp = formp; (f = *fp++); )
-		if (f != '%')
-			*wp++ = f;
-		else
-			switch (*fp++)
-			{
- 			/* put the most common case at the top */
-			/* copy a string */
-			case 's':
-				for (rp = *pp++; (*wp++ = *rp++); )
-					;
-				--wp;
-				/* get the next parameter */
-				break;
-			/*
-			 * reject range for params to this mean that the
-			 * param must be within 100-999 and this +ve int
-			 */
-			case 'd':
-			case 'u':
-				myi = (long)*pp++;
-				if ((myi < 100) || (myi > 999))
-				    {
-					(void)sprintf(outp, formp, i0, i1, i2,
-						      i3, i4, i5, i6, i7, i8,
-						      i9, i10, i11);
-					return -1;
-				    }
-
-				*wp++ = (char)(myi / 100 + (int) '0');
-				myi %= 100;
-				*wp++ = (char)(myi / 10 + (int) '0');
-				myi %= 10;
-				*wp++ = (char)(myi + (int) '0');
-				break;
-			case 'c':
-				*wp++ = (char)(long)*pp++;
-				break;
-			case '%':
-				*wp++ = '%';
-				break;
-			default :
-				(void)sprintf(outp, formp, i0, i1, i2, i3, i4,
-					      i5, i6, i7, i8, i9, i10, i11);
-				return -1;
-			}
-	*wp = '\0';
-	return wp - outp;
-}
-#endif
-
 /*
  * Make 'readable' version string.
  */
-char *make_version()
+char	*make_version(void)
 {
 	int ve, re, mi, dv, pl;
 	char ver[15];
@@ -864,15 +765,46 @@ char *make_version()
 	return mystrdup(ver);
 }
 
+#ifndef CLIENT_COMPILE
+/* Make RPL_ISUPPORT (005) numeric contents */
+char	**make_isupport(void)
+{
+	char **tis;
+	
+	tis = (char **) MyMalloc(3 * sizeof(char *));
+	
+	/* Warning: There must be up to 12 tokens in each string */
+	tis[0] = (char *) MyMalloc(BUFSIZE);
+	sprintf(tis[0],
+		"RFC2812 PREFIX=(ov)@+ CHANTYPES=#&!+ MODES=%d "
+		"CHANLIMIT=#&!+:%d "
+		"NICKLEN=%d TOPICLEN=%d KICKLEN=%d MAXLIST=beI:%d "
+		"CHANNELLEN=%d IDCHAN=!:%d CHANMODES=beIR,k,l,imnpstaqr",
+		MAXMODEPARAMS, MAXCHANNELSPERUSER,
+		ONICKLEN, TOPICLEN, TOPICLEN, MAXBANS, CHANNELLEN, CHIDLEN);
+
+	tis[1] = (char *) MyMalloc(BUFSIZE);
+	sprintf(tis[1],	"PENALTY FNC EXCEPTS=e INVEX=I CASEMAPPING=rfc1459 "
+		"CHARSET=utf-8");
+	if (networkname)
+	{
+		strcat(tis[1], " NETWORK=");
+		strcat(tis[1], networkname);
+	}
+
+	tis[2] = NULL;
+
+	return tis;
+}
+#endif
+
 #ifndef HAVE_TRUNCATE
 /* truncate: set a file to a specified length
  * I don't know of any UNIX that doesn't have truncate, but CYGWIN32 beta18
  * doesn't have it.  -krys
  * Replacement version from Dave Miller.
  */
-int truncate(path, length)
-const char *path;
-off_t length;
+int	truncate(const char *path, off_t length)
 {
 	int fd, res;
 	fd = open(path, O_WRONLY);
@@ -892,8 +824,7 @@ off_t length;
  */
 #define HBUFSIZE 4096
 
-struct hostent *solaris_gethostbyname(name)
-     const char *name;
+struct hostent	*solaris_gethostbyname(const char *name)
 {
   static struct hostent hp;
   static char buf[HBUFSIZE];
@@ -957,9 +888,7 @@ typedef unsigned char byte;
 #ifdef  __GNUC__
 __inline
 #endif
-static int
-memcmp_bytes (a, b)
-     op_t a, b;
+static int	memcmp_bytes(op_t a, op_t b)
 {
   long int srcp1 = (long int) &a;
   long int srcp2 = (long int) &b;
@@ -983,11 +912,8 @@ memcmp_bytes (a, b)
 #ifdef	__GNUC__
 __inline
 #endif
-static int
-memcmp_common_alignment (srcp1, srcp2, len)
-     long int srcp1;
-     long int srcp2;
-     size_t len;
+static int	memcmp_common_alignment(long int srcp1, long int srcp2,
+			size_t len)
 {
   op_t a0, a1;
   op_t b0, b1;
@@ -1070,11 +996,8 @@ memcmp_common_alignment (srcp1, srcp2, len)
 #ifdef	__GNUC__
 __inline
 #endif
-static int
-memcmp_not_common_alignment (srcp1, srcp2, len)
-     long int srcp1;
-     long int srcp2;
-     size_t len;
+static int	memcmp_not_common_alignment(long int srcp1, long int srcp2,
+		size_t len)
 {
   op_t a0, a1, a2, a3;
   op_t b0, b1, b2, b3;
@@ -1172,11 +1095,7 @@ memcmp_not_common_alignment (srcp1, srcp2, len)
   return 0;
 }
 
-int
-irc_memcmp (s1, s2, len)
-     const __ptr_t s1;
-     const __ptr_t s2;
-     size_t len;
+int	irc_memcmp(const __ptr_t s1, const __ptr_t s2, size_t len)
 {
   op_t a0;
   op_t b0;
@@ -1233,3 +1152,4 @@ irc_memcmp (s1, s2, len)
   return 0;
 }
 #endif /* HAVE_MEMCMP && MEMCMP_BROKEN */
+

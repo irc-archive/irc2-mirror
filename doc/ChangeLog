@@ -1,64 +1,111 @@
-2.10.3p7
+2004-02-13  Jakub Vlasek
 
-2004-05-24  Piotr Kucharski
+	* s_serv.c/dump_map(): Make *prevserver NULL after processing it.
+	* s_serv.c/m_squit(): Handle SQUIT sent by remote server. Send SID
+	  to 2.11 servers in SQUIT message.
+	* s_misc.c/exit_client(): Send SQUIT to remote server when closing
+	  link.
 
-	All backported from 2.11 tree:
-	* channel.c/set_mode(): use supplied key when removing, don't change it
-          before sending out to the one on the server.
+2004-02-13  Piotr Kucharski
 
-2004-05-09  Piotr Kucharski
-
-	All backported from 2.11 tree:
-	* list.c/remove_client_from_list(): negative remote client count bug,
-	  as directly connected servers have hopcount of 1, not 0.
-	* s_conf.c/match_ipmask(): show original mask in error.
-	* s_bsd.c/start_iauth(): send data to iauth in big chunks to save on
-	  metadata overhead.
-	* config.h.dist: check for empty TIMEDKLINES define.
-	* s_misc.c/initstats(): set localc, not remc.
-	* s_misc.c/read_motd(): correctly parse motd file without ending \n.
-	* res.c/init_resolver(): a hack to allow resolving inside FreeBSD jail.
-	* ircd.c/try_connections(): if no conf suitable for AC found, disable
-	  AC temporarily.
-	* s_misc.c/exit_client(): if remote server matching C-line exits and
-	  AC is temporarily disabled, enable it.
-	* s_bsd.c/close_connection(): if AC was temporarily disabled and local
-	  connection in state Handshake or Connecting state exits, enable AC.
-
-2004-03-01  Piotr Kucharski
-
-	* s_serv.c/m_squit(): "by whom" to squit comment was buggy.
-
-2.10.3p6
-
-2004-02-25  Piotr Kucharski
-
-	All backported from 2.11 tree:
-	* channel.c/m_part(): canonize list of channels first; move comment
-	  out of strtoken loop; allow empty comment, don't force it to be
-	  user nick.
-	* channel.c/m_part(): buffer overflow resulting in network desync.
-	* channel.c/m_kick(): "KICK # me,other" caused desync on remote servers:
-	  it was sent in two consecutive KICKs, first one removed client from
-	  channel and second one thus failed. No more "NJOIN protocol error".
-	* s_user.c/m_quit(): enclose user quits within double quotes.
-	* s_serv.c/m_squit(): add "by whom" to squit comment.
-	* s_serv.c/m_stats(): cleanup of what to check_link (RPL_TRYAGAIN).
-	* s_serv.c: new function report_listeners() showing P:lines (IP, port)
-	  and number of clients using it.
-	* s_serv.c: new stats (P) for report_listeners().
-	* s_user.c/m_pass(): don't copy PASS params to info when issued
-	  after USER or SERVICE.
-	* parse.c, msg_def.h: add "POST" command being alias for "QUIT"
-	  to cut http proxy abuse (idea from ircu).
-	* s_bsd.c/add_local_domain(): fix localhost bug introduced in 2.10.3p5.
-	* s_bsd.c/add_local_domain(): remove ending dot from hname (so it
-	  won't assume later it already is fqdn).
-	* s_bsd.c/get_my_name(): dot check not needed, add_local_domain does it.
+	* INSTALL.*, 2.11-New, RELEASE_NOTES, example.conf: update.
 	* channel.c/m_join(): do not return "Too many channels" when client
 	  tries to join channel he is already on.
+	* s_bsd.c/add_local_domain(): fix localhost bug introduced in 2.10.3p5.
+	* s_user.c/m_unick(): bug appearing in whowas (after squit users had
+	  improper info in server field).
+	* version.c.SH.in: INFO update.
+	* s_conf.c, chkconf.c: removed U:lines.
+	* s_err.c, s_user.c/save_user(): added UID to RPL_SAVENICK.
+
+2004-02-12  Piotr Kucharski
+
+	* s_user.c, s_debug.c, config.h.dist: removed OPER_REMOTE 
+	  (now default), though left possibility to define NO_OPER_REMOTE,
+	  for those who need it.
+	* channel.c/remove_user_from_channel(): record reop time for all
+	  channels, not only !chans.
+	* s_misc.c, s_misc_ext.h: myrand() and mysrand() added.
+	* channel.c/collect_channel_garbage(): a bit rewritten, and made
+	  aware of IsSplit not to call reop_channel during split.
+	* channel.c/reop_channel(): got rid of "small +r !channels get
+	  all clients reopped", unified reop mechanism for both !channels
+	  (+R and +r) and #channels (+R), made it more random and of course
+	  matching +R.
+	* ircd.c/main(), s_conf.c/rehash(): init srand.
+
+2004-02-11  Piotr Kucharski
+
+	* parse.c: unick requires registered connection (msgtab).
+	* s_serv.c/m_eob(): show also server name in debug.
+	* s_user.c/m_nick(): allow "NICK 0" during registration.
+
+2004-02-10  Piotr Kucharski
+
+	* s_service.c/m_service(): lacking parameter added.
+	* channel.c/match_modeid(): bug in matching username part.
+
+2004-02-09  Piotr Kucharski
+
+	* s_conf.c/initconf(), s_serv.c: swap 'o' and 'O' to match umode.
+	* ircd.c/setup_me(): SetEOB(me).
+	* s_misc.c/check_split(): remove "+1", as &me is SetEOB now.
+	* s_serv.c/m_version(), s_err.c: add SID to version output.
+	* struct_def.h: TOPICLEN increased.
+	* config.h.dist: MCPU increased.
+	* RELEASE_NOTES: docs.
+	* s_conf.c: erroneous IsIllegal() traps removed.
+	* res.c/bad_hostname(): isalnum is enough.
+	* s_serv.c/m_server(): move some SID checks earlier.
+	* s_conf.c/find_conf_host_sid(): match SID mask (2nd field) in H:.
+	* s_serv.c/m_server(): check new server for SID mask match.
+	* s_serv.c/report_configured_links(): show SID mask field in STATS H.
+
+2004-02-08  Piotr Kucharski
+
+	* iauth.c: new function write_pidfile().
+	* Makefile.in: added IAUTHPID_PATH.
+	* s_user.c/m_quit(): enclose local users' supplied quit reasons with
+	  double quotes; get rid of default "I Quit" message.
+	* s_misc.c/exit_client(): take advantage of double quotes enclosing.
+	* s_misc.c/exit_client(): do not call check_split() every client
+	  quitting (leave it only every server quitting).
+	* s_misc.c/check_split(): tiny unsigned bug.
+	* channel.c/m_join(): no-op-on-split.
+
+2004-01-20  Piotr Kucharski
+
+	* channel.c/set_mode(): disallow +R from clients.
+
+2004-01-02  Piotr Kucharski
+
+	* reverting Kurt's changes #2 and #3 from 2004-01-01 (too much
+	  champagne?)
 	* channel.c/m_join(): allowing to join +q channels regardless
 	  of MAXCHANNELSPERUSER.
+
+2004-01-01  Jakub Vlasek
+
+	* s_serv.c/do_emulated_eob(): The value of istat.is_eobservers should
+	  have been incremented before SetEOB().
+	
+2004-01-01  Kurt Roeckx
+
+	* support.c/make_isupport(): Replace MAXCHANNEL by CHANLIMIT.
+	* channel.c:add_user_to_channel(), remove_user_from_channel()
+		m_join(): Don't count &-channels for MAXCHANNELSPERUSER,
+                instead of not counting +q channels.
+	* channel.c: m_join(): Allow joining &-channels even when
+		MAXCHANNELSPERUSER already reached.
+	* support.c/make_isupport(): Replace CHIDLEN by IDCHAN.
+
+2003-12-24  Kurt Roeckx
+
+	* config.guess, config.sub: Newer versions.
+
+2003-12-12  Piotr Kucharski
+
+	* channel.c/match_modeid(): bug in nick check (noted by fiction).
 
 2003-12-09  Piotr Kucharski
 
@@ -67,62 +114,962 @@
 	* s_bsd.c/close_connection(): when nextconnect was 0, it was not
 	  reset when server closed connection. This bug made autoconnect
 	  stop forever.
+	* s_bsd.c/close_connection(): added another sanity check for the
+	  benefit of nextconnect.
+	  
+2003-11-13  Piotr Kucharski
 
-2003-10-20  Piotr Kucharski
+	* s_user.c/m_pass(): don't copy PASS params to info when issued 
+	  after USER or SERVICE (noted by fiction).
 
-	* res.c/bad_hostname(): isalnum() macro allowed too many chars,
-	  restricting to exact subset of RFC1034: a-zA-Z0-9.
+2003-11-03  Piotr Kucharski
 
-2.10.3p5
+	* struct_def.h: MODE_REOPLIST was added, MODE_FLAGS needed updating.
+
+2003-10-22  Jakub Vlasek
+
+	* hash.c/m_hash(): Spelling fixes, hash_channel_name() takes 3 params
+	  - removed the hashfunc from HashTables[].
+
+2003-10-19  Kurt Roeckx
+
+	* support.c/make_isupport(): Limit to sending 12 tokens in
+	  005 numeric.
+
+2003-10-18  Piotr Kucharski
+
+	* ircd.c: new function delayed_kills() for checking kill-lines.
+	* ircd.c/io_loop(): add delayed_kills next to check_pings().
+	* s_conf.c/rehash(): add "queue" of rehash (when we get rehash
+	  while previous delayed_kills did not finish yet).
+	* s_conf.c/find_kill(), s_conf_ext.h: change param name, reversed
+	  its meaning.
+	* s_user.c/register_user(): find_kill param fix 
+	* s_misc.c: removed old version of DK.
+	* config.h.dist: added MAXDELAYEDKILLS define, removed DELAYED_KILLS.
+
+2003-10-18  Kurt Roeckx
+
+	* os.h: Removed the defenition of in6addr_any.
+	* *.c: Remove all K&R syntax.
+	* channel.c, str.c, mod_socks.c, list.c, s_id.c, send_ext.h, hash.c,
+	  ircd.c, s_misc.c, s_serv.c, irc.c, s_bsd.c, parse.c, iauth.c
+	  ircdwatch.c, mkpasswd.c, s_service.c, s_misc_ext.hi, nameser_def.h,
+	  res_mkquery.c, s_auth.c, os.h, send.c, support.c:
+	  Fix warnings.
+
+2003-10-18  Jakub Vlasek
+	
+	* bsd.c, config.h.dist: Removed NOWRITEALARM.
+	* dbuf.c: Removed VALLOC.
+	* s_bsd.c: Removed SUN_GSO_BUG.
+	* s_debug.c: Removed SUN_GSO_BUG, VALLOC, NPATH and NOWRITELALARM
+	  from serveropts[]. (Not used anymore)
+	* s_debug.c: Added TOPIC_WHO_TIME to serveropts[].
+
+2003-10-18  Jakub Vlasek
+
+	* msg_def.h: Added MSG_MAP.
+	* numeric_def.h, s_err.c: Added MSG_MAPSTART, MSG_MAP and MSG_MAPEND.
+	* parse.c, s_serv_ext.h: Added m_map.
+	* s_serv.c: Added m_map(), dump_map() and dump_sid_map().
+	* s_serv.c/m_trace(): Allow tracing of a SID.
+	
+2003-10-17  Kurt Roeckx
+
+	* hash.c, list.c, s_id.c, s_serv.c, s_service.c: Fix warnings
+	  (from Robbert Muller)
+	* s_service.c/sendnum_toone(): Correctly send modes to the services
+	  that requested it. (From Robbert Muller)
+	* ircd.c/main(): cygwin (1.5?) can now use iauth.
+	* s_bsd.c/daemonize(): Go in the background on cygwin too.
+	* dbuf_ext.h, send_ext.h, class_ext.h, hash_ext.h, ircd.c, ircd_ext.h,
+	  list_ext.h, res_ext.h, res_init_ext.h, s_auth_ext.h, s_bsd.c,
+	  s_bsd_ext.h, s_conf_ext.h, s_id_ext.h, s_misc_ext.h, whowas_ext.h:
+	  Fix compile warnings (From Robbert Muller)
+	* ircd.c, ircd_ext.h: Get rid of PROFIL.
+	* a_conf_ext.h, a_io_ext.h, a_log_ext.h, mkpasswd.c, support_ext.h,
+	  channel.c, chkconf.c: Fix compile warnings (From Robbert Muller)
+	* c_msg_ext.h, edit_ext.h, irc_ext.h, screen_ext.h: Fix compile
+	  warnings (From Robbert Muller)
+	* support.c, support_ext.h: Convert dumpcore() to use stdarg.
+	* *_ext.h, os.h: Get rid of __P().
+
+
+2003-10-15  Kurt Roeckx
+
+	* parse.c, send_ext.h, ircdwatch.c, iauth.c, mod_lhex.c, mod_pipe.c,
+	  mod_rfc931.c, mod_socks.c, channel.c, ircd.c, list.c, s_misc.c:
+	  Fix some warnings (from Robbert Muller)
+
+2003-10-14  Kurt Roeckx
+
+	* send.c, a_conf.c, c_conf_ext.h, s_serv.c: More warning fixes (from
+	  Robbert Muller)
+	* send.c, ircdwatch.c, a_log.c, mod_rfc931.c, mod_socks.c, chkconf.c:
+	  Even more warning fixes (from Robbert Muller)
 
 2003-10-13  Piotr Kucharski
 
-	* mod_socks.c: deal with broken socks4 proxies.
-	* mod_socks.c: backported megaparanoid option.
+	* res.c/proc_answer(): possible buffer overflow.
+	* res.c/get_res() : "wrong type" error for ipv4 server names 
+	  on ipv6 servers.
+	* res.c/do_query_number(), config.h.dist: SIXBONE_HACK.
+	* config.h.dist: CLONE_CHECK is now default, not SLOW_ACCEPT.
+	* s_user.c/m_nick(): username and hostname were erroneously empty
+	  in legal collisions.
+	* s_conf.c: some CONF_RCLIENT missing.
+	* s_bsd.c/polludp(): remove confusing "udp port recvfrom()" message.
+	* s_bsd.c/inetport(): check ipmask validity.
+
+2003-10-13  Kurt Roeckx
+
+	* match_ext.h, send_ext.h, c_conf.c, channel.c, hash.c, ircd.c, res.c,
+	  s_auth.c, s_bsd.ci, s_bsd_ext.h, s_conf.c, s_conf_ext.h, s_debug.c,
+	  s_err.c, s_misc.c, s_send.c, s_serv.c, s_user.c: Fix compiler
+	  warnings and other general cleanup (From Robbert Muller)
+	* struct_def.h, channel.c, s_misc.c: Clean up the invite linked list.
 
 2003-10-12  Piotr Kucharski
 
-	* s_bsd.c/inetport(): report_error() should not be used.
-	* s_user.c/m_nick(): empty user and host in collisions.
-	* res.c/proc_answer(): possible buffer overflow.
-	* s_conf.c: erroneous IsIllegal() traps removed.
-	* res.c/get_res(): "Wrong reply type looking up..." fixed
-	  for IPv4 names on INET6 enabled servers.
-
-2.10.3p4
-
-2003-10-11  Piotr Kucharski
-
-	* channel.c/m_join(): buffer overflow (reported by cras, exploited ;>
-	  by DE opers (Rince, f2u, morrow)).
-	* s_user.c/m_nick(): check proper param count from server (backport).
-	* send.c/sendto_flog(): log SYSLOG_CONN/SYSLOG_USERS properly
-	  (reported by Francesco).
-	* s_err.c: list bug (backport).
-	* hash.c: %Full typo.
-	* s_bsd.c/match_ipmask(): check if mask contains numbers (backport).
-	* s_bsd.c: check for class being legal (backport).
-	* s_serv.c/m_stats(): stats l remoteclient bug (backport).
-	* res.c/do_query_name(), s_bsd.c/add_local_domain(): possible buffer
-	  overflow with non-fqdn host and local domain (backport).
-	* res.c: overwriting type
-	* res.c: answer type not matching request (backport).
-	* res.c, config.dist: RESTRICT_HOSTNAMES (backport).
-	* config.h.dist: make CLONE_CHECK default, not SLOW_ACCEPT.
-	* buildm4: i:line typo, P:line enhancement (backport).
-	* s_conf.c: delist config problem (backport).
-	* s_conf.c: some CONF_RCLIENT missing (backport).
-	* s_conf.c/find_kill(): match restricted users (backport).
-	* s_bsd.c: some CYGWIN defines (backport).
-	* s_bsd.c: use IsServer() in c/n lookup for reconnect (backport).
-	* s_bsd.c/polludp(): sometimes garbage IP was shown (backport).
-	* res.c/do_query_number(), config.h.dist: SIXBONE_HACK.
-	* a_conf.c/conf_err(): exit iauth on config error (backport).
-	* s_user.c/m_oper(): services were getting reversed local/global
-	  oper status (backport).
-	* ircd.c: core on gdb detach on FreeBSD (backport).
+	* channel.c/m_join(): join overflow bug.
 	* s_auth.c/sendto_iauth(): iauth failing to restart (patch from Q).
 	
+2003-09-30  Piotr Kucharski
+
+	* chkconf.c/initconf(): 'N' flag to I:line should be recognized too
+	  (noted by fiction).
+	* struct_def.h, chkconf.c/initconf(), s_conf.c/iline_flags_parse(),
+	  iline_flags_to_string(), attach_Iline(), s_user.c/register_user():
+	  add 'F' (fallthrough) flag to I:lines (from fiction).
+	* struct_def.h: add EXITC_BADPASS.
+
+2003-08-12  Piotr Kucharski
+
+	* res.c/do_query_name(), s_bsd.c/add_local_domain(): fix possible
+	  buffer overflow (noted by cras).
+
+2003-08-10  Piotr Kucharski
+
+	* s_serv.c/m_eob(): sid was not initialized, use sptr->serv->sid.
+	* s_serv.c/m_eob(): deal with protocol errors (eob coming from 2.10).
+
+2003-08-08  Piotr Kucharski
+
+	* common_def.h: added isscandinavian() macro checking ~^{}[]|\ chars.
+	* s_user.c/do_nick_name(): move check to isscandinavian() macro.
+	* s_user.c/m_nick(): do do_nick_name() earlier, not to broadcast
+	  ":old NICK old" message.
+	* channel.c: added convert_scandinavian() function to change
+	  chars {}\~ to []|^ in channel names in commands from local clients
+	  or 2.10 servers; this will allow dropping scandinavian origin
+	  in next version.
+	* channel.c: m_mode(), m_join(), m_njoin(), m_part(), m_kick(),
+	  m_topic(), m_invite(), m_names(): added convert_scandinavian() in
+	  proper places (I hope no important function is missing).
+	* channel.c/names_channel(): using strlen for checking if server is
+	  bugus, proper is finding dot.
+	* struct_def.h: increased NICKLEN to 12, added ONICKLEN=9 for keeping
+	  compatibility.
+	* support.c/make_isupport(), s_debug.c/send_defines(): use ONICKLEN,
+	  as this is the nicklen allowed from clients.
+	* s_user.c/do_nick_name(): allow ONICKLEN long nicks from clients
+	  and NICKLEN long from servers.
+
+2003-08-07  Piotr Kucharski
+
+	* s_user.c/m_nick(): move around some code and add checking for
+	  "NICK 0" or "NICK UID" from client already having UID nick and
+	  discard it.
+	* s_user.c/do_nick_name(): disallow {}\ in nicks, so we can later
+	  drop scandinavian origin in match().
+	* match.c: change upper- and lowertable, so {|}~ is no longer
+	  lowercase of [\]^.
+	* match.c: make ~ not valid in nicknames (however it was
+	  forbidden in other place).
+
+2003-08-06  Piotr Kucharski
+
+	* numeric_def.h, struct_def.h, support.c/make_isupport(),
+	  channel.c/send_channel_modes(),add_modeid(),send_mode_list(), 
+          set_mode(), s_err.c: introduced R (reop) list (no reop yet).
+
+2003-08-05  Piotr Kucharski
+
+	* channel.c/can_join(): send a notice also when overriding limit.
+
+2003-07-29  Piotr Kucharski
+
+	* s_service.c/m_service(): removed metric variable; moved filling
+	  hopcount earlier, so it does not break later in free_client(),
+	  where it is used for local client check (noted by jv).
+	* s_service.c/m_service(): changed !sp to sp==NULL, as the former
+	  breaks in DEBUGMODE.
+
+2003-07-28  Jakub Vlasek
+
+	* struct_def.h: Added byuid to struct Server. Stores UID of remote
+	  oper initiating the connection.
+	* send.c/send_queued(), ircd.c/check_pings(), s_bsd.c/report_error(),
+	  s_serv/m_server_estab(): Report the error to remote oper who
+	  initiated server connection.
+
+2003-07-24  Piotr Kucharski
+
+	* s_id.c/next_uid(): changed pow() to #define constant; added
+	  check if we need to find_uid() over newly found cid (not
+	  needed if it's the first loop of cids).
+
+2003-07-19  Piotr Kucharski
+
+	* s_user.c/m_user(): changed unused (since 2.9.x) FLAGS_RILINE
+	  to FLAGS_RESTRICT.
+	* send.c/sendto_match_butone(),sendto_match_butone_old(): fixed
+	  comments.
+	* common/struct_def.h: added MATCH_OLDSYNTAX
+	* s_user.c/m_message(): accept old syntax of $/#-mask, correctly
+	  send both old and new syntax to old and new servers.
+
+2003-07-18  Piotr Kucharski
+
+	* irc_sprintf.c, irc_sprintf_body.c, irc_sprintf_ext.h: various
+	  cleanups, typo fixes (from Zobo).
+	* struct_def.h: removed unused flags, some cleanups.
+	* s_bsd.c/close_connection(): schedule quick reconnect for a good
+	  link only when cptr was aServer.
+	* doc/ cleanup.
+	* added ISO-3166-1 file (from NetBSD) for SID allocations.
+	* struct_def.h: changed SIDLEN to 4. Yes, it's a waste, but at
+	  least it takes off the burden of assigning SIDs. ISO-3166 now!
+	  Also enlarged tok in Server struct to hold long tokens.
+	* list.c: increased MAX210SERVERS to 46656.
+
+2003-06-22  Kurt Roeckx
+
+	* channel.c/m_join: Send RPL_TOPIC before RPL_TOPIC_WHO_TIME.
+	* channel.c, s_send.c: Fix spelling of the anonymous user.
+	* channel.c/m_join: Now always use NJOIN between servers.
+
+2003-06-18  Kurt Roeckx
+
+	* Update RPL_ISUPPORT to the latest draft.
+
+2003-06-03  Piotr Kucharski
+
+	* s_user.c/m_nick(): bad param count NICK coming from server must
+	  be dealt with.
+
+2003-04-13  Piotr Kucharski
+
+	* channel.c/set_mode(): 'break' misplaced (reported by BitKoenig).
+
+2003-02-22  Kurt Roeckx
+
+	* os.h: Always include resolv.h when found.
+
+2003-02-16  Jakub Vlasek
+
+        * struct_def.h: Added IsSplit() macro. Added split variables to
+          struct iconf_t.
+        * s_debug.c: Report administrative state of autoconnect and split
+          values in stats d.
+        * s_misc.c,s_misc_ext.h: Added check_split().
+        * s_misc.c/exit_client(): Added split detection.
+        * s_misc.c/initruntimeconf(): Initialise split values.
+        * s_serv.c/m_eob(), do_emulated_eob(): Call check_split().
+        * s_user.c/register_user(): Call check_split(), send split notice
+          to users upon connect.
+
+2003-02-15  Piotr Kucharski
+
+	* s_bsd.c/polludp(): sometimes garbage IP was shown in error message.
+	* send.c/sendto_match_butone(): don't send to old servers.
+	* send.c: new function sendto_match_butone_old() for sending $#/$$
+	  mask message to old servers only.
+	* s_user.c/m_message(): use sendto_match_butone_old().
+	* struct_def.h: added ST_NOTUID() define.
+	* s_misc.c, s_send.c, s_serv.c, s_service.c, s_user.c, send.c:
+	  we miserably forgot about De Morgan laws, changing all
+	  !ST_UID() to ST_NOTUID(); luckily in most, if not every, places it
+	  was guarded by earlier IsServer or similar (talk about redundant
+	  checks, eh?), so it didn't affect us badly (noted by Grega Pogacnik).
+
+2003-02-14  Piotr Kucharski
+
+	* channel.c/match_modeid(): wrong UID ban checks.
+	* channel.c/set_mode(): removing key on channel with no key resulted
+	  in desynch, when combined with other modes after -k (from Grega
+	  Pogacnik).
+
+2003-02-13  Piotr Kucharski
+
+	* match.c/match(): added quick parsing of '*' mask; added '#'
+	  wildcard matching only digits.
+	* s_serv.c/m_stats(): be aware of '#' wildcard.
+	* struct_def.h, channel.c/match_modeid(), add_modeid(), del_modeid(),
+	  set_mode(), s_err.c: changed value.cp to struct holding nick, user,
+	  host separately, this allowed for faster match()es and better beI
+	  lists parsing.
+	* channel.c: added make_bei() and free_bei() functions.
+	* channel.c/match_modeid(): added full CIDR support for beI lists.
+
+2003-02-13  Jakub Vlasek
+	
+	* s_user.c/m_user(): Parse user text modes sent in USER command
+	  during registration.
+
+2003-02-11  Piotr Kucharski
+
+        * s_serv.c/m_stats(): stats l server client_not_on_this_server
+          should not return bogus values (from Grega Pogacnik).
+
+2003-02-10  Piotr Kucharski
+
+        * channel.c/match_modeid(): added support for CIDR.
+        * s_conf.c/match_ipmask(): added one param to ease using it
+          with or without user@ part to match CIDRs;
+        * Makefile.in: added install-ircd target.
+
+2003-02-09  Jakub Vlasek
+	
+	* s_bsd.c/connect_inet(): Fixed compile error. (from Shigeru Okumura)
+
+2002-12-28  Jakub Vlasek
+	
+	* msg_def.h, parse.c, s_serv.c, s_serv_ext.h: Added SET command.
+	* config.h.dist: Added OPER_SET and LOCOP_SET defines.
+	* s_misc.c: Added initruntimeconf() used for initialisation of
+	  struct iconf.
+	* ircd.c, ircd_ext.h: Added declaration of iconf. Structure used
+	  for keeping run-time configuration data.
+	* ircd.c/main(): Call initruntimeconf().
+	* ircd.c/try_connections(): Do not autoconnect if autoconnect
+	  disabled via SET.
+
+2002-11-29  Jakub Vlasek
+
+	* mkpasswd.c, contrib/mkpasswd/README: New version from W. Campbell.
+
+2002-11-25  Jakub Vlasek
+	
+	* s_user.c/m_nick(): Allow user to set his nick to UID by specifying
+	  nick 0 or his own UID.
+	* s_serv.c/m_stats(): Made stats 'Z' and 'z' behave the same if 
+	  DEBUGMODE not set.
+	* s_err.c/RPL_YOURID: Send UID before the text of numerics.
+	* chkconf.c: Enclosed debug messages with #ifdef DEBUGMODE.
+	
+2002-11-24  Jakub Vlasek
+
+	* struct_def.h: Added source_ip to struct ConfItem.
+	* list.c/make_conf(): set source_ip to NULL. 
+	* list.c/free_conf(): Free source_ip.
+	* s_bsd.c/connect_inet(): Use aconf->source_ip to bind correct IP
+	  for outgoing connections.
+	* s_conf.c/initconf(): Fill aconf->source_ip.
+	* 2.11-New: Added.
+	* s_serv.c/m_stats(), report_fd(): Support for stats F.
+
+2002-11-23  Piotr Kucharski
+
+	* ircd.c/check_pings(), s_misc.c/exit_client(), config.h.dist:
+	  DelayedKills upon rehash.
+
+2002-11-22  Jakub Vlasek
+
+	* s_serv.c/m_stats(): Do not reply to stats requests with more than 
+	  1 char.
+
+2002-11-22  Piotr Kucharski
+
+	* numeric_def.h, channel.c/m_join(),m_topic(), s_err.c, config.h.dist,
+	  struct_def.h: who and when set the topic.
+	* s_err.c, s_user.c/send_whois(), config.h.dist: signon time in whois.
+	* numeric_def.h, s_serv.c/m_server_estab(),m_lusers(), struct_def.h,
+	  s_err.c: info (numerics 265 and 266) and notices about max local/global
+	  client count.
+	* s_service.c, s_serv.c, s_user.c: keep stats about max client values.
+	* struct_def.h, s_misc.c/initstats(),exit_client(), config.h.dist,
+	  s_user.c/register_user(): notice on in/de-creasing local clients count.
+
+2002-11-11  Jakub Vlasek
+	
+	* s_err.c: Changed text of ERR_TOOMANYMATCHES.
+	* channel.c/m_list(): Terminate LIST output when the client has less 
+	  than 10% of available sendQ free.
+	
+2002-10-13  Jakub Vlasek
+
+	* ircdwatch.c/sig_handler(): Removed extra semicolon after #endif.
+
+2002-10-09  Kurt Roeckx
+
+	* support.c, support_ext.h, channel.c, list.c res.c, s_bsd.c, s_id.c,
+	  s_misc.c, s_service.c, s_zip.c: MyFree now takes a void * as argument.
+
+2002-09-29  Jakub Vlasek
+
+	* iauth-internals.txt: Update for 2.11 protocol (added kill reason).
+	* struct_def.h: Added reason to struct Client - used for storing
+	  of extended information about client quit (like from iauth modules).
+	* a_conf.c: Parse reason from iauth.conf
+	* a_conf_def.h: Added reason to struct Instance.
+	* mod_socks.h: Send kill reason to ircd.
+	* list.c/free_client(): Free aClient->reason.
+	* s_auth.c: Parse kill reason from iauth.
+	* s_user.c/register_user(): Send kill reason from iauth to the client.
+
+2002-09-13  Jakub Vlasek
+
+	* ircd.c, s_ircd.c: Make -t (don't fork) available even when not
+	  DEBUGMODE used.
+	* s_serv.c/report_configured_links(): Show * in I-line flag
+	  field if no flag defined.
+	* s_user.c/m_oper(), config.h.dist: Added FAILED_OPERLOG to log
+	  failed oper attempts.
+	* s_debug.c: Added FAILED_OPERLOG to version output.
+
+2002-09-08  Jakub Vlasek
+
+	* channel.c/m_list(), config.h.dist: Added LIST_ALIS_NOTE.
+
+2002-09-06  Piotr Kucharski
+
+	* s_user.c/m_nick(): when checking for correct number of params
+	  in NICK when it comes from server, prior to collision make
+	  sure the other side sent proper number of params in NICK
+	  and kill only the wrong side, as it is protocol error.
+
+2002-08-25  Jakub Vlasek
+
+	* parse.c/getfield(): Support quoting of delimiter in ircd.conf.
+	* s_user.c/m_user(): Fixed crash introduced during last change 
+	  (from Grega Pogacnik).
+	  
+2002-08-24  Piotr Kucharski
+
+	* parse.c/remove_unknown(), channel.c/collect_channel_garbage(),
+	  s_misc.c/exit_client(), s_serv.c/m_server(): move some messages from
+	  SCH_LOCAL to SCH_NOTICES (from jv).
+	* mod_socks.c/socks_init(): added 'megaparanoid' option, which denies
+	  access to everything listening on 1080 and not answering explicitly
+	  that it is closed proxy; that includes all protocol errors etc.
+	* mod_socks.c/socks_read(), doc/iauth.conf.5: modified to use above.
+
+2002-08-23  Piotr Kucharski
+
+	* irc_sprintf.c,irc_sprintf_body.c,irc_sprint_ext.h: added irc_vsprintf;
+	  irc_sprintf() now supports most of basic formats and modifiers (no
+	  uid support yet).
+	* s_user.c/m_message(): changed syntax for oper mass notices from
+	  $/#-mask to $$/$#-mask (since it may go confused with channels).
+	* channel.c/send_channel_modes(): allow mixing beI (compatibility
+	  with 2.9, no longer needed).
+	* s_serv.c/m_stats(): allow 'stats L nick' without penalizing with
+	  RPL_TRYAGAIN.
+	* res.c/proc_answer(): check if answer is matching the request (from Q).
+
+2002-08-05  Piotr Kucharski
+
+	* s_user.c/m_nick(): check for correct number of params in NICK when
+	  it comes from server before checking for collisions.
+
+2002-08-04  Piotr Kucharski
+
+	* class.c/add_class(): typo in debug string.
+
+2002-08-01  Piotr Kucharski
+
+	* struct_def.h: added invLink struct, similar to Link, but keeps
+	  also 'char *who'.
+	* list.c, list_ext.h: make_invlink() and free_invlink() added.
+	* channel.c/add_invite(): added sptr param for remembering who
+	  invited us to every channel.
+	* channel.c/del_invite(): also free memory allocated in add_invite().
+	* channel.c/can_join(): announce to channel who invited banned user.
+
+2002-07-31  Piotr Kucharski
+
+	* hash.c/m_hash(): was '%Full', should've been '%%Full'.
+
+2002-07-30  Piotr Kucharski
+
+	* s_serv.c/trace_one(): don't send UID to local clients (from Zobo).
+
+2002-07-29  Piotr Kucharski
+
+	* got rid of !STDARG from everywhere.
+	* got rid of R lines from everywhere.
+	* got rid of SPRINTF define from everywhere.
+	* added irc_sprintf() function, which will handle %y.
+
+2002-07-06  Jakub Vlasek
+
+	* struct_def.h: added defines for I: line flags. Added ->flags to
+	  struct ConfItem (from Beeth).
+	* ircd.c/check_pings(),s_user.c/register_user(): added support for
+	  kline exemptions.
+	* s_conf.c,s_conf_ext.h  iline_flags_parse(), iline_flags_to_string()
+	  added.
+	* s_conf.c/initconf(),attach_Iline: added support for kline exemptions.
+	* s_err.c: Added string field to RPL_STATSILINE for iline flags.
+	* s_serv.c/show_configured_links(): Show iline flags.
+	
+2002-07-05  Piotr Kucharski
+
+	* s_serv.c/trace_one(): removed duplicated argument causing core.
+	* channel.c/set_mode(): use ->uid only if it HasUID (from Zobo).
+	* s_conf.c/find_kill(): don't check interval if TIMEDKLINE is not
+	  defined.
+	* s_conf.c/check_time_interval(): surround it by #ifdef TIMEDKLINE.
+
+2002-07-04  Jakub Vlasek
+
+	* hash.c/m_hash(): rewritten to support all hashes.
+	* send.c/sendto_ops_butone(): Rewritten to use local[] instead
+	  of client linked list.
+	* s_sev.c/m_close(): Send message about closing to SCH_NOTICE too.
+	* parse.c/find_userhost(): Enclose with CLIENT_COMPILE.
+	
+2002-06-11  Piotr Kucharski
+
+	* channel.c/m_njoin(): use ->uid if HasUID, not ->name (from Zobo).
+	* s_serv.c/m_eob(): missing argument (from Zobo).
+
+2002-06-03  Jakub Vlasek
+
+	* parse.c/find_userhost(): use hostname hash for faster lookup.
+
+2002-06-01  Jakub Vlasek
+
+	* struct_def.h: added hhashv,hhnext to struct User (used by hostname
+	  hash).
+	* hash.c, hash_def.h, hash_ext.h: added hostname hash.
+	* s_conf.c/attach_conf(): use hostname hash for userhost limits.
+	* s_user.c/register_user(): add user to hostname hash.
+	* s_misc.c/exit_one_client(): remove user from hostname hash.
+	* ircd.c/read_ircdtune(): initialise size of hostname hash to size
+	  of client hash.
+
+2002-06-01  Kurt Roeckx
+
+	* class.c, class_ext.h, class_def.h: Make maxSendq an int.
+	* send.c, channel.c, support.c: Add extra {} and () to stop compiler 
+	  warnings.  Also removed some unused variables.
+	* ircd.c: Make variables used in signal handlers volatile.
+
+2002-06-01  Piotr Kucharski
+
+	* a_conf.c/conf_err(): exit iauth on config error.
+	* bsd.c, packet.c, struct_def.h, s_bsd.c, s_misc.c, s_serv.c, send.c:
+	  got rid of receiveK and sendK from struct Client, got rid of is_cks,
+	  is_ckr, is_sks, is_skr from struct stats, changed receiveB, sendB
+	  is_cbs, is_cbr, is_sbs, is_sbr to unsigned long long.
+	* list.c/make_client(): add initialization of stats variables.
+	* send.c/sendto_flog(): new log format.
+	* struct_def.h: more EXITC_ codes.
+	* s_user.c, s_user_ext.h: got rid of ereject_user(), use exit_client()
+	  instead.
+	* ircd.c/check_pings(), s_bsd.c/add_connection(),
+	  s_user.c/register_user(): set proper cptr->exitc, use exit_client()
+	  instead of ereject_user(), get rid of duplicating sendto_flog()s.
+	* s_misc.c/exit_client(): log everything from here, use sptr->exitc.
+	* config.h.dist: add LOG_OLDFORMAT define.
+	* s_id_ext.h: readded cid_ok() declaration, we use it (via macro) in
+	  other files.
+
+2002-05-26  Piotr Kucharski
+
+	* send.c/sendto_flog(): ircd was not honouring SYSLOG_CONN and
+	  SYSLOG_USERS being undefined (reported by Francesco).
+
+2002-05-22  Jakub Vlasek
+
+	* s_serv.c/m_server(): Show the name of the server which caused
+	  server exists error in squit message.
+
+2002-05-20  Piotr Kucharski
+
+	* s_err.c: removed mistakenly changed format of I: and K:.
+
+2002-05-20  Jakub Vlasek
+
+	* s_conf.c/detach_conf(): remove config entry from conf linked list
+	  while freeing it (reported by BitKoenig).
+	* buildm4: added EXTRAPORT, SERVICE macros, fixed RESTRICTED and ME
+	  macros (from W.Campbell.
+	* m4macros: updated (from W. Campbell).
+	
+2002-05-19  Piotr Kucharski
+
+	* channel.c/m_mode(): remove not needed chanop (from BitKoenig).
+
+2002-05-19  Jakub Vlasek
+	
+	* s_user.c/who_find(): Initialise myoper to 0, show +i user
+	  to himself (from BitKoenig).
+	* s_serv.c/m_trace(): Fixed condition causing wrong users being
+	  shown, added comments (from BitKoenig).
+
+2002-04-23  Jakub Vlasek
+	
+	* s_conf.c/rehash(): Do not delist config entries which are still
+	  used.
+
+2002-04-19  Jakub Vlasek
+
+	* res.c/bad_hostname(): added defineable more restrictive hostname
+	checking (by Mario 'BitKoenig' Holbe)
+	* config.h.in: added define RESTRICT_HOSTNAMES.
+
+2002-04-16  Jakub Vlasek
+
+	* parse.c, parse_ext.h: added find_matching_client().
+	* struct_def.h: added usercnt[3] array to struct server for per-server
+	  user counts.
+	* channel.c, channel_ext.h: removed count_channels().
+	* s_misc.c/exit_one_client(), s_user.c/register_user, m_oper():
+	  Update per-server user count.
+	* s_serv.c/m_trace(): splitted into two functions, m_trace
+	  and trace_one().
+	* s_serv.c/m_lusers(),m_trace(): Improved performance by using
+	  per-server usercnt[], instead of counting users each time.
+
+2002-04-11  Piotr Kucharski
+
+	* s_user.c/register_user(): validusername() was checking also OTHER
+	  type ident, which could have been encrypted.
+	* s_id_ext.h: remove unused, add new extern declariations.
+	* example.conf: update.
+
+2002-04-06  Piotr Kucharski
+
+	* s_serv.c/m_server_estab(),m_eob(): send empty EOB if we have no
+	  leaf-servers EOB-ed.
+	* parse.c,s_serv.c: add missing parameter to idtol().
+
+2002-04-07  Jakub Vlasek
+
+	* bsd.c/deliver_it(): Removed call to hold_server() (which has been
+	  removed).
+	* s_serv.c/m_eob(): Fix notices about received EOBs, warn about
+	  multiple local EOBs.
+	* support.c/inetntop(): Use the_size for bcopy() properly.
+	* ircd.c/setup_me(): Copy PATCHLEVEL into me.serv->verstr.
+	* ircd.c: Move add_to_sid_hash_table to setup_me() from main().
+
+2002-04-06  Jakub Vlasek
+
+	* s_user.c/save_user(): Send ME as source of RPL_SAVENICK if collision
+	  is generated locally.
+	* s_serv.c/m_eob(): Pass sid+1 as a parameter to find_tokserver()
+	  for fake SIDs.
+
+2002-04-05  Jakub Vlasek
+
+	* s_service.c/m_service(),m_servset(),m_servlist(): Changed atoi()
+	  to strtol() to allow hexadecimal arguments.
+	* msg_dev.h: Added EOB, removed useless comments.
+	* parse.c: Added m_eob to msgtab. Added find_target().
+	* parse_ext.h: Added declaration of m_eob().
+	* struct_def.h: Added IsBursting(), SetEOB() defines and FLAGS_EOB.
+	  Added is_eobservers to istat array.
+	* s_misc.c/exit_one_client(): Decrease istat.is_eobservers if EOBed
+	  server quits.
+	* s_numeric.c/do_numeric(): Added EOB emulation support, use
+	  find_target().
+	* s_serv.c/m_server(): Send PINGs on server introduction for EOB
+	  emulation. m_server_estab(): Send EOB(s) after burst.
+	  Added: m_eob(), do_emulated_eob(),
+	* s_serv_ext.h: Added declaration for do_emulated_eob().
+	* s_user.c/m_pong(): Added support for EOB emulation.
+
+2002-03-29  Jakub Vlasek
+
+	* channel.c/m_names(): Rewritten, channel names handling moved to
+	  names_channel().
+	* channel.c/m_list(): Partialy rewritten, don't send +p channels
+	  user is not member of anymore.
+	* s_user.c/who_find(): Rewritten.
+	* s_user.c/m_who(): Moved colapse() down to fix bug which made
+	  impossible to use WHO on channels with * in their name.
+
+2002-03-24  Jakub Vlasek
+
+	* s_user.c/m_oper(): Send +O after local oper opers and +o when global
+	  opers to services - was reversed (reported by Olafur Osvaldsson).
+	* s_user.c/send_umode_out(): Check for service distribution
+	  (reported by Olafur Osvaldsson).
+	* s_service.c/sendnum_toone(): Send user modes to services with
+	  SERVICE_WANT_OPER (by Olafur Osvaldsson).
+
+2002-03-23  Piotr Kucharski
+
+	* s_serv.c/check_servername(): initialize all vars (problem reported
+	  by ZZyZZ).
+
+2002-03-14  Jakub Vlasek
+
+	* ircd.c/setup_signals(): Ignore SIGTRAP on FreeBSD to prevent crash
+	  after detaching ircd in gdb.
+	* support.c: Added #ifndef CLIENT_COMPILE around make_isupport.
+
+2002-03-15  Jakub Vlasek
+
+	* support.c,s_conf.c: Read network name from ircd.conf.
+	* s_conf.c/s_conf_ext.h: Added networkname global variable.
+	* ircd.c: Added warning message about network name not being set.
+	* config.h.dist: Removed SERVER_ID and NETWORK_NAME defines.
+	
+2002-03-14  Jakub Vlasek
+
+	* s_bsd.c,s_bsd_ext.h: Moved daemonization from init_sys() into
+	  daemonize().
+	* ircd.c,ircd_ext.h,s_conf.c: Read SID from M-line instead of #define.
+	* ircd.c,list.c,s_conf.c: Send error messages during server boot
+	  to stderr. Show message that server successfuly started.
+	* list.c/outofmemory(): Die instead of restart if the server
+	  is booting.
+
+2002-03-13  Jakub Vlasek
+
+	* numeric_def.h, s_err.c, s_user.c/save_user(): Added RPL_SAVENICK
+	  to inform user that his nick is being changed to UID after
+	  nick collision.
+
+2002-03-03  Jakub Vlasek
+
+	* support.c: added make_isupport() used for 005 numeric generation.
+	* s_user.c/register_user(): send 005 numeric.
+	* numeric_def.h, support_ext.h, ircd.c, s_err.c,version.c.SH.in,
+	  version_ext.h,config.h.dist: added support for 005 numeric.
+	* struct_def.h, channel_def.h: moved MAXMODEPARAMS into
+	  struct_def.
+	* s_user.c/m_kill(): removed u@h from killpath.
+	* s_user.c/m_save(): better argument checking.
+	* s_user.c/m_oper(): changed missed err_str() to replies[].
+	* s_bsd.c/init_sys(): setpgrp() takes no argument on cygwin.
+	* s_serv.c/m_connect(): When doing 'CONNECT serv 0', look up proper
+	  port from config file; if we find it negative (to prevent AC),
+	  use absolute value of it.
+
+2002-01-22  Jakub Vlasek
+
+	* tkserv.c: Fixed potential overflow (from W.Campbell)
+
+2002-01-07  Piotr Kucharski
+
+	* list.c/make_server(): introduced used_tokens table and IsBitSet,
+	  SetBit, ClearBit defines (from Q).
+	* s_serv.c/m_links(): don't show masked servers.
+	* s_id.c: moved CHIDNB define to struct_def.h (we need it in list.c).
+	* list.c/make_server(): return NULL, do not abort, if used_tokens array
+	  is exhausted.
+	* s_serv.c/m_server(),m_smask(),m_server_estab(),ircd.c/setup_me(),
+	  s_bsd.c/connect_server(): deal with return value of make_server().
+	* list.c/make_server(),list_ext.h: remove unused 'add' parameter.
+
+2002-01-06  Piotr Kucharski
+
+	* s_serv.c/m_server_estab(),s_service.c/m_service(),
+	  s_user.c/register_user(): if link we send NICK/UNICK/SERVICE to is
+	  UID capable, send client->servp->tok, not me.serv->tok.
+	* s_misc.c/exit_one_client(): don't decrease istat.is_serv when
+	  server is masked.
+	* s_misc.c/exit_server(): regenerate SQUITs to send them to &SERVERS.
+	* s_serv.c/m_server(): squit link if no SID was given on a 2.11 link.
+	* hash.c/bigger_hash_table(): add only ST_UID sptrs to sid_hash_table.
+	* parse.c/find_sender(): strlen(sid)==SIDLEN, not sid[SIDLEN]=='\0'.
+	* list.c/make_server(), s_serv.c/m_smask(), s_user.c/register_user():
+	  fix bug of dropping unknown clients (NICKs) coming behind from 2.10
+	  masked behind 2.11. *NOTE*: do it better, like add all servers to
+	  svrtop or have token array. (from Q).
+
+2002-01-05  Piotr Kucharski
+
+	* parse.c/find_sender(): sid and fake sid aware now.
+	* parse.c, msg_def.h: aware of m_smask().
+	* struct_def.h: ismasked, left, right, down, servers to Server struct.
+	* struct_def.h, ircd.c: changed FLAGS_RESTRICTED to FLAGS_RESTRICT,
+	  used SetRestricted or IsRestricted wherever possible.
+	* struct_def.h, send.c: changed FLAGS_DEADSOCKET to FLAGS_DEADSOCK,
+	  used SetDead wherever possible.
+	* hash.c/del_from_sid_hash_table(): remove unnecessary parameter,
+	  use sptr, not cptr->server for sidhashv.
+	* s_misc.c/mark_blind_servers(): use ptr to server, not server->name
+	  as argument.
+	* following work came from jv, cleaned by Q.
+	* s_serv.c/m_squit(): made aware of sids; removed issuing additional
+	  squit (we'll do it in exit_client); don't show received squits if
+	  they come from masked servers.
+	* ircd.c/setup_me(), s_bsd.c/connect_server(): initialize ->maskedby.
+	* s_misc.c: added exit_server().
+	* s_misc.c/exit_client(): rewritten to use exit_server().
+	* s_misc.c/exit_one_client(): rewritten to be aware of SIDs and doing
+	  proper SQUITs/QUITs; also added using servers' tree.
+	* s_serv.c: added functions send_server(), introduce_server(), m_smask(),
+	  send_server_burst(), add_server_to_tree(), remove_server_from_tree().
+	* s_serv.c/m_server(): simplified checks of parameters; added checks
+	  of SID we receive; add using servers' tree; removed checks of C/N
+	  (should be in m_rehash).
+	* s_serv.c/m_server_estab(): check masks to avoid same mask inside;
+	  store temporarily version we received in PASS in hopcount; add
+	  using servers' tree; fill in (compatibility) SIDs and ltok; change
+	  some (repeating) code to functions (introduce_server).
+
+2002-01-04  Piotr Kucharski
+
+	* ircd.c/main(): check if SERVER_ID is valid.
+	* config.h.dist: changed default SERVER_ID.
+	* s_err.c: changed ERR_YOUREBANNEDCREEP format.
+	* s_conf.c/find_kill(): show user@host in K:line error.
+	* list.c/make_server(): add parameter used for deciding
+	  whether to add server to tree or not.
+
+2001-12-31  Piotr Kucharski
+
+	* s_user.c/m_unick(): while creating client we messed with server
+	  pointer, adding ->user struct to it, which later made m_server
+	  reject servers (from jv).
+
+2001-12-30  Piotr Kucharski
+
+	* s_user.c/m_nick(): allow restricted users change nick from saved uid.
+	* common_def.h, match.c, struct_def.h, s_user.c, config.h.dist: add
+	  RESTRICT_USERNAME code to reject users with special chars in their
+	  usernames. Also revamp char_atribs[] table.
+	* match.c: added isvalidusername().
+
+2001-12-29  Piotr Kucharski
+
+	* s_user.c/register_user(): we assigned uid after we sent UNICK.
+	* s_bsd.c/completed_connection(),s_serv.c/m_server(): send SID
+	  in SERVER command.
+	* s_user.c/register_user(): send user sid as source, not always ours.
+	* s_id.c/check_uid(): use cid_ok() to check all chars, check len.
+	* s_user.c/m_unick(): use check_uid(), not simple strlen(uid).
+	* s_user.c/m_unick(): squit link feeding us with bad UID.
+	* s_user.c/m_unick(),m_nick(): removed checking for collisions
+	  with servers (this cannot happen).
+	* config.h.dist, s_id.c, struct_def.h, s_debug.c: add UIDLEN and
+	  use it wherever possible; this is for allowing longer nicks without
+	  having to have longer uids.
+
+2001-12-29  Kurt Roeckx
+
+	* struct_def.h, ircd.c, s_bsd.c, s_misc.c, s_serv.c, s_service.c:
+	  Convert up from a string to a pointer to a client. (from jv)
+
+2001-12-28  Piotr Kucharski
+
+	* s_conf.c/find_kill(): make K:user@host remove also +r clients
+	  (that is, +user@host).
+	* s_misc.c/get_sockhost(): don't trust input values, so we don't
+	  accidentally copy on null.
+	* s_user.c/m_unick(): cleanup, remove m_user() call, fill whatever
+	  we need to fill in this function directly.
+	* s_id.c/sid_valid(): allow fake sids.
+
+2001-12-26  Kurt Roeckx
+
+	* channel.c/m_kick(): Add support for UIDs in KICK.
+
+2001-12-25  Kurt Roeckx
+
+	* send.c, struct_def.h, channel.c, channel_ext.h, s_send.c,
+	  s_serv.c: Removed some 2.9 protocol support. (From jv)
+
+2001-12-24  Piotr Kucharski
+
+	* s_user.c/m_unick(): changes, including ip, removing token and
+	  hopcount
+
+2001-12-24  Kurt Roeckx
+
+	* channel.c/set_mode(): Only allow UIDs from the server.
+	* s_user.c/m_message(): privmsg/notice now support UIDs.
+
+2001-12-23  Kurt Roeckx
+
+	* parse.c/find_sender(): Default parv[0] to sptr->from.
+
+2001-12-22  Piotr Kucharski
+
+	* s_bsd.c/check_server(): check for class being legal, so we
+	  do not core later.
+	* s_serv.c: introduced get_version() for easier reading; also
+	  few changes to it.
+	* parse.c: added find_sid().
+
+2001-12-21  Kurt Roeckx
+
+	* parse.c/parse(), find_sender():  Add support for UID as source of a
+	  message. (From jv)
+	* channel.c/m_mode(), set_mode(): Made MODE use UID when posible.
+
+2001-12-20  Kurt Roeckx
+
+	* msg_def.h, numeric_def.h, parse.c, send.c, struct_def.h, ircd.c, 
+	  s_bsd.c, s_bsd_ext.h, s_err.c, s_misc.c, s_serv.c, s_serv_ext.h:
+	  Get rid of reconnect.
+
+2001-12-13  Piotr Kucharski
+
+	* configure: a typo made FreeBSD 5.0 be taken for Solaris 2.0
+
+2001-12-08  Kurt Roeckx
+
+	* struct_def.h, hash.c, hash_ext.h, ircd.c: Add a sid hash table, and
+	  add ourself to it. (From jv)
+	* channel.c/m_njoin, send_channel_members(): Make NJOIN use UIDs
+	  (based on work from Zobo)
+
+2001-10-25  Piotr Kucharski
+
+	* config.h.dist: minor explanatory changes
+
+2001-06-09  Kurt Roeckx
+
+	* s_err.c: Change RPL_BOUNCE to use a %d instead of %s
+
+2001-02-26  Kurt Roeckx
+
+	* struct_def.h, ircd.c, s_id.c, s_id_ext.h, s_misc.c, s_user.c, 
+	  config.h.dist: Properly generate UID's, and SAVE user where we can.
+
+2001-02-10  Kurt Roeckx
+
+	* s_err.c, numeric_def.h: Change RPL_BOUNCE to numeric 010.
+
+2001-01-15  Piotr Kucharski
+
+	* s_user.c/m_unick(): fixed irritating typo (parv[7] vs. parv[8])
+
+1999-09-21  Piotr Kucharski
+
+	* channel.c, class.c, parse.c, s_bsd.c, s_conf.c, s_err.c,
+	s_err_ext.h, s_misc.c, s_serv.c, s_service.c, s_user.c,
+	struct_def.h, whowas.c: rewritten to use replies[] table
+	directly, not rpl_str()/err_str().
+
+1999-09-18  Christophe Kalt
+
+	* wrote s_send.c to provide specialized functions equivalent to
+	sendto_*() but dealing with UID issues and hiding them from above
+	layers.
+
+1999-08-31  Kurt Roeckx
+
+	* s_user.c/m_kill: acptr wasn't initialised
+
+1999-06-??  Christophe Kalt
+
+	* hash_ext.h, msg_def.h, numeric_def.h, parse_ext.h, struct_def.h,
+	s_id_ext.h, s_user_ext.h, channel.c, hash.c, ircd.c, list.c,
+	parse.c, send.c, s_err.c, s_id.c, s_misc.c, s_serv.c, s_user.c:
+	basic 2.11 functionnality: added uid hash tables, &SAVE channel,
+	m_unick(), m_save(), save_user(), new numeric 42.
+
 2.10.3p3
 
 2001-01-19  Piotr Kucharski
@@ -318,7 +1265,7 @@
 	* channel.c/m_kick(): 'KICK #chan1,#chan2 nick1,nick2' was not
 	  working properly
 
-2001-02-28	Piotr Kucharski
+2001-02-28  Piotr Kucharski
 
 	* send.c/sendto_flog(),logfiles_open(),logfiles_close(),
 	  s_conf.c/rehash(), ircd.c: Stop open-close logfiles ping-pong,

@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: a_conf.c,v 1.21.2.6 2003/10/11 14:22:56 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: a_conf.c,v 1.26 2003/10/18 15:31:29 q Exp $";
 #endif
 
 #include "os.h"
@@ -35,10 +35,7 @@ u_int	debuglevel = 0;
 
 AnInstance *instances = NULL;
 
-static void
-conf_err(nb, msg, chk)
-u_int nb;
-char *msg, *chk;
+static	void	conf_err(u_int nb, char *msg, char *chk)
 {
 	if (chk)
 		printf("configuration error line %d: %s\n", nb, msg);
@@ -51,10 +48,7 @@ char *msg, *chk;
 /*
  * Match address by #IP bitmask (10.11.12.128/27)
  */
-static int
-match_ipmask(mask, ipaddr)
-aTarget	*mask;
-char	*ipaddr;
+static	int	match_ipmask(aTarget *mask, char *ipaddr)
 {
 #ifdef INET6
 	return 1;
@@ -70,9 +64,7 @@ char	*ipaddr;
 }
 
 /* conf_read: read the configuration file, instanciate modules */
-char *
-conf_read(cfile)
-char *cfile;
+char	*conf_read(char *cfile)
 {
 	AnInstance *ident = NULL; /* make sure this module is used */
 	u_char needh = 0; /* do we need hostname information for any host? */
@@ -104,23 +96,31 @@ char *cfile;
 	    {
 		while (fgets(buffer, 160, cfh))
 		    {
-			if (ch = index(buffer, '\n'))
+			if ((ch = index(buffer, '\n')))
+			{
 				lnnb += 1;
+			}
 			else
-			    {
+			{
 				conf_err(lnnb, "line too long, ignoring.",
 					 cfile);
 				/* now skip what's left */
 				while (fgets(buffer, 160, cfh))
+				{
 					if (index(buffer, '\n'))
+					{
 						break;
+					}
+				}
 				continue;
-			    }
+			}
 			if (buffer[0] == '#' || buffer[0] == '\n')
 				continue;
 			*ch = '\0';
-			if (ch = index(buffer, '#'))
+			if ((ch = index(buffer, '#')))
+			{
 				*ch = '\0';
+			}
 			if (!strncmp("required", buffer, 8))
 			  {
 				o_req = 1;
@@ -248,6 +248,7 @@ char *cfile;
 			(*last)->hostname = NULL;
 			(*last)->address = NULL;
 			(*last)->timeout = timeout;
+			(*last)->reason	= NULL;
 			if (Mlist[i] == &Module_rfc931)
 				ident = *last;
 
@@ -256,10 +257,12 @@ char *cfile;
 				aTarget **ttmp;
 				u_long baseip = 0, lmask = 0;
 
-				if (ch = index(buffer, '\n'))
+				if ((ch = index(buffer, '\n')))
+				{
 					lnnb += 1;
+				}
 				else
-				    {
+				{
 					conf_err(lnnb,
 						 "line too long, ignoring.",
 						 cfile);
@@ -268,7 +271,7 @@ char *cfile;
 						if (index(buffer,'\n'))
 							break;
 					continue;
-				    }
+				}
 				if (buffer[0] == '#')
 					continue;
 				if (buffer[0] == '\n')
@@ -291,6 +294,17 @@ char *cfile;
 							mystrdup(buffer + 10);
 					continue;
 				    }
+				if (!strncasecmp(buffer+1, "reason = ", 9))
+				{
+					if ((*last)->reason)
+						conf_err(lnnb,
+					"Duplicate reason keyword: ignored.",
+						cfile);
+					else
+						(*last)->reason =
+							mystrdup(buffer + 10);
+					continue;
+				}
 				if (!strncasecmp(buffer+1, "host = ", 7))
 				    {
 					needh = 1;
@@ -394,16 +408,28 @@ char *cfile;
 	if (totto > ACCEPTTIMEOUT)
 	    {
 		if (cfile)
-			printf("Warning: sum of timeouts exceeds ACCEPTTIMEOUT!\n");
+		{
+			printf("Warning: sum of timeouts exceeds "
+				"ACCEPTTIMEOUT!\n");
+		}
 		else
+		{
 			sendto_log(ALOG_IRCD|ALOG_DCONF, LOG_ERR,
-			   "Warning: sum of timeouts exceeds ACCEPTTIMEOUT!");
+				"Warning: sum of timeouts exceeds "
+				"ACCEPTTIMEOUT!");
+		}
 		if (o_dto)
+		{
 			if (cfile)
+			{
 				printf("Error: \"notimeout\" is set!\n");
+			}
 			else
+			{
 				sendto_log(ALOG_IRCD|ALOG_DCONF, LOG_ERR,
 					   "Error: \"notimeout\" is set!");
+			}
+		}
 	    }
 
 	itmp = instances;
@@ -417,26 +443,28 @@ char *cfile;
 		    {
 			printf("\t%s\t%s\n", itmp->mod->name,
 			       (itmp->opt) ? itmp->opt : "");
-			if (ttmp = itmp->hostname)
+			if ((ttmp = itmp->hostname))
 			    {
 				printf("\t\tHost = %s%s",
 				       (ttmp->yes == 0) ? "" : "!",
 				       ttmp->value);
-				while (ttmp = ttmp->nextt)
+				while ((ttmp = ttmp->nextt))
 					printf(",%s%s",
 					       (ttmp->yes == 0) ? "" : "!",
 					       ttmp->value);
 				printf("\n");
 			    }
-			if (ttmp = itmp->address)
+			if ((ttmp = itmp->address))
 			    {
-				printf("\t\tIP   = %s",
-				       (ttmp->yes == 0) ? "" : "!",
+				printf("\t\tIP   = %s%s",
+				       ((ttmp->yes == 0) ? "" : "!"),
 				       ttmp->value);
-				while (ttmp = ttmp->nextt)
+				while ((ttmp = ttmp->nextt))
+				{
 					printf(",%s%s",
-					       (ttmp->yes == 0) ? "" : "!",
+					       ((ttmp->yes == 0) ? "" : "!"),
 					       ttmp->value);
+				}
 				printf("\n");
 			    }
 			if (itmp->timeout != DEFAULT_TIMEOUT)
@@ -452,12 +480,16 @@ char *cfile;
 		    }
 	    }
 	else
+	{
 		while (itmp)
-		    {
+		{
 			if (itmp->mod->init)
+			{
 				itmp->mod->init(itmp);
+			}
 			itmp = itmp->nexti;
-		    }
+		}
+	}
 
 	ch = o_all;
 	if (o_req) *ch++ = 'R';
@@ -472,10 +504,7 @@ char *cfile;
    Returns -1: no match, and never will
             0: got a match, doIt[tm]
 	    1: no match, but might be later so ask again */
-int
-conf_match(cl, inst)
-u_int cl;
-AnInstance *inst;
+int	conf_match(u_int cl, AnInstance *inst)
 {
 	aTarget *ttmp;
 
@@ -487,21 +516,29 @@ AnInstance *inst;
 	    !strcmp(inst->hostname->value, "*"))
 		return 0;
 	/* check matches on IP addresses */
-	if (ttmp = inst->address)
+	if ((ttmp = inst->address))
+	{
 		while (ttmp)
-		    {
+		{
 			if (ttmp->baseip)
-			    {
+			{
 				if (match_ipmask(ttmp, cldata[cl].itsip) == 0)
+				{
 					return ttmp->yes;
-			    }
+				}
+			}
 			else
+			{
 				if (match(ttmp->value, cldata[cl].itsip) == 0)
+				{
 					return ttmp->yes;
+				}
+			}
 			ttmp = ttmp->nextt;
-		    }
+		}
+	}
 	/* check matches on hostnames */
-	if (ttmp = inst->hostname)
+	if ((ttmp = inst->hostname))
 	    {
 		if (cldata[cl].state & A_GOTH)
 		    {
@@ -525,8 +562,7 @@ AnInstance *inst;
 }
 
 /* conf_ircd: send the configuration to the ircd daemon */
-void
-conf_ircd()
+void	conf_ircd(void)
 {
 	AnInstance *itmp = instances;
 	aTarget *ttmp;
@@ -559,3 +595,4 @@ conf_ircd()
 		itmp = itmp->nexti;
 	    }
 }
+

@@ -17,15 +17,6 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifdef	SPRINTF
-#undef	SPRINTF
-#endif
-#if ! USE_STDARG
-#define	SPRINTF	(void) irc_sprintf
-#else
-#define SPRINTF (void) sprintf
-#endif
-
 #define DupString(x,y) do {x = (char *)MyMalloc(strlen((char *)y) + 1);\
 			   (void)strcpy((char *)x, (char *)y);\
 			  } while(0)
@@ -48,12 +39,14 @@
 #undef isupper
 #undef isspace
 
-#define PRINT 1
-#define CNTRL 2
-#define ALPHA 4
-#define PUNCT 8
-#define DIGIT 16
-#define SPACE 32
+#define PRINT	0x0001
+#define CNTRL	0x0002
+#define ALPHA	0x0004
+#define PUNCT	0x0008
+#define DIGIT	0x0010 
+#define SPACE	0x0020
+#define NVALID	0x0040
+#define UVALID	0x0080
 
 #define isalpha(c) (char_atribs[(u_char)(c)]&ALPHA)
 #define isspace(c) (char_atribs[(u_char)(c)]&SPACE)
@@ -69,11 +62,17 @@
 		      (u_char)(c) <= (u_char)'F'))
 #define isalnum(c) (char_atribs[(u_char)(c)]&(DIGIT|ALPHA))
 #define isprint(c) (char_atribs[(u_char)(c)]&PRINT)
-#define isascii(c) (/*((u_char)(c) >= (u_char)'\0') &&*/ \
-		    ((u_char)(c) <= (u_char)0x7f))
+#define isascii(c) ((u_char)(c) <= (u_char)0x7f)
 #define isgraph(c) ((char_atribs[(u_char)(c)]&PRINT) && \
 		    ((u_char)(c) != (u_char)0x20))
 #define ispunct(c) (!(char_atribs[(u_char)(c)]&(CNTRL|ALPHA|DIGIT)))
+#define isvalidnick(c) (char_atribs[(u_char)(c)]&NVALID)
+#define isvaliduser(c) (char_atribs[(u_char)(c)]&UVALID)
+#define isscandinavian(c) (((u_char)(c) > (u_char)0x5a && \
+				(u_char)(c) < (u_char)0x5f) || \
+				((u_char)(c) > (u_char)0x7a && \
+				(u_char)(c) < (u_char)0x7f))
+				
 
 #ifdef DEBUGMODE
 # define Debug(x) debug x

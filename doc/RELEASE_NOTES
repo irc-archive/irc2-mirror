@@ -1,27 +1,34 @@
-# @(#)$Id: RELEASE_NOTES,v 1.34.2.3 2004/02/26 18:02:48 chopin Exp $
+# @(#)$Id: RELEASE_NOTES,v 1.38 2004/02/13 19:08:46 chopin Exp $
+
+This is version 2.11.0 of the IRC software.
+===============================================================================
+Important changes in 2.11.0 (since 2.10.3p5):
+
+	* New server-server protocol based on Unique IDs. In pure 2.11 collided
+	  clients will stay on with changed nick.
+	* M: requires SID now. Please read INSTALL.txt and example.conf
+	* A: accepts "network name" parameter.
+	* O: and o: in the config has swapped in the meaning, to match
+	  the umode. Update your config.
+	* Nicknames of local clients cannot have [\]^{|}~ chars. Sorry.
+	* Channelnames created on 2.11.0 will have chars {}~\ in their name
+	  automatically converted to []^|. Sorry.
+	* I: has flags now ('D','I','R','E','N','F'), check INSTALL file for
+	  details.
+	* OPER_REMOTE is removed (and server behaves like it was defined).
 
 This is version 2.10.3 of the IRC software.
 ===============================================================================
 
-Important changes in 2.10.3p6 (since 2.10.3p4):
-        * new stats (P) for showing P:lines (IP, port) and number of 
-	  clients using it.
-	* new command POST being an alias for QUIT will not allow abuse
-	  from http proxies.
-	* clients have QUIT reasons enclosed within double quotes
-	* QUIT and PART have no default reason now.
-
-===============================================================================
-
 Important changes in 2.10.3p4 (since 2.10.3p2):
-	* ip6.arpa is now default, with defining SIXBONE_HACK we
-	  also recognize ip6.int
-	* RESTRICT_HOSTNAMES is default on, allowing client hosts in
-	  conformance with RFC 1034, 1035, and 1123 (no '&', '*', '\' or
-	  other "strange" characters)
-	* CLONE_CHECK default on, not SLOW_ACCEPT
-	* find_kill() is aware of '+' prefix, so no need to add another
-	  K:line for it (or using *username)
+       * ip6.arpa is now default, with defining SIXBONE_HACK we
+         also recognize ip6.int
+       * RESTRICT_HOSTNAMES is default on, allowing client hosts in
+         conformance with RFC 1034, 1035, and 1123 (no '&', '*', '\' or
+         other "strange" characters)
+       * CLONE_CHECK default on, not SLOW_ACCEPT
+       * find_kill() is aware of '+' prefix, so no need to add another
+         K:line for it (or using *username)
 
 ===============================================================================
 

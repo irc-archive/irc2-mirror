@@ -28,34 +28,18 @@
 #else /* SEND_C */
 #define EXTERN
 #endif /* SEND_C */
-EXTERN int send_queued __P((aClient *to));
-#if ! USE_STDARG
-EXTERN int sendto_one();
-#else /* USE_STDARG */
+EXTERN int send_queued (aClient *to);
 EXTERN int vsendto_one (aClient *to, char *pattern, va_list va);
 EXTERN int sendto_one (aClient *to, char *pattern, ...);
-#endif /* USE_STDARG */
+EXTERN void logfiles_open(void);
+EXTERN void logfiles_close(void);
+EXTERN int send_message (aClient *, char *, int);
 #ifndef CLIENT_COMPILE
-EXTERN void flush_connections __P((int fd));
-EXTERN void flush_fdary __P((FdAry *));
-EXTERN void setup_svchans();
-EXTERN void sendto_flog __P((aClient *cptr, char *msg,
-			     char *username, char *hostname));
-#if ! USE_STDARG
-EXTERN void sendto_channel_butone();
-EXTERN void sendto_serv_butone();
-EXTERN int sendto_serv_v();
-EXTERN int sendto_serv_notv();
-EXTERN void sendto_common_channels();
-EXTERN void sendto_channel_butserv();
-EXTERN void sendto_match_servs();
-EXTERN int sendto_match_servs_v();
-EXTERN int sendto_match_servs_notv();
-EXTERN void sendto_match_butone();
-EXTERN void sendto_ops_butone();
-EXTERN void sendto_prefix_one();
-EXTERN void sendto_flag();
-#else /* USE_STDARG */
+EXTERN void flush_connections (int fd);
+EXTERN void flush_fdary (FdAry *);
+EXTERN void setup_svchans(void);
+EXTERN void sendto_flog (aClient *cptr, char msg,
+			     char *username, char *hostname);
 EXTERN void sendto_channel_butone (aClient *one, aClient *from,
 				   aChannel *chptr, char *pattern, ...);
 EXTERN void sendto_serv_butone (aClient *one, char *pattern, ...);
@@ -77,6 +61,7 @@ EXTERN void sendto_ops_butone (aClient *one, aClient *from, char *pattern,
 EXTERN void sendto_prefix_one (aClient *to, aClient *from, char *pattern,
 			       ...);
 EXTERN void sendto_flag (u_int chan, char *pattern, ...);
-#endif /* USE_STDARG */
+EXTERN void sendto_match_butone_old(aClient *one, aClient *from,
+		char *mask, int what, char *pattern, ...);
 #endif /* CLIENT_COMPILE */
 #undef EXTERN

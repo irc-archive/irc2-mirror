@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_id.c,v 1.9.2.2 2001/05/13 19:27:14 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_id.c,v 1.25 2003/10/18 16:26:39 q Exp $";
 #endif
 
 #include "os.h"
@@ -27,20 +27,15 @@ static  char rcsid[] = "@(#)$Id: s_id.c,v 1.9.2.2 2001/05/13 19:27:14 chopin Exp
 #include "s_externs.h"
 #undef S_ID_C
 
-/*
- * channel IDs
- */
-#define CHIDNB 36
-
 static unsigned char id_alphabet[CHIDNB+1] =
-	"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890A";
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 static unsigned int alphabet_id[256] =
 	{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-	  /* 0 */ 35, /* 1 */ 26, /* 2 */ 27, /* 3 */ 28, /* 4 */ 29,
-	  /* 5 */ 30, /* 6 */ 31, /* 7 */ 32, /* 8 */ 33, /* 9 */ 34,
+          /* 0 */ 26, /* 1 */ 27, /* 2 */ 28, /* 3 */ 29, /* 4 */ 30,
+          /* 5 */ 31, /* 6 */ 32, /* 7 */ 33, /* 8 */ 34, /* 9 */ 35,
 	  -1, -1, -1, -1, -1, -1, -1,
 	  /* A */ 0, /* B */ 1, /* C */ 2, /* D */ 3, /* E */ 4, /* F */ 5,
 	  /* G */ 6, /* H */ 7, /* I */ 8, /* J */ 9, /* K */ 10, /* L */ 11, 
@@ -62,49 +57,65 @@ static unsigned int alphabet_id[256] =
 	  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	  -1, -1, -1, -1, -1, -1, -1 };
 
-/* ltoid: base 10 -> base 36 conversion */
-static char *
-ltoid(l)
-time_t l;
+/* 
+** ltoid(long l, int n)
+** base 10 -> base 36 conversion
+** Converts l, to a string of n chars, zero ('A') filled. The first chars are
+** dropped if it's longer.
+** Returns a pointer to a static string, or NULL.
+*/
+char	*ltoid(long l, int n)
 {
-    static char idrpl[CHIDLEN+1];
-    char c = CHIDLEN-1;
+static	char	idrpl[UIDLEN+1]; /* Currently nothing longer should be used. */
+	int	i = n - 1;
 
-    idrpl[CHIDLEN] = '\0';
-    do
+	if (n > sizeof(idrpl))
 	{
-	    idrpl[c] = id_alphabet[l % CHIDNB];
-	    l /= CHIDNB;
+		/* This should not happen. */
+		return NULL;
 	}
-    while (c-- > 0);
-    return (char *) idrpl;
+
+	idrpl[n] = '\0';
+	do
+	{
+		idrpl[i] = id_alphabet[l % CHIDNB];
+		l /= CHIDNB;
+	} while (i-- > 0);
+
+	return (char *) idrpl;
 }
 
-/* idtol: base 36 -> base 10 conversion */
-static unsigned long
-idtol(id)
-char *id;
+/*
+** idtol(char *id, int n)
+** base 36 -> base 10 conversion
+** Converts the first n char from string id, to a number, and return that.
+*/
+long	idtol(char *id, int n)
 {
-    unsigned long l = 0;
-    char c = CHIDLEN-1;
+	long	l = 0;
 
-    l = alphabet_id[*id++];
-    while (c-- > 0)
-	l = l * CHIDNB + alphabet_id[*id++];
-    return l;
+	if (!id)
+	{
+		/* Whatever. */
+		return 0;
+	}
+
+	while (n-- && *id)
+	{
+		l = l * CHIDNB + alphabet_id[(unsigned char )*id++];
+	}
+
+	return l;
 }
 
 /* get_chid: give the current id */
-char *
-get_chid()
+char	*get_chid(void)
 {
-    return ltoid(time(NULL));
+	return ltoid((long)time(NULL), CHIDLEN);
 }
 
 /* close_chid: is the ID in the close future? (written for CHIDLEN == 5) */
-int
-close_chid(id)
-char *id;
+int	close_chid(char *id)
 {
     static time_t last = 0;
     static char current;
@@ -116,10 +127,10 @@ char *id;
 	    curid = get_chid();
 	    current = curid[0];
 	}
-    if (id_alphabet[1 + alphabet_id[current]] == id[1])
+    if (id_alphabet[1 + alphabet_id[(unsigned char)current]] == id[1])
 	    return 1;
     if (id[0] == current &&
-	idtol(id) >= (timeofday % (u_int) pow(CHIDNB, CHIDLEN)))
+	idtol(id, CHIDLEN) >= (timeofday % (u_int) pow(CHIDNB, CHIDLEN)))
 	    return 1;
     return 0;
 }
@@ -127,9 +138,7 @@ char *id;
 aChannel *idcache = NULL;
 
 /* cache_chid: add a channel to the list of cached names */
-void
-cache_chid(chptr)
-aChannel *chptr;
+void	cache_chid(aChannel *chptr)
 {
     /*
     ** caching should be limited to the minimum,
@@ -140,7 +149,7 @@ aChannel *chptr;
     if (chptr->history == 0 ||
 	(timeofday - chptr->history) >LDELAYCHASETIMELIMIT+DELAYCHASETIMELIMIT)
 	{
-	    MyFree((char *)chptr);
+	    MyFree(chptr);
 	    return;
 	}
 
@@ -153,9 +162,7 @@ aChannel *chptr;
 /* check_chid: checks if a (short) channel name is in the cache
  *	returns: 0 if not, 1 if yes
  */
-int
-check_chid(name)
-char *name;
+int	check_chid(char *name)
 {
     aChannel *chptr = idcache;
 
@@ -169,8 +176,7 @@ char *name;
 }
 
 /* collect_chid: remove expired entries from the cache */	    
-void
-collect_chid()
+void	collect_chid(void)
 {
     aChannel **chptr = &idcache, *del;
 
@@ -182,27 +188,120 @@ collect_chid()
 		    *chptr = del->nextch;
 		    istat.is_cchan--;
 		    istat.is_cchanmem -= sizeof(aChannel) +strlen(del->chname);
-		    MyFree((char *)del);
+		    MyFree(del);
 		}
 	    else
 		    chptr = &((*chptr)->nextch);
 	}
 }
 
-/* checks wether the ID is valid */
-int
-cid_ok(name)
-char *name;
+/* 
+** checks wether the ID is valid
+** It checks n chars of name to be a valid char for an ID.
+** This skips the first char for now.  It's used in !channels, where the first
+** char is a '!', and for UID's, where the first char should be a number.
+** returns 1 when it's valid, 0 when not.
+*/
+int	cid_ok(char *name, int n)
 {
-    int l = 1;
+	int	i;
 
-    while (l <= CHIDLEN)
+	for (i = 1; i <= n; i++)
 	{
-	    if (alphabet_id[name[l]] == -1)
-		    return 0;
-	    l += 1;
+		if (alphabet_id[(unsigned char)name[i]] == -1)
+		{
+			return 0;
+		}
 	}
-    if (l != CHIDLEN+1)
-	    return 0;
-    return 1;
+	return 1;
 }
+
+/*
+ * unique user IDs
+ */
+
+/* 
+** sid_valid(char *sid)
+**
+** Check that the sid is a valid sid.  The first char should be a number in
+** range of [0-9], the rest should be a char in the range of [0-9A-Z].
+** We also accept fake sids, generated for old servers; they begin with '$'.
+** It returns 1 if it's a valid sid, 0 if not.
+*/
+int	sid_valid(char *sid)
+{
+	if ((isdigit(sid[0]) || sid[0] == '$')
+		&& strlen(sid) == SIDLEN)
+	{
+		return cid_ok(sid, SIDLEN - 1);
+	}
+	return 0;
+}
+
+#if 0
+/* we don't need it */
+static char sid[SIDLEN+1];
+
+void	init_sid(char *conf)
+{
+	if (!conf || (strlen(conf) != SIDLEN) || !sid_valid(conf))
+	{
+		exit(0); /* ick.. -syrk */
+	}
+	strcpy(sid, conf);
+}
+#endif
+
+char	*next_uid(void)
+{
+static	char	uid[UIDLEN+1+5];	/* why +5? --Beeth */
+static	long	curr_cid = 0;
+static	int	needfinduid = 0;
+
+	do
+	{
+		sprintf(uid, "%s%s", me.serv->sid, ltoid(curr_cid, UIDLEN-SIDLEN));
+		curr_cid++;
+
+#if CHIDNB == 36 && UIDLEN == 9 && SIDLEN == 4
+/* MAXCID = CHIDNB ^ (UIDLEN - SIDLEN) */
+# define MAXCID 60466176
+#else
+# error Fix MAXCID!
+#endif
+		if (curr_cid > MAXCID)
+		{
+			/* 
+			** We used all CIDs, restart from 0.
+			** At a rate of 1 client per second we have 700 days before
+			** reusing CID.
+			** Note: after we increase UIDLEN to 12 this uptime would
+			** have to be almost 90 thousands years!
+			*/
+			curr_cid = 0;
+			needfinduid = 1;
+		}
+	}
+	while (needfinduid && find_uid(uid, NULL) != NULL);
+	return uid;
+}
+
+/*
+ * check_uid
+ *	various sanity checks to ensure that a UID is valid.
+ * returns 1 when it's valid, 0 when not.
+ */
+int	check_uid(char *uid)
+{
+	if (isdigit(uid[0]) && strlen(uid) == UIDLEN)
+	{
+		return cid_ok(uid, UIDLEN - 1);
+	}
+	/*
+	 * need to check for sid collisions.. ick, how?
+	 * another function? -syrk
+	 * rather compare SID part of UID with source of message? --Beeth
+	 */
+	return 0;
+}
+

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: ircd.c,v 1.62.2.10 2004/05/09 20:09:08 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: ircd.c,v 1.110 2004/02/12 21:43:21 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -31,21 +31,27 @@ static  char rcsid[] = "@(#)$Id: ircd.c,v 1.62.2.10 2004/05/09 20:09:08 chopin E
 aClient me;			/* That's me */
 aClient *client = &me;		/* Pointer to beginning of Client list */
 
-static	void	open_debugfile(), setup_signals(), io_loop();
+static	void	open_debugfile(void), setup_signals(void), io_loop(void);
+
+#if defined(USE_IAUTH)
+static	RETSIGTYPE	s_slave(int s);
+#endif
 
 istat_t	istat;
+iconf_t iconf;
 char	**myargv;
 int	rehashed = 0;
 int	portnum = -1;		    /* Server port number, listening this */
 char	*configfile = IRCDCONF_PATH;	/* Server configuration file */
 int	debuglevel = -1;		/* Server debug level */
 int	bootopt = BOOT_PROT|BOOT_STRICTPROT;	/* Server boot option flags */
+int	serverbooting = 1;
 char	*debugmode = "";		/*  -"-    -"-   -"-   -"- */
 char	*sbrk0;				/* initial sbrk(0) */
 char	*tunefile = IRCDTUNE_PATH;
-static	int	dorehash = 0,
-		dorestart = 0,
-		restart_iauth = 0;
+volatile static	int	dorehash = 0,
+			dorestart = 0,
+			restart_iauth = 0;
 
 time_t	nextconnect = 1;	/* time for next try_connections call */
 time_t	nextgarbage = 1;        /* time for next collect_channel_garbage call*/
@@ -54,33 +60,7 @@ time_t	nextdnscheck = 0;	/* next time to poll dns to force timeouts */
 time_t	nextexpire = 1;		/* next expire run on the dns cache */
 time_t	nextiarestart = 1;	/* next time to check if iauth is alive */
 
-#ifdef	PROFIL
-extern	etext();
-
-RETSIGTYPE	s_monitor(s)
-int s;
-{
-	static	int	mon = 0;
-#if POSIX_SIGNALS
-	struct	sigaction act;
-#endif
-
-	(void)moncontrol(mon);
-	mon = 1 - mon;
-#if POSIX_SIGNALS
-	act.sa_handler = s_rehash;
-	act.sa_flags = 0;
-	(void)sigemptyset(&act.sa_mask);
-	(void)sigaddset(&act.sa_mask, SIGUSR1);
-	(void)sigaction(SIGUSR1, &act, NULL);
-#else
-	(void)signal(SIGUSR1, s_monitor);
-#endif
-}
-#endif
-
-RETSIGTYPE s_die(s)
-int s;
+RETSIGTYPE s_die(int s)
 {
 #ifdef	USE_SYSLOG
 	(void)syslog(LOG_CRIT, "Server Killed By SIGTERM");
@@ -93,8 +73,7 @@ int s;
 }
 
 #if defined(USE_IAUTH)
-RETSIGTYPE s_slave(s)
-int s;
+static	RETSIGTYPE	s_slave(int s)
 {
 # if POSIX_SIGNALS
 	struct	sigaction act;
@@ -111,8 +90,7 @@ int s;
 }
 #endif
 
-static RETSIGTYPE s_rehash(s)
-int s;
+static RETSIGTYPE s_rehash(int s)
 {
 #if POSIX_SIGNALS
 	struct	sigaction act;
@@ -128,8 +106,7 @@ int s;
 	dorehash = 1;
 }
 
-void	restart(mesg)
-char	*mesg;
+void	restart(char *mesg)
 {
 #ifdef	USE_SYSLOG
 	(void)syslog(LOG_WARNING, "Restarting Server because: %s (%u)", mesg,
@@ -140,8 +117,7 @@ char	*mesg;
 	server_reboot();
 }
 
-RETSIGTYPE s_restart(s)
-int s;
+RETSIGTYPE s_restart(int s)
 {
 #if POSIX_SIGNALS
 	struct	sigaction act;
@@ -152,8 +128,15 @@ int s;
 	(void)sigaddset(&act.sa_mask, SIGINT);
 	(void)sigaction(SIGINT, &act, NULL);
 #else
+
 	(void)signal(SIGHUP, SIG_DFL);	/* sysV -argv */
 #endif
+	if (bootopt & BOOT_TTY)
+	{
+		fprintf(stderr, "Caught SIGINT, terminating...\n");
+		exit(-1);
+	}
+
 	dorestart = 1;
 }
 
@@ -177,8 +160,10 @@ void	server_reboot()
 	for (i = 3; i < MAXCONNECTIONS; i++)
 		(void)close(i);
 	if (!(bootopt & (BOOT_TTY|BOOT_DEBUG)))
+	{
 		(void)close(2);
-	(void)close(1);
+		(void)close(1);
+	}
 	if ((bootopt & BOOT_CONSOLE) || isatty(0))
 		(void)close(0);
 	ircd_writetune(tunefile);
@@ -208,8 +193,7 @@ void	server_reboot()
 **	function should be made latest. (No harm done if this
 **	is called earlier or later...)
 */
-static	time_t	try_connections(currenttime)
-time_t	currenttime;
+static	time_t	try_connections(time_t currenttime)
 {
 	static	time_t	lastsort = 0;
 	Reg	aConfItem *aconf;
@@ -285,18 +269,18 @@ time_t	currenttime;
 					*pconf = aconf->next;
 			(*pconf = con_conf)->next = 0;
 		    }
-		if (connect_server(con_conf, (aClient *)NULL,
+		if (!iconf.aconnect)
+		{
+			sendto_flag(SCH_NOTICE,
+				"Connection to %s deferred. Autoconnect "
+				"administratively disabled", con_conf->name);
+		}
+		else if (connect_server(con_conf, (aClient *)NULL,
 				   (struct hostent *)NULL) == 0)
 			sendto_flag(SCH_NOTICE,
 				    "Connection to %s[%s] activated.",
 				    con_conf->name, con_conf->host);
 	    }
-	else
-	{
-		/* No suitable conf for AC was found, so why bother checking
-		** again? If some server quits, it'd get reenabled --B. */
-		next = 0;
-	}
 	Debug((DEBUG_NOTICE,"Next connection check : %s", myctime(next)));
 	/*
 	 * calculate preference value based on accumulated stats.
@@ -325,75 +309,128 @@ time_t	currenttime;
 	return (next);
 }
 
-
-static	void	close_held(cptr)
-aClient	*cptr;
+/* Checks all clients against KILL lines. (And remove them, if found.)
+** Only MAXDELAYEDKILLS at a time or all, if not defined.
+** Returns 1, if still work to do, 0 if finished.
+*/
+static	int	delayed_kills(time_t currenttime)
 {
-	Reg	aClient	*acptr;
-	int	i;
+	static	time_t	dk_rehashed = 0;	/* time of last rehash we're processing */
+	static	int	dk_lastfd;		/* fd we last checked */
+	static	int	dk_checked;		/* # clients we checked */
+	static	int	dk_killed;		/* # clients we killed */
+	Reg	aClient	*cptr;
+	Reg	int	i, j;
 
-	for (i = highest_fd; i >= 0; i--)
-		if ((acptr = local[i]) && (cptr->port == acptr->port) &&
-		    (acptr != cptr) && IsHeld(acptr) &&
-		    !bcmp((char *)&cptr->ip, (char *)&acptr->ip,
-			  sizeof(acptr->ip)))
-		    {
-			(void) exit_client(acptr, acptr, &me,
-					   "Reconnect Timeout");
-			return;
-		    }
+	if (dk_rehashed == 0)
+	{
+		dk_rehashed = currenttime;
+		dk_checked = 0;
+		dk_killed = 0;
+		dk_lastfd = highest_fd;
+	}
+#ifdef MAXDELAYEDKILLS
+	/* checking only this many clients each time */
+	j = dk_lastfd - MAXDELAYEDKILLS + 1;
+	if (j < 0)
+#endif
+		j = 0;
+
+	for (i = dk_lastfd; i >= j; i--)
+	{
+		int	kflag = 0;
+		char	*reason = NULL;
+
+		if (!(cptr = local[i]) || !IsPerson(cptr))
+		{
+			/* for K:lines we're interested only in local,
+			** fully registered clients */
+			if (j > 0)
+				j--;
+			continue;
+		}
+
+		dk_checked++;
+		kflag = find_kill(cptr, 0, &reason);
+
+		/* If the client is a user and a KILL line was found
+		** to be active, close this connection. */
+		if (kflag == -1)
+		{
+			char buf[100];
+
+			dk_killed++;
+			sendto_flag(SCH_NOTICE,
+				"Kill line active for %s",
+				get_client_name(cptr, FALSE));
+				cptr->exitc = EXITC_KLINE;
+			if (!BadPtr(reason))
+				sprintf(buf, "Kill line active: %.80s",
+						reason);
+			(void)exit_client(cptr, cptr, &me, (reason) ?
+					  buf : "Kill line active");
+		}
+	}
+	dk_lastfd = i;	/* from which fd to start next time */
+	Debug((DEBUG_DEBUG, "DelayedKills killed %d and counting...",
+		dk_killed));
+
+	if (dk_lastfd < 0)
+	{
+		sendto_flag(SCH_NOTICE, "DelayedKills checked %d killed %d "
+			"in %d sec", dk_checked, dk_killed,
+			currenttime - dk_rehashed);
+		dk_rehashed = 0;
+		if (rehashed == 2)
+		{
+			/* there was rehash queued, start again */
+			return 1;
+		}
+		return 0;
+	}
+	return 1;
 }
 
-
-static	time_t	check_pings(currenttime)
-time_t	currenttime;
+static	time_t	check_pings(time_t currenttime)
 {
+#ifdef TIMEDKLINES
 	static	time_t	lkill = 0;
+#endif
 	Reg	aClient	*cptr;
 	Reg	int	kflag = 0;
-	int	ping = 0, i, rflag = 0;
+	aClient *bysptr = NULL;
+	int	ping = 0, i;
 	time_t	oldest = 0, timeout;
 	char	*reason;
 
 	for (i = highest_fd; i >= 0; i--)
 	    {
-		if (!(cptr = local[i]) || IsListening(cptr) || IsLog(cptr) ||
-		    IsHeld(cptr))
+		if (!(cptr = local[i]) || IsListening(cptr) || IsLog(cptr))
 			continue;
 
-		/*
-		 * K and R lines once per minute, max.  This is the max.
-		 * granularity in K-lines anyway (with time field).
-		 */
-		if (
-#if defined(TIMEDKLINES) || ( defined(R_LINES) && defined(R_LINES_OFTEN) )
-			(currenttime - lkill > TIMEDKLINES) || 
-#endif /* TIMEDKLINES */
-			rehashed)
-		    {
-			if (IsPerson(cptr))
-			    {
-				kflag = find_kill(cptr, rehashed, &reason);
-#ifdef R_LINES_OFTEN
-				rflag = find_restrict(cptr);
+#ifdef TIMEDKLINES
+		kflag = 0;
+		reason = NULL;
+		/* 
+		** Once per TIMEDKLINES seconds.
+		** (1 minute is minimum resolution in K-line field)
+		*/
+		if ((currenttime - lkill > TIMEDKLINES)
+			&& IsPerson(cptr) && !IsKlineExempt(cptr))
+		{
+			kflag = find_kill(cptr, 1, &reason);
+		}
 #endif
-			    }
-			else
-			    {
-				kflag = rflag = 0;
-				reason = NULL;
-			    }
-		    }
 		ping = IsRegistered(cptr) ? get_client_ping(cptr) :
 					    ACCEPTTIMEOUT;
-		Debug((DEBUG_DEBUG, "c(%s) %d p %d k %d r %d a %d",
-			cptr->name, cptr->status, ping, kflag, rflag,
+		Debug((DEBUG_DEBUG, "c(%s) %d p %d k %d a %d",
+			cptr->name, cptr->status, ping, kflag,
 			currenttime - cptr->lasttime));
 		/*
 		 * Ok, so goto's are ugly and can be avoided here but this code
 		 * is already indented enough so I think its justified. -avalon
 		 */
-		if (!kflag && !rflag && IsRegistered(cptr) &&
+		if (!kflag && IsRegistered(cptr) &&
 		    (ping >= currenttime - cptr->lasttime))
 			goto ping_timeout;
 		/*
@@ -402,21 +439,12 @@ time_t	currenttime;
 		 * If the client is a user and a KILL line was found
 		 * to be active, close this connection too.
 		 */
-		if (kflag || rflag ||
+		if (kflag ||
 		    ((currenttime - cptr->lasttime) >= (2 * ping) &&
 		     (cptr->flags & FLAGS_PINGSENT)) ||
 		    (!IsRegistered(cptr) &&
 		     (currenttime - cptr->firsttime) >= ping))
 		    {
-			if (IsReconnect(cptr))
-			    {
-				sendto_flag(SCH_ERROR,
-					    "Reconnect timeout to %s",
-					    get_client_name(cptr, TRUE));
-				close_held(cptr);
-				(void)exit_client(cptr, cptr, &me,
-						  "Ping timeout");
-			    }
 			if (!IsRegistered(cptr) && 
 			    (DoingDNS(cptr) || DoingAuth(cptr) ||
 			     DoingXAuth(cptr)))
@@ -452,7 +480,7 @@ time_t	currenttime;
 					    {
 						cptr->exitc = EXITC_AUTHTOUT;
 						sendto_iauth("%d T", cptr->fd);
-						ereject_user(cptr, " Timeout ",
+						exit_client(cptr, cptr, &me,
 						     "Authentication Timeout");
 						continue;
 					    }
@@ -469,12 +497,27 @@ time_t	currenttime;
 			    }
 			if (IsServer(cptr) || IsConnecting(cptr) ||
 			    IsHandshake(cptr))
+			{
+				if (cptr->serv && cptr->serv->byuid[0])
+				{
+					bysptr = find_uid(cptr->serv->byuid,
+							NULL);
+				}
+				/* we are interested only in *remote* opers */
+				if (bysptr && !MyConnect(bysptr))
+				{
+					sendto_one(bysptr, ":%s NOTICE %s :"
+						"No response from %s, closing"
+						" link", ME, bysptr->name,
+						get_client_name(cptr, FALSE));
+				}
 				sendto_flag(SCH_NOTICE,
 					    "No response from %s closing link",
 					    get_client_name(cptr, FALSE));
+			}
 			/*
 			 * this is used for KILL lines with time restrictions
-			 * on them - send a messgae to the user being killed
+			 * on them - send a message to the user being killed
 			 * first.
 			 */
 			if (kflag && IsPerson(cptr))
@@ -491,18 +534,6 @@ time_t	currenttime;
 				(void)exit_client(cptr, cptr, &me, (reason) ?
 						  buf : "Kill line active");
 			    }
-
-#if defined(R_LINES) && defined(R_LINES_OFTEN)
-			else if (IsPerson(cptr) && rflag)
-			    {
-				sendto_flag(SCH_NOTICE,
-					   "Restricting %s, closing link.",
-					   get_client_name(cptr,FALSE));
-				cptr->exitc = EXITC_RLINE;
-				(void)exit_client(cptr, cptr, &me,
-						  "Restricting");
-			    }
-#endif
 			else
 			    {
 				cptr->exitc = EXITC_PING;
@@ -531,8 +562,10 @@ ping_timeout:
 		if (timeout < oldest || !oldest)
 			oldest = timeout;
 	    }
+#ifdef TIMEDKLINES
 	if (currenttime - lkill > 60)
 		lkill = currenttime;
+#endif
 	if (!oldest || oldest < currenttime)
 		oldest = currenttime + PINGFREQUENCY;
 	if (oldest < currenttime + 2)
@@ -543,8 +576,7 @@ ping_timeout:
 }
 
 
-static	void	setup_me(mp)
-aClient	*mp;
+static	void	setup_me(aClient *mp)
 {
 	struct	passwd	*p;
 
@@ -568,7 +600,9 @@ aClient	*mp;
 #endif
 	mp->hostp->h_addr_list = (char **)MyMalloc(2*sizeof(char *));
 #ifdef	INET6
-	mp->hostp->h_addr_list[0] = (char *)&in6addr_loopback;
+	mp->hostp->h_addr_list[0] = (void *)MyMalloc(mp->hostp->h_length);
+	memcpy(mp->hostp->h_addr_list[0], &in6addr_loopback,
+		mp->hostp->h_length);
 #else
 	mp->hostp->h_addr_list[0] = (void *)MyMalloc(mp->hostp->h_length);
 	*(long *)(mp->hostp->h_addr_list[0]) = IN_LOOPBACKNET;
@@ -590,19 +624,23 @@ aClient	*mp;
 	mp->user = NULL;
 	mp->fd = -1;
 	SetMe(mp);
-	(void) make_server(mp);
 	mp->serv->snum = find_server_num (ME);
-	(void) make_user(mp);
+	/* we don't fill our own IP -> 0 as ip lenght */
+	(void) make_user(mp,0);
 	istat.is_users++;	/* here, cptr->next is NULL, see make_user() */
 	mp->user->flags |= FLAGS_OPER;
-	mp->serv->up = mp->name;
+	mp->serv->up = mp;
+	mp->serv->maskedby = mp;
 	mp->user->server = find_server_string(mp->serv->snum);
 	strncpyzt(mp->user->username, (p) ? p->pw_name : "unknown",
 		  sizeof(mp->user->username));
 	(void) strcpy(mp->user->host, mp->name);
+	SetEOB(mp);
+	istat.is_eobservers = 1;
 
 	(void)add_to_client_hash_table(mp->name, mp);
-
+	(void)add_to_sid_hash_table(mp->serv->sid, mp);
+	strncpyzt(mp->serv->verstr, PATCHLEVEL, sizeof(mp->serv->verstr));
 	setup_server_channels(mp);
 }
 
@@ -611,17 +649,18 @@ aClient	*mp;
 **	This is called when the commandline is not acceptable.
 **	Give error message and exit without starting anything.
 */
-static	int	bad_command()
+static	int	bad_command(void)
 {
   (void)printf(
-	 "Usage: ircd [-a] [-b] [-c]%s [-h servername] [-q] [-o] [-i] [-T tunefile] [-p (strict|on|off)] [-s] [-v] %s\n",
+	 "Usage: ircd [-a] [-b] [-c]%s [-h servername] [-q] [-o] [-i]"
+	 "[-T tunefile] [-p (strict|on|off)] [-s] [-v] [-t] %s\n",
 #ifdef CMDLINE_CONFIG
 	 " [-f config]",
 #else
 	 "",
 #endif
 #ifdef DEBUGMODE
-	 " [-x loglevel] [-t]"
+	 " [-x loglevel]"
 #else
 	 ""
 #endif
@@ -630,21 +669,13 @@ static	int	bad_command()
   exit(-1);
 }
 
-int	main(argc, argv)
-int	argc;
-char	*argv[];
+int	main(int argc, char *argv[])
 {
 	uid_t	uid, euid;
 
-	(void) myctime(time(NULL));	/* Don't ask, just *don't* ask */
 	sbrk0 = (char *)sbrk((size_t)0);
 	uid = getuid();
 	euid = geteuid();
-#ifdef	PROFIL
-	(void)monstartup(0, etext);
-	(void)moncontrol(1);
-	(void)signal(SIGUSR1, s_monitor);
-#endif
 
 #ifdef	CHROOTDIR
 	ircd_res_init();
@@ -685,6 +716,8 @@ char	*argv[];
 	(void)umask(077);                /* better safe than sorry --SRB */
 	bzero((char *)&me, sizeof(me));
 
+	make_server(&me);
+
 	version = make_version();	/* Generate readable version string */
 
 	/*
@@ -699,13 +732,17 @@ char	*argv[];
 		int	flag = *p++;
 
 		if (flag == '\0' || *p == '\0')
+		{
 			if (argc > 1 && argv[1][0] != '-')
-			    {
+			{
 				p = *++argv;
 				argc -= 1;
-			    }
+			}
 			else
+			{
 				p = "";
+			}
+		}
 
 		switch (flag)
 		    {
@@ -753,7 +790,9 @@ char	*argv[];
 			bootopt |= BOOT_NOIAUTH;
 			break;
 		    case 't':
+#ifdef DEBUGMODE
                         (void)setuid((uid_t)uid);
+#endif
 			bootopt |= BOOT_TTY;
 			break;
 		    case 'T':
@@ -792,14 +831,6 @@ char	*argv[];
 	if (argc > 0)
 		bad_command(); /* This exits out */
 
-#if defined(USE_IAUTH) && defined(__CYGWIN32__)
-	if ((bootopt & BOOT_NOIAUTH) == 0)
-	    {
-		bootopt |= BOOT_NOIAUTH;
-		(void)fprintf(stderr, "WARNING: Assuming -s option.\n");
-	    }
-#endif
-	
 #ifndef IRC_UID
 	if ((uid != euid) && !euid)
 	    {
@@ -826,6 +857,8 @@ char	*argv[];
 #endif /*CHROOTDIR/UID/GID*/
 
 #if defined(USE_IAUTH)
+	/* At this point, we just check whether iauth is there. Real start
+	 * is done in init_sys(). */
 	if ((bootopt & BOOT_NOIAUTH) == 0)
 		switch (vfork())
 		    {
@@ -856,6 +889,8 @@ char	*argv[];
 
 	/* didn't set debuglevel */
 	/* but asked for debugging output to tty */
+#ifdef DEBUGMODE
+
 	if ((debuglevel < 0) &&  (bootopt & BOOT_TTY))
 	    {
 		(void)fprintf(stderr,
@@ -863,9 +898,11 @@ char	*argv[];
 		exit(-1);
 	    }
 
-	initstats();
-	ircd_readtune(tunefile);
+#endif
 	timeofday = time(NULL);
+	initstats();
+	initruntimeconf();
+	ircd_readtune(tunefile);
 #ifdef	CACHED_MOTD
 	motd = NULL;
 	read_motd(IRCDMOTD_PATH);
@@ -886,12 +923,12 @@ char	*argv[];
 	timeofday = time(NULL);
 	if (initconf(bootopt) == -1)
 	    {
-		Debug((DEBUG_FATAL, "Failed in reading configuration file %s",
+		Debug((DEBUG_FATAL, "Couldn't open configuration file %s",
 			configfile));
-		/* no can do.
-		(void)printf("Couldn't open configuration file %s\n",
-			configfile);
-		*/
+		(void)fprintf(stderr,
+			"Couldn't open configuration file %s (%s)\n",
+			 configfile,strerror(errno));
+		
 		exit(-1);
 	    }
 	else
@@ -909,13 +946,39 @@ char	*argv[];
 		    }
 		/* exit if there is nothing to listen to */
 		if (acptr == NULL && !(bootopt & BOOT_INETD))
+		{
+			fprintf(stderr,
+			"Fatal Error: No working P-line in ircd.conf\n");
 			exit(-1);
+		}
 		/* Is there an M-line? */
 		if (!find_me())
+		{
+			fprintf(stderr,
+			"Fatal Error: No M-line in ircd.conf.\n");
 			exit(-1);
+		}
+		if (!me.serv->sid)
+		{
+			fprintf(stderr,
+			"Fatal Error: No SID specified in ircd.conf\n");
+			exit(-1);
+		}
+		if (!sid_valid(me.serv->sid))
+		{
+			fprintf(stderr,
+			"Fatal Error: Invalid sid %s specified in ircd.conf\n",
+				me.serv->sid);
+			exit(-1);
+		}
+		if (!networkname)
+		{
+			fprintf(stderr,
+			"Warning: Network name is not set in ircd.conf\n");
+		}
+		isupport = make_isupport();	/* Generate RPL_ISUPPORT (005) numerics */
 	    }
 
-	dbuf_init();
 	setup_me(&me);
 	check_class();
 	ircd_writetune(tunefile);
@@ -956,6 +1019,7 @@ char	*argv[];
 		else
 		    exit(5);
 	    }
+	
 	if (bootopt & BOOT_OPER)
 	    {
 		aClient *tmp = add_connection(&me, 0);
@@ -965,21 +1029,40 @@ char	*argv[];
 		SetMaster(tmp);
 		local[0] = tmp;
 	    }
-	else
-		write_pidfile();
+
 
 	Debug((DEBUG_NOTICE,"Server ready..."));
 #ifdef USE_SYSLOG
 	syslog(LOG_NOTICE, "Server Ready: v%s (%s #%s)", version, creation,
 	       generation);
 #endif
+	printf("Server %s (%s) version %s starting%s%s", ME, me.serv->sid,
+		version, (bootopt & BOOT_TTY) ? " in foreground mode." : ".",
+#ifdef DEBUGMODE
+		"(DEBUGMODE)\n"
+#else
+		"\n"
+#endif
+		);
+
 	timeofday = time(NULL);
+	mysrand(timeofday);
+	
+	daemonize();	
+	if (!(bootopt & BOOT_OPER))
+	{
+		write_pidfile();
+	}
+	dbuf_init();
+	
+	serverbooting = 0;
+	
 	while (1)
 		io_loop();
 }
 
 
-void	io_loop()
+static	void	io_loop(void)
 {
 	static	time_t	delay = 0;
 	int maxs = 4;
@@ -994,7 +1077,7 @@ void	io_loop()
 		nextconnect = try_connections(timeofday);
 	/*
 	** Every once in a while, hunt channel structures that
-	** can be freed.
+	** can be freed. Reop channels while at it, too.
 	*/
 	if (timeofday >= nextgarbage)
 		nextgarbage = collect_channel_garbage(timeofday);
@@ -1069,7 +1152,10 @@ void	io_loop()
 	if (timeofday >= nextping)
 	    {
 		nextping = check_pings(timeofday);
-		rehashed = 0;
+		if (rehashed > 0)
+		{
+			rehashed = delayed_kills(timeofday);
+		}
 	    }
 
 	if (dorestart)
@@ -1216,10 +1302,11 @@ static	void	setup_signals()
 	(void)signal(SIGWINCH, SIG_IGN);
 #  endif
 	(void)signal(SIGPIPE, SIG_IGN);
+	
 # endif /* HAVE_RELIABLE_SIGNALS */
-	(void)signal(SIGALRM, dummy);   
+	(void)signal(SIGALRM, dummy);
 	(void)signal(SIGHUP, s_rehash);
-	(void)signal(SIGTERM, s_die); 
+	(void)signal(SIGTERM, s_die);
 	(void)signal(SIGINT, s_restart);
 # if defined(USE_IAUTH)
 	(void)signal(SIGUSR1, s_slave);
@@ -1247,8 +1334,7 @@ static	void	setup_signals()
  * Called from bigger_hash_table(), s_die(), server_reboot(),
  * main(after initializations), grow_history(), rehash(io_loop) signal.
  */
-void ircd_writetune(filename)
-char *filename;
+void ircd_writetune(char *filename)
 {
 	int fd;
 	char buf[100];
@@ -1276,8 +1362,7 @@ char *filename;
 /*
  * Called only from main() at startup.
  */
-void ircd_readtune(filename)
-char *filename;
+void ircd_readtune(char *filename)
 {
 	int fd, t_data[6];
 	char buf[100];
@@ -1309,6 +1394,8 @@ char *filename;
 		ww_size = t_data[0];
 		lk_size = t_data[1];
 		_HASHSIZE = t_data[2];
+		_HOSTNAMEHASHSIZE = t_data[2]; /* hostname has always same size
+						  as the client hash */
 		_CHANNELHASHSIZE = t_data[3];
 		_SERVERSIZE = t_data[4];
 		poolsize = t_data[5];
@@ -1323,3 +1410,4 @@ char *filename;
 		close(fd);
 	    }
 }
+

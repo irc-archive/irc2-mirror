@@ -16,7 +16,7 @@
 #*   along with this program; if not, write to the Free Software
 #*   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 #*
-#*   $Id: Makefile.in,v 1.45.2.2 2001/02/09 13:47:07 q Exp $
+#*   $Id: Makefile.in,v 1.52 2004/02/08 00:54:11 chopin Exp $
 #*
 #*/
 
@@ -89,7 +89,7 @@ ircd_log_dir = @logdir@
 #
 # Path to server binary
 IRCD_PATH = $(server_bin_dir)/$(SERVER)
-# Path to authentification slave binary
+# Path to authentication slave binary
 IAUTH_PATH = $(server_bin_dir)/$(IAUTH)
 # Path to the m4 configuration file
 IRCDM4_PATH = $(ircd_conf_dir)/ircd.m4
@@ -102,6 +102,8 @@ IRCDMOTD_PATH = $(ircd_conf_dir)/ircd.motd
 IAUTHCONF_PATH = $(ircd_conf_dir)/iauth.conf
 # server PID file
 IRCDPID_PATH = $(ircd_var_dir)/ircd.pid
+# authentication slave PID file
+IAUTHPID_PATH = $(ircd_var_dir)/iauth.pid
 # server state file
 IRCDTUNE_PATH = $(ircd_var_dir)/ircd.tune
 # ircdwatch PID file
@@ -152,7 +154,7 @@ SERVER_COMMON_OBJS = bsd.o dbuf.o packet.o send.o match.o parse.o \
                      support.o
 SERVER_OBJS = channel.o class.o hash.o ircd.o list.o res.o s_auth.o \
               s_bsd.o s_conf.o s_debug.o s_err.o s_id.o s_misc.o s_numeric.o \
-              s_serv.o s_service.o s_user.o s_zip.o whowas.o \
+              s_send.o s_serv.o s_service.o s_user.o s_zip.o whowas.o \
               res_init.o res_comp.o res_mkquery.o
 
 IAUTH_COMMON_OBJS = clsupport.o clmatch.o # This is a little evil
@@ -232,10 +234,13 @@ install-client: client
 	(cd ../doc; $(INSTALL_DATA) irc.1 $(client_man_dir))
 	@echo "installation of client done."
 
-install-server: server
+install-ircd: ircd
 	-@if [ ! -d $(server_bin_dir) ]; then \
 		$(MKDIRHIER) $(server_bin_dir); \
 	fi
+	$(INSTALL_PROGRAM) -m $(ircd_mode) $(SERVER) $(server_bin_dir)
+
+install-server: install-ircd server
 	-@if [ ! -d $(server_man_dir) ]; then \
 		$(MKDIRHIER) $(server_man_dir); \
 	fi
@@ -251,7 +256,6 @@ install-server: server
 	-@if [ ! -d $(ircd_log_dir) ]; then \
 		$(MKDIRHIER) $(ircd_log_dir); \
 	fi
-	$(INSTALL_PROGRAM) -m $(ircd_mode) $(SERVER) $(server_bin_dir)
 	$(INSTALL_PROGRAM) -m $(ircd_mode) $(IAUTH) $(server_bin_dir)
 	$(INSTALL_PROGRAM) -m $(ircd_mode) $(CHKCONF) $(server_bin_dir)
 	$(INSTALL_PROGRAM) -m $(ircd_mode) ircd-mkpasswd $(server_bin_dir)
@@ -265,6 +269,9 @@ install-server: server
 	$(INSTALL_DATA) ../doc/example.conf $(ircd_conf_dir)
 	-@if [ ! -f $(IAUTHCONF_PATH) ]; then \
 		$(INSTALL_DATA) ../support/iauth.conf $(IAUTHCONF_PATH); \
+	fi
+	-@if [ ! -f $(IRCDMOTD_PATH) ]; then \
+		$(INSTALL_DATA) ../support/ircd.motd $(IRCDMOTD_PATH); \
 	fi
 	@echo "installation of server done."
 
@@ -416,6 +423,9 @@ s_numeric.o: ../ircd/s_numeric.c setup.h config.h
 s_serv.o: ../ircd/s_serv.c setup.h config.h
 	$(CC) $(S_CFLAGS) -DIRCDMOTD_PATH="\"$(IRCDMOTD_PATH)\"" -c -o $@ ../ircd/s_serv.c
 
+s_send.o: ../ircd/s_send.c setup.h config.h
+	$(CC) $(S_CFLAGS) -c -o $@ ../ircd/s_send.c
+
 s_service.o: ../ircd/s_service.c setup.h config.h
 	$(CC) $(S_CFLAGS) -c -o $@ ../ircd/s_service.c
 
@@ -438,7 +448,7 @@ res_mkquery.o: ../ircd/res_mkquery.c setup.h config.h
 	$(CC) $(S_CFLAGS) -c -o $@ ../ircd/res_mkquery.c
 
 iauth.o: ../iauth/iauth.c config.h setup.h
-	$(CC) $(A_CFLAGS) -c -o $@ ../iauth/iauth.c
+	$(CC) $(A_CFLAGS) -DIAUTHPID_PATH="\"$(IAUTHPID_PATH)\"" -c -o $@ ../iauth/iauth.c
 
 a_conf.o: ../iauth/a_conf.c config.h setup.h
 	$(CC) $(A_CFLAGS) -DIAUTHCONF_PATH="\"$(IAUTHCONF_PATH)\"" -c -o $@ ../iauth/a_conf.c

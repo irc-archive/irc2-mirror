@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: packet.c,v 1.8.2.3 2001/10/18 18:50:01 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: packet.c,v 1.11 2003/10/18 15:31:28 q Exp $";
 #endif
 
 #include "os.h"
@@ -54,10 +54,7 @@ static  char rcsid[] = "@(#)$Id: packet.c,v 1.8.2.3 2001/10/18 18:50:01 chopin E
 **	with cptr of "local" variation, which contains all the
 **	necessary fields (buffer etc..)
 */
-int	dopacket(cptr, buffer, length)
-Reg	aClient *cptr;
-char	*buffer;
-Reg	int	length;
+int	dopacket(aClient *cptr, char *buffer, int length)
 {
 	Reg	char	*ch1;
 	Reg	char	*ch2, *bufptr;
@@ -68,25 +65,10 @@ Reg	int	length;
 #endif
  
 	me.receiveB += length; /* Update bytes received */
-	if (me.receiveB > 1023)
-	    {
-		me.receiveK += (me.receiveB >> 10);
-		me.receiveB &= 0x03ff;
-	    }
 	cptr->receiveB += length;
-	if (cptr->receiveB > 1023)
-	    {
-		cptr->receiveK += (cptr->receiveB >> 10);
-		cptr->receiveB &= 0x03ff;	/* 2^10 = 1024, 3ff = 1023 */
-	    }
 	if (acpt != &me)
 	    {
 		acpt->receiveB += length;
-		if (acpt->receiveB > 1023)
-		    {
-			acpt->receiveK += (acpt->receiveB >> 10);
-			acpt->receiveB &= 0x03ff;
-		    }
 	    }
 
 	bufptr = cptr->buffer;
@@ -197,3 +179,4 @@ Reg	int	length;
 	cptr->count = ch1 - bufptr;
 	return r;
 }
+

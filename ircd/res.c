@@ -24,10 +24,11 @@
 #undef RES_C
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: res.c,v 1.21.2.17 2004/05/09 19:59:00 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: res.c,v 1.34 2004/02/09 16:04:41 chopin Exp $";
 #endif
 
-/* #undef	DEBUG	/* because there is a lot of debug code in here :-) */
+/* because there is a lot of debug code in here :-) */
+/* #undef	DEBUG */
 
 static	char	hostbuf[HOSTLEN+1+100]; /* +100 for INET6 */
 static	char	dot[] = ".";
@@ -36,24 +37,24 @@ static	CacheTable	hashtable[ARES_CACSIZE];
 static	aCache	*cachetop = NULL;
 static	ResRQ	*last, *first;
 
-static	void	rem_cache __P((aCache *));
-static	void	rem_request __P((ResRQ *));
-static	int	do_query_name __P((Link *, char *, ResRQ *, int));
-static	int	do_query_number __P((Link *, struct IN_ADDR *, ResRQ *));
-static	void	resend_query __P((ResRQ *));
-static	int	proc_answer __P((ResRQ *, HEADER *, char *, char *));
-static	int	query_name __P((char *, int, int, ResRQ *));
-static	aCache	*make_cache __P((ResRQ *)), *rem_list __P((aCache *));
-static	aCache	*find_cache_name __P((char *));
-static	aCache	*find_cache_number __P((ResRQ *, char *));
-static	int	add_request __P((ResRQ *));
-static	ResRQ	*make_request __P((Link *));
-static	int	send_res_msg __P((char *, int, int));
-static	ResRQ	*find_id __P((int));
-static	int	hash_number __P((unsigned char *));
-static	void	update_list __P((ResRQ *, aCache *));
-static	int	hash_name __P((char *));
-static	int	bad_hostname __P((char *, int));
+static	void	rem_cache (aCache *);
+static	void	rem_request (ResRQ *);
+static	int	do_query_name (Link *, char *, ResRQ *, int);
+static	int	do_query_number (Link *, struct IN_ADDR *, ResRQ *);
+static	void	resend_query (ResRQ *);
+static	int	proc_answer (ResRQ *, HEADER *, char *, char *);
+static	int	query_name (char *, int, int, ResRQ *);
+static	aCache	*make_cache (ResRQ *), *rem_list (aCache *);
+static	aCache	*find_cache_name (char *);
+static	aCache	*find_cache_number (ResRQ *, char *);
+static	int	add_request (ResRQ *);
+static	ResRQ	*make_request (Link *);
+static	int	send_res_msg (char *, int, int);
+static	ResRQ	*find_id (int);
+static	int	hash_number (unsigned char *);
+static	void	update_list (ResRQ *, aCache *);
+static	int	hash_name (char *);
+static	int	bad_hostname (char *, int);
 
 static	struct cacheinfo {
 	int	ca_adds;
@@ -78,8 +79,7 @@ static	struct	resinfo {
 	int	re_unkrep;
 } reinfo;
 
-int	init_resolver(op)
-int	op;
+int	init_resolver(int op)
 {
 	int	ret = 0;
 
@@ -120,21 +120,6 @@ int	op;
 		ret = resfd = socket(AF_INET, SOCK_DGRAM, 0);
 #endif
 		(void) SETSOCKOPT(ret, SOL_SOCKET, SO_BROADCAST, &on, on);
-
-		/* The following frame is a hack to allow resolving
-		 * in FreeBSD jail(). As it is harmless elsewhere, it is
-		 * not #ifdef-ed.
-		 * Note that currently IPv6 within jail() is not
-		 * supported by the FreeBSD.
-		 */
-		{
-			struct sockaddr_in res_addr;
-
-			memset(&res_addr, 0, sizeof(res_addr));
-			res_addr.sin_family = AF_INET;
-			res_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-			bind(resfd, (SAP) &res_addr, sizeof(res_addr));
-		}
 	    }
 #ifdef DEBUG
 	if (op & RES_INITDEBG);
@@ -150,8 +135,7 @@ int	op;
 	return ret;
 }
 
-static	int	add_request(new)
-ResRQ *new;
+static	int	add_request(ResRQ *new)
 {
 	if (!new)
 		return -1;
@@ -171,8 +155,7 @@ ResRQ *new;
  * remove a request from the list. This must also free any memory that has
  * been allocated for temporary storage of DNS results.
  */
-static	void	rem_request(old)
-ResRQ	*old;
+static	void	rem_request(ResRQ *old)
 {
 	Reg	ResRQ	**rptr, *r2ptr = NULL;
 	Reg	int	i;
@@ -194,13 +177,13 @@ ResRQ	*old;
 #endif
 	r2ptr = old;
 	if (r2ptr->he.h_name)
-		MyFree((char *)r2ptr->he.h_name);
+		MyFree(r2ptr->he.h_name);
 	for (i = 0; i < MAXALIASES; i++)
 		if ((s = r2ptr->he.h_aliases[i]))
 			MyFree(s);
 	if (r2ptr->name)
 		MyFree(r2ptr->name);
-	MyFree((char *)r2ptr);
+	MyFree(r2ptr);
 
 	return;
 }
@@ -208,8 +191,7 @@ ResRQ	*old;
 /*
  * Create a DNS request record for the server.
  */
-static	ResRQ	*make_request(lp)
-Link	*lp;
+static	ResRQ	*make_request(Link *lp)
 {
 	Reg	ResRQ	*nreq;
 
@@ -236,8 +218,7 @@ Link	*lp;
  * Remove queries from the list which have been there too long without
  * being resolved.
  */
-time_t	timeout_query_list(now)
-time_t	now;
+time_t	timeout_query_list(time_t now)
 {
 	Reg	ResRQ	*rptr, *r2ptr;
 	Reg	time_t	next = 0, tout;
@@ -245,12 +226,13 @@ time_t	now;
 
 	Debug((DEBUG_DNS,"timeout_query_list at %s",myctime(now)));
 	for (rptr = first; rptr; rptr = r2ptr)
-	    {
+	{
 		r2ptr = rptr->next;
 		tout = rptr->sentat + rptr->timeout;
 		if (now >= tout)
+		{
 			if (--rptr->retries <= 0)
-			    {
+			{
 #ifdef DEBUG
 				Debug((DEBUG_ERROR,"timeout %x now %d cptr %x",
 				       rptr, now, rptr->cinfo.value.cptr));
@@ -258,7 +240,7 @@ time_t	now;
 				reinfo.re_timeouts++;
 				cptr = rptr->cinfo.value.cptr;
 				switch (rptr->cinfo.flags)
-				    {
+				{
 				case ASYNC_CLIENT :
 #if defined(USE_IAUTH)
 					sendto_iauth("%d d", cptr->fd);
@@ -270,12 +252,12 @@ time_t	now;
 						    "Host %s unknown",
 						    rptr->name);
 					break;
-				    }
+				}
 				rem_request(rptr);
 				continue;
-			    }
+			}
 			else
-			    {
+			{
 				rptr->sentat = now;
 				rptr->timeout += rptr->timeout;
 				resend_query(rptr);
@@ -285,10 +267,13 @@ time_t	now;
 				       rptr, now, rptr->retries,
 				       rptr->cinfo.value.cptr));
 #endif
-			    }
+			}
+		}
 		if (!next || tout < next)
+		{
 			next = tout;
-	    }
+		}
+	}
 	return (next > now) ? next : (now + AR_TTL);
 }
 
@@ -296,8 +281,7 @@ time_t	now;
  * del_queries - called by the server to cleanup outstanding queries for
  * which there no longer exist clients or conf lines.
  */
-void	del_queries(cp)
-char	*cp;
+void	del_queries(char *cp)
 {
 	Reg	ResRQ	*rptr, *r2ptr;
 
@@ -316,9 +300,7 @@ char	*cp;
  * isnt present. Returns number of messages successfully sent to 
  * nameservers or -1 if no successful sends.
  */
-static	int	send_res_msg(msg, len, rcount)
-char	*msg;
-int	len, rcount;
+static	int	send_res_msg(char *msg, int len, int rcount)
 {
 	Reg	int	i;
 	int	sent = 0, max;
@@ -366,8 +348,7 @@ int	len, rcount;
 /*
  * find a dns request id (id is determined by dn_mkquery)
  */
-static	ResRQ	*find_id(id)
-int	id;
+static	ResRQ	*find_id(int id)
 {
 	Reg	ResRQ	*rptr;
 
@@ -383,10 +364,7 @@ int	id;
  * returns the host info if found in cache, or NULL when it doesn't
  * know it yet.
  */
-struct	hostent	*gethost_byname_type(name, lp, type)
-char	*name;
-Link	*lp;
-int	type;
+struct	hostent	*gethost_byname_type(char *name, Link *lp, int type)
 {
 	Reg	aCache	*cp;
 
@@ -416,9 +394,7 @@ struct	hostent	*gethost_byname(char *name, Link *lp)
 #endif
 }
 
-struct	hostent	*gethost_byaddr(addr, lp)
-char	*addr;
-Link	*lp;
+struct	hostent	*gethost_byaddr(char *addr, Link *lp)
 {
 	aCache	*cp;
 
@@ -431,11 +407,7 @@ Link	*lp;
 	return NULL;
 }
 
-static	int	do_query_name(lp, name, rptr, type)
-Link	*lp;
-char	*name;
-Reg	ResRQ	*rptr;
-int	type;
+static	int	do_query_name(Link *lp, char *name, ResRQ *rptr, int type)
 {
 	char	hname[HOSTLEN+1];
 	int	len;
@@ -474,10 +446,7 @@ int	type;
 /*
  * Use this to do reverse IP# lookups.
  */
-static	int	do_query_number(lp, numb, rptr)
-Link	*lp;
-struct	IN_ADDR	*numb;
-Reg	ResRQ	*rptr;
+static	int	do_query_number(Link *lp, struct IN_ADDR *numb, ResRQ *rptr)
 {
 	char	ipbuf[128];
 	Reg	u_char	*cp;
@@ -494,7 +463,11 @@ Reg	ResRQ	*rptr;
 	    }
 	else
 	    {
-		(void)sprintf(ipbuf, "%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.ip6.%s.",
+		(void)sprintf(ipbuf,
+			"%x.%x.%x.%x.%x.%x.%x.%x."
+			"%x.%x.%x.%x.%x.%x.%x.%x."
+			"%x.%x.%x.%x.%x.%x.%x.%x."
+			"%x.%x.%x.%x.%x.%x.%x.%x.ip6.%s.",
 		(u_int)(cp[15]&0xf), (u_int)(cp[15]>>4),
 		(u_int)(cp[14]&0xf), (u_int)(cp[14]>>4),
 		(u_int)(cp[13]&0xf), (u_int)(cp[13]>>4),
@@ -512,7 +485,9 @@ Reg	ResRQ	*rptr;
 		(u_int)(cp[1]&0xf), (u_int)(cp[1]>>4),
 		(u_int)(cp[0]&0xf), (u_int)(cp[0]>>4),
 #ifdef SIXBONE_HACK
-		(cp[0] == 0x3f && cp[1] == 0xfe) ? "int" :
+		/* use ip6.arpa for 2001, ip6.int for all the rest
+		   (idea from Axu) --B. */
+		(cp[0] != 0x20 || cp[1] != 0x01) ? "int" :
 #endif
 		"arpa");
 	    }
@@ -544,10 +519,7 @@ Reg	ResRQ	*rptr;
 /*
  * generate a query based on class, type and name.
  */
-static	int	query_name(name, class, type, rptr)
-char	*name;
-int	class, type;
-ResRQ	*rptr;
+static	int	query_name(char *name, int class, int type, ResRQ *rptr)
 {
 	struct	timeval	tv;
 	char	buf[MAXPACKET];
@@ -590,8 +562,7 @@ ResRQ	*rptr;
 	return 0;
 }
 
-static	void	resend_query(rptr)
-ResRQ	*rptr;
+static	void	resend_query(ResRQ *rptr)
 {
 	if (rptr->resend == 0)
 		return;
@@ -616,10 +587,7 @@ ResRQ	*rptr;
 /*
  * process name server reply.
  */
-static	int	proc_answer(rptr, hptr, buf, eob)
-ResRQ	*rptr;
-char	*buf, *eob;
-HEADER	*hptr;
+static	int	proc_answer(ResRQ *rptr, HEADER *hptr, char *buf, char *eob)
 {
 	Reg	char	*cp, **alias;
 	Reg	struct	hent	*hp;
@@ -676,6 +644,7 @@ HEADER	*hptr;
 			}
 			if (len)
 			{
+				/* probably will never happen */
 				hostbuf[len++] = '.';
 			}
 			strcpy(hostbuf + len, ircd_res.defdname);
@@ -815,8 +784,7 @@ HEADER	*hptr;
 /*
  * read a dns reply from the nameserver and process it.
  */
-struct	hostent	*get_res(lp)
-char	*lp;
+struct	hostent	*get_res(char *lp)
 {
 	static	char	buf[sizeof(HEADER) + MAXPACKET];
 	Reg	HEADER	*hptr;
@@ -925,13 +893,13 @@ char	*lp;
 	a = proc_answer(rptr, hptr, buf, buf+rc);
 	if (a == -1) {
 #ifdef	INET6
-		SPRINTF(buffer, "Bad hostname returned from %s for %s",
+		sprintf(buffer, "Bad hostname returned from %s for %s",
 			inetntop(AF_INET, &sin.sin_addr, mydummy2, 
 				MYDUMMY_SIZE),
 			inetntop(AF_INET6, rptr->he.h_addr.s6_addr,
 				mydummy, MYDUMMY_SIZE));
 #else
-		SPRINTF(buffer, "Bad hostname returned from %s for ", 
+		sprintf(buffer, "Bad hostname returned from %s for ", 
 			inetntoa((char *)&sin.sin_addr));
 		strcat(buffer, inetntoa((char *)&rptr->he.h_addr));
 #endif
@@ -1022,7 +990,7 @@ getres_err:
 	if (rptr)
 	    {
 		if (h_errno != TRY_AGAIN)
-		    {
+		{
 			/*
 			 * If we havent tried with the default domain and its
 			 * set, then give it a try next.
@@ -1040,21 +1008,20 @@ getres_err:
 			{
 				rptr->type = T_A;
 				query_name(rptr->name, C_IN, T_A, rptr);
-				Debug((DEBUG_DNS, "getres_err: didn't work "
+				Debug((DEBUG_DNS,"getres_err: didn't work "
 					"with T_AAAA, now also trying with "
 					"T_A for %s", rptr->name));
 			}
 #endif
 			resend_query(rptr);
-		    }
+		}
 		else if (lp)
 			bcopy((char *)&rptr->cinfo, lp, sizeof(Link));
 	    }
 	return (struct hostent *)NULL;
 }
 
-static	int	hash_number(ip)
-Reg	u_char	*ip;
+static	int	hash_number(u_char *ip)
 {
 	Reg	u_int	hashv = 0;
 
@@ -1081,8 +1048,7 @@ Reg	u_char	*ip;
 	return (hashv);
 }
 
-static	int	hash_name(name)
-register	char	*name;
+static	int	hash_name(char *name)
 {
 	Reg	u_int	hashv = 0;
 
@@ -1095,8 +1061,7 @@ register	char	*name;
 /*
 ** Add a new cache item to the queue and hash table.
 */
-static	aCache	*add_to_cache(ocp)
-Reg	aCache	*ocp;
+static	aCache	*add_to_cache(aCache *ocp)
 {
 	Reg	aCache	*cp = NULL;
 	Reg	int	hashv;
@@ -1152,9 +1117,7 @@ Reg	aCache	*ocp;
 ** it already contains the correct expire time, if it is a new entry. Old
 ** entries have the expirey time updated.
 */
-static	void	update_list(rptr, cachep)
-ResRQ	*rptr;
-aCache	*cachep;
+static	void	update_list(ResRQ *rptr, aCache *cachep)
 {
 	Reg	aCache	**cpp, *cp = cachep;
 	Reg	char	*s, *t, **base;
@@ -1282,8 +1245,7 @@ aCache	*cachep;
 	return;
 }
 
-static	aCache	*find_cache_name(name)
-char	*name;
+static	aCache	*find_cache_name(char *name)
 {
 	Reg	aCache	*cp;
 	Reg	char	*s;
@@ -1328,9 +1290,7 @@ char	*name;
 /*
  * find a cache entry by ip# and update its expire time
  */
-static	aCache	*find_cache_number(rptr, numb)
-ResRQ	*rptr;
-char	*numb;
+static	aCache	*find_cache_number(ResRQ *rptr, char *numb)
 {
 	Reg	aCache	*cp;
 	Reg	int	hashv,i;
@@ -1404,8 +1364,7 @@ char	*numb;
 	return NULL;
 }
 
-static	aCache	*make_cache(rptr)
-ResRQ	*rptr;
+static	aCache	*make_cache(ResRQ *rptr)
 {
 	Reg	aCache	*cp;
 	Reg	int	i, n;
@@ -1494,8 +1453,7 @@ ResRQ	*rptr;
 /*
  * rem_list
  */
-static	aCache	*rem_list(cp)
-aCache	*cp;
+static	aCache	*rem_list(aCache *cp)
 {
 	aCache	**cpp, *cr = cp->list_next;
 
@@ -1506,7 +1464,7 @@ aCache	*cp;
 		if (*cpp == cp)
 		    {
 			*cpp = cp->list_next;
-			MyFree((char *)cp);
+			MyFree(cp);
 			break;
 		    }
 	return cr;
@@ -1518,8 +1476,7 @@ aCache	*cp;
  *     delete a cache entry from the cache structures and lists and return
  *     all memory used for the cache back to the memory pool.
  */
-static	void	rem_cache(ocp)
-aCache	*ocp;
+static	void	rem_cache(aCache *ocp)
 {
 	Reg	aCache	**cp;
 	Reg	struct	hostent *hp = &ocp->he;
@@ -1593,7 +1550,7 @@ aCache	*ocp;
 	    {
 		for (hashv = 0; hp->h_aliases[hashv]; hashv++)
 			MyFree(hp->h_aliases[hashv]);
-		MyFree((char *)hp->h_aliases);
+		MyFree(hp->h_aliases);
 	    }
 
 	/*
@@ -1602,11 +1559,11 @@ aCache	*ocp;
 	if (hp->h_addr_list)
 	    {
 		if (*hp->h_addr_list)
-			MyFree((char *)*hp->h_addr_list);
-		MyFree((char *)hp->h_addr_list);
+			MyFree(*hp->h_addr_list);
+		MyFree(hp->h_addr_list);
 	    }
 
-	MyFree((char *)ocp);
+	MyFree(ocp);
 
 	incache--;
 	cainfo.ca_dels++;
@@ -1618,8 +1575,7 @@ aCache	*ocp;
  * removes entries from the cache which are older than their expirey times.
  * returns the time at which the server should next poll the cache.
  */
-time_t	expire_cache(now)
-time_t	now;
+time_t	expire_cache(time_t now)
 {
 	Reg	aCache	*cp, *cp2;
 	Reg	time_t	next = 0;
@@ -1650,10 +1606,7 @@ void	flush_cache()
 		rem_cache(cp);
 }
 
-int	m_dns(cptr, sptr, parc, parv)
-aClient *cptr, *sptr;
-int	parc;
-char	*parv[];
+int	m_dns(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	Reg	aCache	*cp;
 	Reg	int	i;
@@ -1708,9 +1661,7 @@ char	*parv[];
 	return 2;
 }
 
-u_long	cres_mem(sptr, nick)
-aClient	*sptr;
-char	*nick;
+u_long	cres_mem(aClient *sptr, char *nick)
 {
 	register aCache	*c = cachetop;
 	register struct	hostent	*h;
@@ -1750,9 +1701,7 @@ char	*nick;
 }
 
 
-static	int	bad_hostname(name, len)
-char *name;
-int len;
+static	int	bad_hostname(char *name, int len)
 {
 	char	*s, c;
 
@@ -1760,11 +1709,7 @@ int len;
 #ifdef RESTRICT_HOSTNAMES
 	{
 		/* basic character set */
-		if (c >= 'a' && c <= 'z')
-			continue;
-		if (c >= 'A' && c <= 'Z')
-			continue;
-		if (c >= '0' && c <= '9')
+		if (isalnum(c))
 			continue;
 		
 		/* special case: hyphen */
@@ -1796,3 +1741,4 @@ int len;
 #endif /* RESTRICT_HOSTNAMES */
 	return 0;
 }
+

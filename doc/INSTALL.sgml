@@ -3,10 +3,10 @@
 <article>
 
 <title>Installing IRC - The Internet Relay Chat Program
-<author>SGML version by Christophe Kalt
-<date>$Id: INSTALL.sgml,v 1.38.2.1 2000/05/04 17:15:22 kalt Exp $
+<author>SGML version by Christophe Kalt, updated by Piotr Kucharski
+<date>$Id: INSTALL.sgml,v 1.46 2004/02/13 05:13:45 chopin Exp $
 <abstract>
-This document describes how to install, and configure IRC 2.10.3.
+This document describes how to install, and configure IRC 2.11.0.
 </abstract>
 
 <sect>Installing IRC.
@@ -55,7 +55,7 @@ Defining this will keep you from using server link compression.
 
 <sect1>Notes for Cygwin32 users
 <p>
-The daemon of 2.10.3 release compiles properly on W32
+The daemon of 2.11.0 release compiles properly on W32
 systems which have the GNU-Win32 environment (<url
 url="http://www.cygnus.com/misc/gnu-win32/">) setup.  At the
 time of the release, tests were made using the version b20.1
@@ -88,7 +88,7 @@ This version was tested on the following IPv6 systems:
 BSD/OS+KAME, Digital Unix, FreeBSD+KAME, Linux, NetBSD+INRIA.
 <p>
 Because IPv6 numeric addresses contain ``:'' characters,
-<bf>the separator for the server configuration file was
+<bf>the default separator for the server configuration file was
 changed to ``%''</bf>.
 
 <sect>The config.h file
@@ -97,14 +97,10 @@ The second step consists of defining options before the
 compilation.  This is done by editing the ``config.h'' file
 and changing the various &num;DEFINE's.
 
-<sect1>Define what type of UNIX your machine uses.
-<p>
-Pick the machine type which best describes your machine and
-change the &num;undef to &num;define (if needed).Some
-flavours of Unix require no &num;define and in such cases
-all others should be &num;undef'd.
-
 <sect1>DEBUGMODE
+<p>
+<bf>This should only be defined for test purposes, and never
+used on a production server.</bf>
 <p>
 Define DEBUGMODE if you want to see the ircd debugging
 information as the daemon is running. Normally this function
@@ -113,9 +109,6 @@ output.  DEBUGMODE must be defined for either of -t or -x
 command line options to work.  Defining this induces a large
 overhead for the server as it does a large amount of self
 diagnostics whilst running.
-<p>
-<bf>This should only be defined for test purposes, and never
-used on a production server.</bf>
 
 <sect1>CACHED_MOTD
 <p>
@@ -130,7 +123,9 @@ rehashing if the file has changed.
 <sect1>CHROOTDIR
 <p>
 To use the CHROOTDIR feature, make sure it is &num;define'd
-and that the server is being run as root.  
+and that the server is being run as root. Better use some
+other (external) way of setting up chroot environment for ircd
+and run it from there, not requiring to run as root.
 
 <sect1>ENABLE_SUMMON, ENABLE_USERS
 <p>For security conscious server admins, they may wish to
@@ -150,9 +145,9 @@ users to all people and not just operators.  The
 NO_DEFAULT_INVISIBLE define is used to toggle whether
 clients are automatically made invisible when they register.
 
-<sect1>OPER_KILL, OPER_REHASH, OPER_RESTART, LOCAL_KILL_ONLY
-<p>The three operator only commands, KILL, REHASH and
-RESTART, may all be disabled to ensure that an operator who
+<sect1>OPER_KILL, OPER_REHASH, OPER_RESTART, OPER_SET, LOCAL_KILL_ONLY
+<p>The three operator only commands, KILL, REHASH,
+RESTART and SET, may all be disabled to ensure that an operator who
 does not have the correct privilidges does not have the
 power to cause untoward things to occur. To further curb the
 actions of guest operators, LOCAL_KILL_ONLY can be defined
@@ -182,23 +177,23 @@ from <url url="ftp://ftp.uu.net/graphics/png/documents/zlib/zdoc-index.html">
 
 <sect1>SLOW_ACCEPT
 <p>
-This option is defined by default and is needed on some
+This option is undefined by default, however is needed on some
 OSes.  It creates an artificial delay in processing incoming
 connections.  On a given port, no more than 1 connection per
 2 seconds will be processed.
 <p>
-Undefining this will let the server process connections as
+As it is undefined, it lets the server process connections as
 fast as it can which can cause problems on some OSes (such
 as SunOS) and be abused (fast massive join of clonebots..),
-for these reasons, if you decide to undefine SLOW_ACCEPT you
-MUST define CLONE_CHECK.
+for these reasons, if you decide to keep SLOW_ACCEPT undefined
+you MUST define CLONE_CHECK.
 
 <sect1>CLONE_CHECK
 <p>
-This option acts as a wrapper, by checking incoming
-connections early before starting ident query.  By default,
-the server will not accept more than 2 connections from the
-same host within 10 seconds.
+This option is defined by default and acts as a wrapper, by
+checking incoming connections early before starting ident query.
+By default, the server will not accept more than 10 connections from the
+same host within 2 seconds.
 
 <sect1>Other &num;define's
 <p>
@@ -216,7 +211,7 @@ In particular, all the filenames, and path for binaries, log
 files, configuration files and so on are defined there.  It
 is recommended to make use of the options described in the
 ``configure script'' section rather than to edit the
-generated Makefile.  However, if these options do not
+generated Makefile.  However, these options do not
 provide a total control over these values, in which case you
 need to directly edit the Makefile.
 <p>
@@ -242,23 +237,21 @@ proceeding.
 The ircd.conf file contains various records that specify
 configuration options.  The record types are as follows:
 <enum>
-<item>Machine information     (M)
-<item>Administrative info     (A)
-<item>Port connections        (P)
-<item>Connection Classes      (Y)
-<item>Client connections      (I,i)
-<item>Operator privileges     (O)
-<item>Restrict lines          (R)
-<item>Excluded accounts       (K,k)
-<item>Server connections      (C,c,N)
-<item>Deny auto-connections   (D)
-<item>Hub connections         (H)
-<item>Leaf connections        (L)
-<item>Version limitations     (V)
-<item>Excluded machines       (Q)
-<item>Service connections     (S)
-<item>Bounce server           (B)
-<item>Default local server    (U)
+<item>Machine information   (M)
+<item>Administrative info   (A)
+<item>Port connections      (P)
+<item>Connection Classes    (Y)
+<item>Client connections    (I,i)
+<item>Operator privileges   (O,o)
+<item>Excluded accounts     (K,k)
+<item>Server connections    (C,c,N)
+<item>Deny auto-connections (D)
+<item>Hub connections       (H)
+<item>Leaf connections      (L)
+<item>Version limitations   (V)
+<item>Excluded machines     (Q)
+<item>Service connections   (S)
+<item>Bounce server         (B)
 </enum>
 <p>
 Except for types ``M'' and ``A'', you are allowed to have
@@ -276,7 +269,7 @@ IRC needs to know a few things about your UNIX site, and the
 ``M'' command specifies this information for IRC.  The fomat
 of this command is:
 <tag/Format/ 
-<verb>M:&lt;Server NAME&gt;:&lt;YOUR Internet IP&num;&gt;:&lt;Geographic Location&gt;:&lt;Port&gt;</verb>
+<verb>M:&lt;Server NAME&gt;:&lt;YOUR Internet IP&num;&gt;:&lt;Geographic Location&gt;:&lt;Port&gt;:&lt;SID&gt;</verb>
 <tag/M/ 
 ``M'' specifies a Machine description line
 <tag/Server NAME/ 
@@ -291,7 +284,8 @@ IP&num;, even if your host has several IP&num;).
 If the machine on which you run the server has several IP
 addresses, you can define which IP&num; to use for outgoing
 connections.  This overrides overrides the ``Server NAME''.
-<p>See Also the ``Port Connections'' section.
+<p>See Also the ``Port Connections'' and ``Server Connections''
+sections.
 <tag/Geographic Location/ 
 Geographic Location is used to say WHERE YOUR SERVER is, and
 gives people in other parts of the world a good idea of
@@ -305,16 +299,21 @@ Defines the port on which your server will listen for UDP
 pings from other servers.  This should be the port were
 other servers are set to autoconnect.  (Also see the port
 field description in connect lines).
+<tag/SID/
+Defines Server ID, network-wide unique identifier of
+your server. It must begin with a digit. This must be set with
+cooperation of other servers' admins. On IRCnet you must
+consult your coord and/or admins of your peers.
 <tag/Example:/ 
-M:tolsun.oulu.fi::Oulu, Finland:6667:
+M:tolsun.oulu.fi::Oulu, Finland:6667:00PA
 <p>
-This line reads: My Host's name is ``tolsun.oulu.fi'' and my
-site is located in ``Oulu, Finland''.
+This line reads: My Host's name is ``tolsun.oulu.fi'', my
+site is located in ``Oulu, Finland'' and my SID is ``00PA''.
 <p>
-M:orion.cair.du.edu::Denver Colorado, USA:6667:
+M:orion.cair.du.edu::Denver Colorado, USA:6667:00PS
 <p>
-This line reads: My Hosts name is ``orion.cair.du.edu'' and
-my site is located in ``Denver Colorado, USA''.
+This line reads: My Hosts name is ``orion.cair.du.edu'',
+my site is located in ``Denver Colorado, USA'' and my SID is ``00PS''.
 </descrip>
 <p>
 
@@ -325,7 +324,7 @@ my site is located in ``Denver Colorado, USA''.
 information about a site. The e-mail address of the person
 running the server should be included here in case problems
 arise.
-<tag/Format/<verb>A:&lt;Your Name/Location&gt;:&lt;Your Electronic Mailing Addr&gt;:&lt;other&gt;::</verb>
+<tag/Format/<verb>A:&lt;Your Name/Location&gt;:&lt;Your E-Mail Addr&gt;:&lt;other&gt;::&lt;network name&gt;</verb>
 <tag/A/This specifies an Admin record.
 <tag/Your Name &amp; Location/ Use this field to say tell
 your FULL NAME and where in the world your machine is.  Be
@@ -342,11 +341,13 @@ work because you know that ``orion'' is part of the DOMAIN
 mailing addresses.
 <tag/Other/ This is really an OTHER field - you can add what
 you want here.
+<tag/Network name/ Use this field to announce your network name
+in 005 numerics. Use only one word!
 <tag/Example/
 (the line is just one line in the confuration file, here it
 is cut into two lines to make it clearer to read):
 <p>
-A:Jeff Trim -  Denver Colorado, USA:INET jtrim@orion.cair.du.edu UUCP {hao,isis}!udenva!jtrim:Terve! Heippa!  Have you said hello in Finnish today?;)::
+A:Jeff Trim -  Denver Colorado, USA:INET jtrim@orion.cair.du.edu UUCP {hao,isis}!udenva!jtrim:Terve! Heippa!  Have you said hello in Finnish today?;)::IRCnet
 <p>
 Would look like this when printed out with the /admin command:
 <p>
@@ -367,7 +368,7 @@ server's ability to accept connections. By use of this line
 in the ircd.conf file, it is easy to setup both Unix Domain
 ports for the server to accept connections on as well as
 extra internet ports.
-<tag/Format/<verb>P:&lt;Internet IP&num;&gt;:&lt;*&gt;:&lt;Internet IP Mask&gt;:&lt;Port&gt;:
+<tag/Format/<verb>P:&lt;Internet IP&num;&gt;:&lt;*&gt;::&lt;Port&gt;:
 P:&lt;Directory&gt;:&lt;*&gt;:&lt;*&gt;:&lt;Port&gt;:</verb>
 </descrip>
 <itemize>
@@ -375,26 +376,12 @@ P:&lt;Directory&gt;:&lt;*&gt;:&lt;*&gt;:&lt;Port&gt;:</verb>
 <descrip>
 <tag/Internet IP&num;/ If the host on which the server runs has
 several IP addresses, you can define for which IP address
-connections will be accepted. If no is defined here, server
-will bind to all interfaces (INADDR_ANY).  See also MACHINE
-CONFIGURATION section to properly configure outgoing
-connections.
+connections will be accepted. If none is defined here, server
+will bind to all interfaces (INADDR_ANY).  See also <bf>Machine
+configuration</bf> and <bf>Server Connections</bf> sections
+to properly configure outgoing connections.
 <p>
 P:192.168.1.194:::6664:
-<tag/Internet IP&num; Mask/ This defines where connections may
-come from and be accepted. The IP mask uses either *'s or
-0's as wildcards. The following two lines are the same:
-<p>
-<verb>P:::128.2.*:6664:
-P:::128.2.0.0:6664:
-</verb>
-<p>
-The incoming isn't matched against the mask, rather the ip&num;
-string is decoded and compared segment by segment. Thus
-<p>
-P:::128.2*.1.2:6664:
-<p>
-will not match 128.20.1.2.
 <tag/Port/ The port number field tells the server which port
 number it should listen on for incoming connections.
 </descrip>
@@ -414,7 +401,8 @@ Creates a unix socket in the /tmp/.ircd directory called
 </descrip>
 </itemize>
 <descrip>
-<tag/Note/ You need at least one P line.
+<tag/Note/ You need at least one P line or server won't start.
+(Unless you run it from inetd.)
 </descrip>
 
 <sect1>Connection Classes
@@ -432,7 +420,7 @@ ping frequency, connection frequency (for servers) and
 maximum number of links that class should have.
 <p>Currently, the Y: line <bf>MUST</bf> appear in the
 ircd.conf file <bf>BEFORE</bf> it is used in any other way.
-<tag/Format/<verb>Y:&lt;Class&gt;:&lt;Ping Frequency&gt;:&lt;Connect freq&gt;:&lt;Max Links&gt;:&lt;SendQ&gt;:&lt;Local Limit&gt;:&lt;Global Limit&gt;</verb>
+<tag/Format/<verb>Y:&lt;Class&gt;:&lt;Ping Freq&gt;:&lt;Connect Freq&gt;:&lt;Max Links&gt;:&lt;SendQ&gt;:&lt;Local Limit&gt;:&lt;Global Limit&gt;</verb>
 <tag/Y/ This specifies a Class record.
 <tag/Class/ This is the class number which gains the following
 attributes and should match that which is on the end of the
@@ -446,7 +434,7 @@ config.h file.
 how often your server checks to see if it can connect to
 this server. If you want to check very occasionally, use a
 large value, but if it is an important connection, you might
-want a smaller value so that you connect to it as soon as
+want a smaller value so that you autoconnect to it as soon as
 possible.
 <tag/Max Links/ This field defines the maximum number of
 links this class will allow from automatic connections (C
@@ -465,14 +453,14 @@ same host (IP) will be allowed.
 <item> y: defines the maximum number of clients from the
 same user@host (IP) will be allowed.  Read note below.
 </itemize>
-Only x or y may be set, any unset value defaults to zero.
+Any unset value defaults to 1 (one).
 <tag/Global limit/  This field has the same use as the
 ``Local limit'' field.  But, the connection counts are done
 for all clients present on the net instead of only counting
 local clients.
-<tag/Note/ leaving any of the fields (except SendQ) out
+<tag/Note/ leaving any of the fields (except SendQ and limits) out
 means their value is 0 (ZERO)!!  The SendQ field default
-value is dynamically determined.
+value is dynamically determined. Limits default to 1.1 (one connection).
 <tag/Note/ If you plan to use the local user@host limit,
 please read the following very carefully.  The ``user''
 value is the ident reply for the connection.  If no reply
@@ -486,20 +474,13 @@ define a local limit (same or lower) as it won't take more
 CPU and will make the global limit more accurate.
 <tag/Note/ The local and global limits only affect users (I
 lines), not servers nor services.
-<tag/Example/ Y:23:120:300:5:100000:0:0: (server class)
+<tag/Example/ Y:23:120:300:5:800000:0:0: (server class)
 <p>
 This defines class 23 to allow 5 auto-connections, which are
 checked every 300 seconds.  The connection is allowed to
 remain silent for 120 seconds before a PING is sent.  NOTE:
-fields 3 & 4 are in seconds.  The SendQ is set to 100000
+fields 3 & 4 are in seconds.  The SendQ is set to 800000
 bytes.
-<p>
-Another feature of connection class is the ability to do
-automatic routing by using the class as a ``priority''.  If
-you are connected to a server which has a class lower than
-one of the servers that is ``behind'' it, the server will
-disconnect the lower class one and schedule a ``new''
-connection for the higher class server.
 <p>
 Y:1:60:0:50:20000:2:5: (client class)
 <p>
@@ -520,7 +501,7 @@ users.  The connections are allowed to remain silent for 60
 seconds before a PING is set.  The SendQ is set to 20000
 bytes.  A new connection in this class will only be allowed
 if there aren't more than 2 other local connections from the
-same IP address, 1 other local connection from the same user
+same IP address, 1 local connection from the same user
 from the same IP address, or more than 5 other connections
 on the net from the same hostname.
 </descrip>
@@ -543,30 +524,50 @@ connect.  These remote clients will use your server as a
 connection point.  All messages sent by these clients will
 pass through your machine.
 <tag/Format/
-<verb>I:&lt;TARGET Host Addr&gt;:&lt;Password&gt;:&lt;TARGET Hosts NAME&gt;:&lt;Port&gt;:&lt;Class&gt;
-i:&lt;TARGET Host Addr&gt;:&lt;Password&gt;:&lt;TARGET Hosts NAME&gt;:&lt;Port&gt;:&lt;Class&gt;</verb>
+<verb>I:&lt;TARGET Host Addr&gt;:&lt;Password&gt;:&lt;TARGET Hosts NAME&gt;:&lt;Port&gt;:&lt;Class&gt;:&lt;Flags&gt;</verb>
+<tag/Note/Lower case ``i'' is equal to an ``R'' flag in plain ``I''.
 <tag/TARGET Host Addr/Specifies the IP address(es) of the
 machine(s) that are allowed to connect.  If ``user@''
 prefixes the actual IP address the server will require that
 the remote username returned by the ident server be the same
 as the one given before the ``@''.  Wildcards are permitted
-unless using a bitmask (e.g. 1.2.3.0/24).
+unless using a bitmask (e.g. 1.2.3.0/24). Note that bitmask
+are encouraged over wildcards, as they are more accurate.
 <tag/Password/The password that must be given by the client
 to be allowed on the server.
 <tag/TARGET Host NAME/Specifies the host name(s) of the
 machines allowed to connect to the server.  If ``user@''
 prefixes the actual IP address the server will require that
 the remote username returned by the ident server be the same
-as the one given before the ``@''.  Wildcards are permitted.
+as the one given before the ``@''.  Wildcards are permitted,
+but <bf>please</bf> rather leave this field empty and use bitmask
+in <bf>Host Addr</bf> field.
 <p>
 This field can be empty, it then has a special meaning.  See
-Below.
+below.
+<p>
+Using this field to enforce that clients have no Host Name set
+is obsolete, see ``N'' <bf>flag</bf>.
 <tag/Port/Specifies the port number for which this
 configuration line is valid.  An empty field, or ``0''
 matches all ports.
 <tag/Class/This field should refer to an existing class.
 Connections classes are usefull to limit the number of users
 allowed on the server.
+<tag/Flags/This field contains flags of an I:line; flags are
+one character in size, can be combined and their order does not matter.
+<itemize>
+<item>R - restricted
+<item>D - restricted, when client has no reverse DNS
+<item>I - restricted, when client has no ident.
+<item>E - client is exempted from K: lines
+<item>N - do not show resolved hostname (bans still match)
+<item>F - fall-through to next I:line if password not matched
+</itemize>
+<tag/Note/Restricted I: line means that
+clients matching such I line will not be able to use their operator
+privileges (no nick/mode change, no kick). Such users will also
+have their username prefixed by +, = or - depending on the ident reply.
 <tag/Note/The server first checks if the client hostname (or
 any aliases) matches the <bf>TARGET Host NAME</bf> field.
 If a match is found, the client is accepted.  If not, the
@@ -584,15 +585,15 @@ making this file for tolsun and you wanted to let your own
 clients to connect to your server, you would add this entry
 to the file:
 <p>
-I:x::tolsun.oulu.fi::1
+I:::tolsun.oulu.fi::1
 <p>
 If you wanted to let remote clients connect, you could add
 the following lines:
 <p>
-I:x::*.du.edu::1
+I:::*.edu.edu::1
 <p>
 Allow any clients from machines whose names end in
-``.du.edu'' to connect with no password.
+``.edu.edu'' to connect with no password.
 <p>
 I:128.214.6.100::nic.funet.fi::1
 <p>
@@ -600,12 +601,12 @@ Allow clients from a machine with that IP number to
 connect. Numeric match is enough, name is not required
 anymore.
 <p>
-I:x:secret:*.tut.fi::1
+I::secret:*.tut.fi::1
 <p>
 Allow clients from machines matching ``*.tut.fi'' to connect
 with the password ``secret''.
 <p>
-I:*::*::1
+I:::*::1
 <p>
 Allow anyone from anywhere to connect your server.
 <p>
@@ -616,40 +617,26 @@ your machine and take your network ports. Of course the same
 things can be done by simply telnetting to your machine's
 SMTP port (for example).
 <p>
-I:x::*.fi:6667:1
+I:::*.fi:6667:1
 <p>
 Allow clients from machines matching ``*.fi'' to connect on
 the port 6667.
 <p>
-I:135.11.35.*::*.net::1
+I:135.11.35.0/24::*.net::1
 <p>
 Allows clients from machines which host name matches
-``*.net'' or which IP address matches ``135.11.35.*'' to
+``*.net'' or which IP address is within block ``135.11.35.0/24'' to
 connect to the server.  If the host name does not match
 ``*.net'' then the IP address is used for these clients,
 even if the host name is known.
 <p>
-I:135.11.35.*::::1
+I:135.11.35.0/24::::1
 <p>
-Allows clients from machines which IP address matches
-``135.11.35.*'' to connect to the server.  If the host name
+Allows clients from machines which IP address is within block
+``135.11.35.0/24'' to connect to the server.  If the host name
 is known, is it used as address for these clients.
-<tag/NEW!!!/ As of the 2.7.2d version of the server, the
-server is able to accept connections on multiple
-ports. I-lines are required for each P-line to allow
-connections to be accepted. For unix sockets, this means
-either adding I:/path/port::/path/port or some variation
-(wildcards are recognised here). For internet ports, there
-must be an I-line which allows the host access as normal,
-but the port field of the I-line must match that of the port
-of the socket accepting the connectiion. A port number of 0
-is a wildcard (matches all ports).
-<tag/NEW!!!/ As of the 2.9.1 version of the server, i lines
-are introduced. They work the same way as I lines, but the
-clients matching an i line will have a restricted
-connection. (no nick/mode change, no kick). Such users will
-have their username prefixed by +, = or - depending on the
-ident reply.
+<p>tag/NEW!!!/ As of the 2.11.0 version of the server, I: line flags
+are introduced. 
 </descrip>
 
 <sect1>Operator priviliges
@@ -660,11 +647,11 @@ How to become the IRC administrator on your site
 know who is authorized to become an operator and what their
 ``Nickname'' and ``Password'' is.
 <tag/Format/<verb>O:&lt;TARGET Host NAME&gt;:&lt;Password&gt;:&lt;Nickname&gt;:&lt;Port&gt;:&lt;Class&gt;</verb>
-<tag/O/ Speficies Operator record. If you use capital letter
-(``O'') in it, it specifies a global operator. Small letter
-(``o'') specifies a local operator. Local operator has
-basically the same rights except global operator with some
-restrictions.
+<tag/O/ Specifies Operator record. 
+<tag/Note/If you use small letter (``o'') in it, it specifies
+a global operator. Capital letter (``O'') specifies a local operator. 
+Local operator has basically the same rights except global operator 
+with some restrictions.
 <tag/TARGET Host NAME/ Tells IRC which host you have the
 privileges FROM.  This means that you should be logged into
 this host when you ask for the priviliges.  If you specify
@@ -687,38 +674,12 @@ class (preferably having a lower number than that for the
 relevant I-line) and determines the maximum number of
 simultaneous uses of the O-line allowable through the
 max. links field in the Y-line.
-<tag/Example/ O:orion.cair.du.edu:pyunxc:Jeff::1
+<tag/Example/ o:orion.cair.du.edu:pyunxc:Jeff::1
 <p>
 There is an OPERATOR at ``orion.cair.du.edu'' that can get
 Operator priviliges if he specifies a password of ``pyunxc''
 and uses a NICKNAME of ``Jeff''.
-</descrip>
-
-<sect1>Restrict connections
-<p>
-Let an external program decide if a client should be allowed
-or not.
-<descrip>
-<tag/Introduction/ R lines provide a convenient way to
-handle user access to the server with an external program.
-The outside program given three parameters: the client's
-username (set by the USER command), the client's hostname,
-and the client's ident reply (``unknown'' if none).
-<p>It is expected to return a reply line where the first
-word is either ``Y'' or ``N'' meaning `Yes Let them in'' or
-``No don't let them in''.  If the first word begins with
-neither ``Y'' or ``N'' the default is to let the person on.
-<tag/Format/
-<verb>R:&lt;Target Host Name&gt;:&lt;Program&gt;:&lt;User&gt;:::</verb>
-<tag/R/This specifies a restrict record.
-<tag/Target Host Name/ In this field you specify the
-Hostname that the user is connecting from.  If you wanted to
-restrict connects to IRC from ``orion.cair.du.edu'' then you
-would want to enter ``orion.cair.du.edu''.
-<tag/Program/ This is the external program to run to know if
-the user is allowed on your server.
-<tag/User/ The Username of the user you want removed from
-IRC.  For example ``root''.
+<tag/Note/ Host NAME accepts IP bitmasks.
 </descrip>
 
 <sect1>Excluded accounts
@@ -734,8 +695,10 @@ user can connect to another SERVER somewhere else in the
 IRC-Network then you would have to talk to the administrator
 on that site to disable his access from that IRCD Server as
 well.
-<tag/Format/<verb>K:&lt;Host Name&gt;:&lt;time interval(s)|comment&gt;:&lt;User&gt;:&lt;port&gt;:</verb>
-<tag/Format/<verb>k:&lt;Host Name&gt;:&lt;time interval(s)|comment&gt;:&lt;Auth&gt;:&lt;port&gt;:</verb>
+<tag/Format/<verb>
+K:&lt;Host Name&gt;:&lt;time interval(s)|comment&gt;:&lt;User&gt;:&lt;port&gt;:
+k:&lt;Host Name&gt;:&lt;time interval(s)|comment&gt;:&lt;Auth&gt;:&lt;port&gt;:
+</verb>
 <tag/K/``K'' tells the IRCD that you are making a KILL USER
 command entry.
 <tag/Host Name/ In this field you specify the Hostname or
@@ -745,9 +708,7 @@ to REMOVE connects to IRC from ``orion.cair.du.edu'' then
 you would want to enter ``orion.cair.du.edu''.  If you want
 to REMOVE ALL HOSTS access you can use ``*'' (Wild Card
 notation) and no matter what host the USERNAME (specified in
-Field 4) connects from s/he will be denied access. Removing
-all hosts isn't very smart thing to do though, why would you
-run an ircd if you allow nobody to connect to it anyways ?
+Field 4) connects from s/he will be denied access.
 <p>
 If you specify an IP address, IP mask, or an IP bitmask,
 it will match clients connecting from the matching
@@ -802,17 +763,18 @@ This disallows all users from hosts with enddomain
 ``oulu.fi'' access to your server between 8 and 12am, 2 and
 7pm. Users get kicked off if they're already signed on when
 the line becomes active (they'll get a warning 5 minutes
-before).
+before). Note that this requires ircd to be compiled with
+proper #define!
 <p>
-K:192.11.35.*::*:0:
+K:192.11.35.0/24::*:0:
 <p>
-This line disallows all hosts whose IP address matches
-``192.11.35.*'' to login to the ircd.
+This line disallows all hosts whose IP address is from network
+``192.11.35.0/24'' to login to the ircd.
 <p>
-K:=192.11.35.*::*:0:
+K:=192.11.35.0/24::*:0:
 <p>
-This line disallows all hosts whose IP address matches
-``192.11.35.*'' and which didn't resolve to login to the
+This line disallows all hosts whose IP address is from network
+``192.11.35.0/24'' and which didn't resolve to login to the
 ircd.
 </descrip>
 
@@ -854,7 +816,7 @@ of machines increased).
 </enum>
 <p>
 <descrip>
-<tag/Format/ <verb>C:&lt;TARGET Host Addr&gt;:&lt;Password&gt;:&lt;TARGET Host NAME&gt;:&lt;TARGET PORT&gt;:&lt;Class&gt;</verb>
+<tag/Format/ <verb>C:&lt;TARGET Host Addr&gt;:&lt;Password&gt;:&lt;TARGET Host NAME&gt;:&lt;TARGET PORT&gt;:&lt;Class&gt;:&lt;Source IP&gt;</verb>
 <p>
 for example:
 <p>
@@ -868,7 +830,6 @@ C:128.214.6.100:passwd:nic.funet.fi:6667:1
 <p>
 C:root@nic.funet.fi:passwd:nic.funet.fi:6667:1
 <p>
-Each field is separated with a ":" charcter:
 <tag/C/ This field tells the IRC program which option is
 being configured. "C" corresponds to a server Connect
 option.
@@ -897,7 +858,11 @@ second port is used for the UDP pings to the targer server.
 class and determines the maximum number of simultaneous uses
 of the C-line allowable through the max. links field in the
 Y-line.
-<tag/NEW!!!/ As of the 2.9.3 version of the server, server connections can be compressed with the zlib library.  To define a compressed connection, you must have compiled the server with ZIP_LINKS defined (cf 2.h), and use a _lowercase_ C line.
+<tag/Source IP/ This field specifies source IP to use for connects
+to this server.
+<tag/NEW!!!/ As of the 2.9.3 version of the server, server connections can be compressed with the zlib library.  To define a compressed connection, you must have compiled the server with ZIP_LINKS defined, and use a _lowercase_ C line.
+<tag/NEW!!!/ As of the 2.11.0 version of the server, <bf>Source IP</bf> field
+has been added.
 </descrip>
 <p>
 Some examples:
@@ -908,16 +873,18 @@ This reads: Connect to host ``nic.funet.fi'', with no
 password and expect this server to identify itself to you as
 ``nic.funet.fi''. Your machine will connect to this host to
 port 6667.
-<item>C:18.72.0.252:Jeff:garfield.mit.edu:6667:1
+<item>C:18.72.0.252:Jeff:garfield.mit.edu:6667:1:192.168.0.18
 <p>
 This reads: Connect to a host at address ``18.72.0.252'',
-using a password of ``Jeff''.  The TARGET server should
+using a password of ``Jeff''. 
+The TARGET server should
 identify itself as ``garfield.mit.edu''.  You will connect
-to Internet Port 6667 on this host.
+to Internet Port 6667 on this host. This connection will use (your)
+source IP of ``192.168.0.18''.
 <item>C:irc.nada.kth.se::irc.nada.kth.se:1
 <p>
-This reads: do not attempt to connect to
-``irc.nada.kth.se'', if ``irc.nada.kth.se'' requests a
+This reads: do not attempt to autoconnect to
+``irc.nada.kth.se'', but if ``irc.nada.kth.se'' requests a
 connection, allow it to connect.
 </itemize>
 <p>
@@ -993,7 +960,7 @@ example of such:
 Wildcard domains are useful in that ALL SERVERS in Germany
 (or any other domain area) can be shown as one to the rest
 of the world. Imagine 100 servers in Germany, it would be
-incredible waste of netwotk bandwidth to broadcast all of
+incredible waste of network bandwidth to broadcast all of
 them to all servers around the world.
 <p>
 So wildcard domains are a great help, but how to use them ?
@@ -1015,7 +982,7 @@ could NOT connect to ``nic.funet.fi'' because that would
 result in a server name <bf>collision</bf> (*.fi matches
 nic.funet.fi).
 <p>
-I advice you to not to use wildcard servers before you know
+I advise you to not to use wildcard servers before you know
 for sure how they are used, they are mostly beneficial for
 backbones of countries and other large areas with common
 domain.
@@ -1049,7 +1016,7 @@ present on the network matches ``*.edu''.
 <p>
 D::2:eff.org:3:
 <p>
-Do now auto-connect to ``eff.org'', or any server in class
+Do not auto-connect to ``eff.org'', or any server in class
 ``3'' if a server defined to be in class ``2'' is currently
 present on the network.
 </descrip>
@@ -1062,22 +1029,25 @@ also implements H-lines to determine which servers may act
 as a hub and what they may ``hub for''.  If a server is only
 going to supply its own name (ie act as a solitary leaf)
 then no H-line is required for, else a H-line must be added.
-<tag/Format/<verb>H:&lt;Server Mask&gt;:*:&lt;Server Name&gt;::
+<tag/Format/<verb>H:&lt;Server Mask&gt;:&lt;SID Mask&gt;:&lt;Server Name&gt;::
 </verb>
 <tag/Server Mask/ All servers that are allowed via this
 H-line must match the mask given in this field.
+<tag/SID Mask/ SIDs of all servers that are allowed via this
+H-line must match the mask given in this field. Empty field is
+equal to '*', that is any SID is allowed to be introduced.
 <tag/Server Name/ This field is used to match exactly
 against a server name, wildcards being treated as literal
 characters.
 <tag/Examples/H:*.edu::*.bu.edu::
 <p>
 Allows a server named ``*.bu.edu'' to introduce only servers
-that match the ``*.edu'' name mask.
+that match the ``*.edu'' name mask, no matter what SID they have.
 <p>
-H:*::eff.org::
+H:*:616*:eff.org::
 <p>
 Allows ``eff.org'' to introduce (and act as a hub for) any
-server.
+server which SID begins with ``616''.
 <tag/Note/ It is possible to have and use multiple H-lines
 (or L-lines) for the one server.  eg:
 <p>
@@ -1278,24 +1248,6 @@ When the server is completely full, clients should use the
 secondary server.
 </descrip>
 
-<sect1>Default local server (for local clients) <bf>*OBSOLETED*</bf>
-<p>
-<descrip>
-<tag/Introduction/ This defines the default connection for
-the irc client.  If you are running an ircd server on the
-same machine, you will want to define this command to
-connect to your own host.  If your site is not running a
-server then this command should contain the TARGET host's
-connection information and password (if any).
-<tag/Format/<verb>U:&lt;TARGET Host addr&gt;:&lt;Password&gt;:&lt;TARGET Host NAME&gt;:&lt;Internet Port&gt;</verb>
-<tag/Examples/
-U:tolsun.oulu.fi::tolsun.oulu.fi:6667<p>
-U:128.214.5.6::tolsun.oulu.fi:6667<p>
-U:tolsun.oulu.fi::tolsun.oulu.fi
-<p>
-If the port number is omitted, irc will default to using 6667.
-</descrip>
-
 <sect>Related resources
 <p>
 <descrip>
@@ -1318,10 +1270,9 @@ url="mailto:majordomo@irc.org"
 name="majordomo@irc.org">, with ``<bf>subscribe
 ircd-dev</bf>'' in the body.
 <tag/FAQ/ It can be found on the WWW, at <url
-url="http://www.stealth.net/~kalt/irc/faq.html">.
-<tag/WWW 2.9/ Vesa Ruokonen has also put serveral pages
-related to the 2.9 servers on the WWW: <url
-url="http://www.irc.org/~irc/server/">.
+url="http://www.irc.org/tech_docs/ircnet/faq.html">.
+<tag/WWW/ Several pages related to the ircd: <url
+url="http://www.irc.org/techie.html">.
 </descrip>
 
 <sect>Reporting a bug

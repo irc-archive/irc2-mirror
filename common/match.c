@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: match.c,v 1.5.2.2 2001/07/04 21:44:40 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: match.c,v 1.11 2003/10/18 15:31:28 q Exp $";
 #endif
 
 #include "os.h"
@@ -46,7 +46,7 @@ unsigned char tolowertab[] =
 		  ':', ';', '<', '=', '>', '?',
 		  '@', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i',
 		  'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
-		  't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~',
+		  't', 'u', 'v', 'w', 'x', 'y', 'z', '[', '\\', ']', '^',
 		  '_',
 		  '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i',
 		  'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -84,7 +84,7 @@ unsigned char touppertab[] =
 		  0x5f,
 		  '`', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
 		  'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
-		  'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^',
+		  'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '{', '|', '}', '~',
 		  0x7f,
 		  0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89,
 		  0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f,
@@ -104,40 +104,55 @@ unsigned char touppertab[] =
 		  0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff };
 
 unsigned char char_atribs[] = {
-/* 0-7 */	CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL,
-/* 8-12 */	CNTRL, CNTRL|SPACE, CNTRL|SPACE, CNTRL|SPACE, CNTRL|SPACE,
-/* 13-15 */	CNTRL|SPACE, CNTRL, CNTRL,
-/* 16-23 */	CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL,
-/* 24-31 */	CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL,
+/* 00-08 */	CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL,
+/* 09-0d */	CNTRL|SPACE, CNTRL|SPACE, CNTRL|SPACE, CNTRL|SPACE, CNTRL|SPACE,
+/* 0e-16 */	CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL,
+/* 17-1f */	CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL, CNTRL,
 /* space */	PRINT|SPACE,
-/* !"#$%&'( */	PRINT, PRINT, PRINT, PRINT, PRINT, PRINT, PRINT, PRINT,
-/* )*+,-./ */	PRINT, PRINT, PRINT, PRINT, PRINT, PRINT, PRINT,
-/* 0123 */	PRINT|DIGIT, PRINT|DIGIT, PRINT|DIGIT, PRINT|DIGIT,
-/* 4567 */	PRINT|DIGIT, PRINT|DIGIT, PRINT|DIGIT, PRINT|DIGIT,
-/* 89:; */	PRINT|DIGIT, PRINT|DIGIT, PRINT, PRINT,
-/* <=>? */	PRINT, PRINT, PRINT, PRINT,
-/* @ */		PRINT,
-/* ABC */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* DEF */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* GHI */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* JKL */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* MNO */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* PQR */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* STU */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* VWX */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* YZ[ */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* \]^ */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* _`  */	PRINT, PRINT,
-/* abc */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* def */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* ghi */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* jkl */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* mno */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* pqr */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* stu */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* vwx */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* yz{ */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
-/* \}~ */	PRINT|ALPHA, PRINT|ALPHA, PRINT|ALPHA,
+/* !"# */	PRINT|UVALID, PRINT|UVALID, PRINT|UVALID,
+/* $%& */	PRINT|UVALID, PRINT|UVALID, PRINT|UVALID,
+/* '() */	PRINT|UVALID, PRINT|UVALID, PRINT|UVALID,
+/* *+, */	PRINT, PRINT|UVALID, PRINT|UVALID,
+/* -./ */	PRINT|NVALID|UVALID, PRINT|UVALID, PRINT|UVALID,
+/* 01 */	PRINT|DIGIT|NVALID|UVALID, PRINT|DIGIT|NVALID|UVALID,
+		PRINT|DIGIT|NVALID|UVALID, PRINT|DIGIT|NVALID|UVALID,
+		PRINT|DIGIT|NVALID|UVALID, PRINT|DIGIT|NVALID|UVALID,
+		PRINT|DIGIT|NVALID|UVALID, PRINT|DIGIT|NVALID|UVALID,
+/* 89 */	PRINT|DIGIT|NVALID|UVALID, PRINT|DIGIT|NVALID|UVALID,
+/* :;  */	PRINT|UVALID, PRINT|UVALID,
+/* <=> */	PRINT|UVALID, PRINT|UVALID, PRINT|UVALID,
+/* ?@  */	PRINT, PRINT,
+/* AB  */	PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+/* YZ  */	PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+/* [\  */	PRINT|NVALID|UVALID, PRINT|NVALID|UVALID,
+/* ]^  */	PRINT|NVALID|UVALID, PRINT|NVALID|UVALID,
+/* _` */	PRINT|NVALID|UVALID, PRINT|NVALID|UVALID,
+/* ab */	PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+		PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+/* yz  */	PRINT|ALPHA|NVALID|UVALID, PRINT|ALPHA|NVALID|UVALID,
+/* {|  */	PRINT|NVALID|UVALID, PRINT|NVALID|UVALID,
+/* }~  */	PRINT|NVALID|UVALID, PRINT|UVALID,
 /* del */	0,
 /* 80-8f */	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 /* 90-9f */	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -165,8 +180,7 @@ unsigned char char_atribs[] = {
 ** Written by Douglas A Lewis (dalewis@acsu.buffalo.edu)
 */
 
-int	match(mask, name)
-char	*mask, *name;
+int	match(char *mask, char *name)
 {
 	Reg	u_char	*m = (u_char *)mask, *n = (u_char *)name;
 	char	*ma = mask, *na = name;
@@ -174,6 +188,9 @@ char	*mask, *name;
 
 	if (!*mask)
 		return 1;
+
+	if (mask[0]=='*' && mask[1]=='\0')
+		return 0;
 
 	while (1)
 	    {
@@ -207,7 +224,8 @@ char	*mask, *name;
 		    }
 		else if (!*n)
 			return 1;
-		if ((*m == '\\') && ((m[1] == '*') || (m[1] == '?')))
+		if ((*m == '\\') &&
+			((m[1] == '*') || (m[1] == '?') || (m[1] == '#')))
 		    {
 			m++;
 			q = 1;
@@ -215,19 +233,21 @@ char	*mask, *name;
 		else
 			q = 0;
 
-		if ((tolower(*m) != tolower(*n)) && ((*m != '?') || q))
-		    {
-			if (!wild)
-				return 1;
-			m = (u_char *)ma;
-			n = (u_char *)++na;
-		    }
-		else
+		if ((tolower(*m) == tolower(*n))
+			|| (*m == '?' && !q)
+			|| (*m == '#' && !q && isdigit(*n)))
 		    {
 			if (*m)
 				m++;
 			if (*n)
 				n++;
+		    }
+		else
+		    {
+			if (!wild)
+				return 1;
+			m = (u_char *)ma;
+			n = (u_char *)++na;
 		    }
 	    }
 
@@ -240,8 +260,7 @@ char	*mask, *name;
 ** This particular version is "in place", so that it changes the pattern
 ** which is to be reduced to a "minimal" size.
 */
-char	*collapse(pattern)
-char	*pattern;
+char	*collapse(char *pattern)
 {
 	Reg	char	*s = pattern, *s1, *t;
 
@@ -279,10 +298,8 @@ char	*pattern;
 **		<0, if s1 lexicographically less than s2
 **		>0, if s1 lexicographically greater than s2
 */
-int	mycmp(s1, s2)
-char	*s1;
-char	*s2;
-    {
+int	mycmp(char *s1, char *s2)
+{
 	Reg	unsigned char	*str1 = (unsigned char *)s1;
 	Reg	unsigned char	*str2 = (unsigned char *)s2;
 	Reg	int	res;
@@ -295,14 +312,11 @@ char	*s2;
 		str2++;
 	    }
 	return (res);
-    }
+}
 
 
-int	myncmp(str1, str2, n)
-char	*str1;
-char	*str2;
-int	n;
-    {
+int	myncmp(char *str1, char *str2, int n)
+{
 	Reg	unsigned char	*s1 = (unsigned char *)str1;
 	Reg	unsigned char	*s2 = (unsigned char *)str2;
 	Reg	int		res;
@@ -314,4 +328,46 @@ int	n;
 			return 0;
 	    }
 	return (res);
-    }
+}
+
+/*
+** Checks if all chars of username are valid.
+** Returns 1 if ok, 0 if invalid.
+*/
+int	isvalidusername(char *username)
+{
+	Reg char	*ch;
+	int	an=0;
+	int	nan=0;
+
+	ch = username;
+	if (*ch == '+' || *ch == '=' || *ch == '-' ||
+		*ch == '^' || *ch == '~')
+	{
+		/* do not allow them as first char */
+		return 0;
+	}
+	for (; *ch; ch++)
+	{
+		if (!isvaliduser(*ch))
+		{
+			return 0;
+		}
+		if (isalpha(*ch) || isdigit(*ch))
+		{
+			an++;
+		}
+		else
+		{
+			nan++;
+		}
+	}
+	/* we require at least one alphanum and no more than
+	   one nonalphanum */
+	if (nan > 1 || an == 0)
+	{
+		return 0;
+	}
+	return 1;
+}
+

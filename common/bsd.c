@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: bsd.c,v 1.3.4.2 2001/03/04 19:21:56 q Exp $";
+static  char rcsid[] = "@(#)$Id: bsd.c,v 1.8 2003/10/18 15:31:28 q Exp $";
 #endif
 
 #include "os.h"
@@ -39,8 +39,7 @@ static  char rcsid[] = "@(#)$Id: bsd.c,v 1.3.4.2 2001/03/04 19:21:56 q Exp $";
 #ifdef DEBUGMODE
 int	writecalls = 0, writeb[10] = {0,0,0,0,0,0,0,0,0,0};
 #endif
-RETSIGTYPE dummy(s)
-int s;
+RETSIGTYPE	dummy(int s)
 {
 #ifndef HAVE_RELIABLE_SIGNALS
 	(void)signal(SIGALRM, dummy);
@@ -91,19 +90,13 @@ int s;
 **		work equally well whether blocking or non-blocking
 **		mode is used...
 */
-int	deliver_it(cptr, str, len)
-aClient *cptr;
-int	len;
-char	*str;
-    {
+int	deliver_it(aClient *cptr, char *str, int len)
+{
 	int	retval;
 	aClient	*acpt = cptr->acpt;
 
 #ifdef	DEBUGMODE
 	writecalls++;
-#endif
-#ifndef	NOWRITEALARM
-	(void)alarm(WRITEWAITDELAY);
 #endif
 	retval = send(cptr->fd, str, len, 0);
 	/*
@@ -126,17 +119,11 @@ char	*str;
 	else if (retval > 0)
 		cptr->flags &= ~FLAGS_BLOCKED;
 
-#ifndef	NOWRITEALARM
-	(void )alarm(0);
-#endif
 #ifdef DEBUGMODE
 	if (retval < 0) {
 		writeb[0]++;
 		Debug((DEBUG_ERROR,"write error (%s) to %s",
 			strerror(errno), cptr->name));
-#ifndef	CLIENT_COMPILE
-		hold_server(cptr);
-#endif
 	} else if (retval == 0)
 		writeb[1]++;
 	else if (retval < 16)
@@ -164,25 +151,11 @@ char	*str;
 #endif
 		cptr->sendB += retval;
 		me.sendB += retval;
-		if (cptr->sendB > 1023)
-		    {
-			cptr->sendK += (cptr->sendB >> 10);
-			cptr->sendB &= 0x03ff;	/* 2^10 = 1024, 3ff = 1023 */
-		    }
 		if (acpt != &me)
 		    {
 			acpt->sendB += retval;
-			if (acpt->sendB > 1023)
-			    {
-				acpt->sendK += (acpt->sendB >> 10);
-				acpt->sendB &= 0x03ff;
-			    }
-		    }
-		else if (me.sendB > 1023)
-		    {
-			me.sendK += (me.sendB >> 10);
-			me.sendB &= 0x03ff;
 		    }
 	    }
 	return(retval);
 }
+

@@ -27,9 +27,11 @@
 extern aClient me;
 extern aClient *client;
 extern istat_t istat;
+extern iconf_t iconf;
 extern char **myargv;
 extern int rehashed;
 extern int portnum;
+extern int serverbooting;
 extern char *configfile;
 extern int debuglevel;
 extern int bootopt;
@@ -50,13 +52,10 @@ extern time_t nextexpire;
 #else /* IRCD_C */
 #define EXTERN
 #endif /* IRCD_C */
-#ifdef	PROFIL
-EXTERN RETSIGTYPE s_monitor __P((int s));
-#endif /* PROFIL */
-EXTERN RETSIGTYPE s_die __P((int s));
-EXTERN void restart __P((char *mesg));
-EXTERN RETSIGTYPE s_restart __P((int s));
-EXTERN void server_reboot();
-EXTERN void ircd_writetune __P((char *filename));
-EXTERN void ircd_readtune __P((char *filename));
+EXTERN RETSIGTYPE s_die (int s);
+EXTERN void restart (char *mesg);
+EXTERN RETSIGTYPE s_restart (int s);
+EXTERN void server_reboot(void);
+EXTERN void ircd_writetune (char *filename);
+EXTERN void ircd_readtune (char *filename);
 #undef EXTERN

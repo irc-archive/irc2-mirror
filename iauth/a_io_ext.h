@@ -35,16 +35,12 @@ extern anAuthData      cldata[MAXCONNECTIONS];
 #define EXTERN
 #endif /* A_IO_C */
 
-EXTERN void io_init();
-#if ! USE_STDARG
-EXTERN void sendto_ircd();
-#else /* USE_STDARG */
+EXTERN void io_init(void);
 EXTERN void vsendto_ircd (char *, va_list);
 EXTERN void sendto_ircd (char *, ...);
-#endif
-EXTERN void init_io __P(());
-EXTERN void loop_io __P(());
-EXTERN int tcp_connect __P((char *, char *, u_short, char **));
+EXTERN void init_io (void);
+EXTERN void loop_io (void);
+EXTERN int tcp_connect (char *, char *, u_short, char **);
 
-/* __P(()) */
+/* () */
 #undef EXTERN

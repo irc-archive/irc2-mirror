@@ -20,7 +20,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_numeric.c,v 1.4 1998/12/12 23:48:17 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_numeric.c,v 1.6 2003/10/18 15:31:26 q Exp $";
 #endif
 
 #include "os.h"
@@ -46,13 +46,10 @@ static char buffer[1024];
 **	sending back a neat error message -- big danger of creating
 **	a ping pong error message...
 */
-int	do_numeric(numeric, cptr, sptr, parc, parv)
-int	numeric;
-aClient *cptr, *sptr;
-int	parc;
-char	*parv[];
+int	do_numeric(int numeric, aClient *cptr, aClient *sptr, int parc,
+	char *parv[])
 {
-	aClient *acptr;
+	aClient *acptr = NULL;
 	aChannel *chptr;
 	char	*nick, *p;
 	int	i;
@@ -82,8 +79,9 @@ char	*parv[];
 	    }
 	for (; (nick = strtoken(&p, parv[1], ",")); parv[1] = NULL)
 	    {
-		if ((acptr = find_client(nick, (aClient *)NULL)))
-		    {
+		acptr = find_target(nick, cptr);	
+		if (acptr)
+		{
 			/*
 			** Drop to bit bucket if for me...
 			** ...one might consider sendto_ops
@@ -95,6 +93,11 @@ char	*parv[];
 			** with numerics which can happen with nick collisions.
 			** - Avalon
 			*/
+			if (IsMe(acptr) && IsBursting(sptr)
+			    && numeric == ERR_NOSUCHSERVER)
+			{
+				do_emulated_eob(sptr);
+			}
 			if (IsMe(acptr) || acptr->from == cptr)
 				sendto_flag(SCH_NUM,
 					    "From %s for %s: %s %d %s %s.",
@@ -125,3 +128,4 @@ char	*parv[];
 	    }
 	return 1;
 }
+
