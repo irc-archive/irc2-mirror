@@ -1,3 +1,34 @@
+1999-07-14  Christophe Kalt
+
+	* configure.in, os.h: use ncurses.h (from KIKUCHI Takahiro).
+
+	* configure.in: SunOS has poll(), but we don't want to use it
+	(reported by KIKUCHI Takahiro).
+
+	* mod_lhex.c: replaced strtoul() with sscanf().
+
+1999-07-11  Christophe Kalt
+
+	* a_defines.h was missing support_def.h (from KIKUCHI Takahiro).
+
+	* Makefile.in: ircdwatch.c uses strerror(), needs clsupport.o
+	(from KIKUCHI Takahiro).
+
+	* config.h.dist, ircd.c, s_debug.c: renamed CONNECTTIMEOUT to
+	ACCEPTTIMEOUT, and changed from 30 to 90.
+
+1999-07-11  Piotr Kucharski
+
+	* mod_socks.c:
+		* socks_write(): a typo made iauth allow open proxies and
+		caused a lot of BADPROTO warnings (from KIKUCHI Takahiro).
+		* socks_init(): buffer overflow with tmpbuf[] being too
+		small to hold too many iauth options (also from Takahiro).
+
+1999-07-09  Christophe Kalt
+
+	* configure.in, os.h, s_bsd.c: IPv6 updates (from KIKUCHI Takahiro).
+
 1999-07-05  Christophe Kalt
 
 	* s_bsd.c/read_message(): can't use iauth_options when USE_IAUTH
@@ -6,7 +37,7 @@
 1999-07-05  Piotr Kucharski
 
 	* channel.c/m_invite(): invite to :-channels was sometimes 
-	lost with no error
+	lost with no error.
 
 1999-07-04  Christophe Kalt
 

@@ -480,7 +480,11 @@ extern char *inet_ntoa __P((struct in_addr in));
 #  include <cursesX.h>
 # endif
 # if (USE_NCURSES || USE_CURSES) && HAVE_CURSES_H
-#  include <curses.h>
+#  if HAVE_NCURSES_H
+#   include <ncurses.h>
+#  else
+#   include <curses.h>
+#  endif
 # endif
 #else
 # undef DOCURSES
@@ -714,7 +718,7 @@ static unsigned char minus_one[]={ 255, 255, 255, 255, 255, 255, 255, 255, 255,
 
 # define	AFINET		AF_INET6
 # define	SOCKADDR_IN	sockaddr_in6
-# define	SOCKADDR	sockaddr_in6
+# define	SOCKADDR	sockaddr
 # define	SIN_FAMILY	sin6_family
 # define	SIN_PORT	sin6_port
 # define	SIN_ADDR	sin6_addr
@@ -729,7 +733,7 @@ static unsigned char minus_one[]={ 255, 255, 255, 255, 255, 255, 255, 255, 255,
 char mydummy[MYDUMMY_SIZE];
 char mydummy2[MYDUMMY_SIZE];
 
-# if defined(linux) || defined(__NetBSD__) || defined(__FreeBSD__)
+# if defined(linux) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(bsdi)
 #  ifndef s6_laddr
 #   define s6_laddr        s6_addr32
 #  endif
