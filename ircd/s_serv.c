@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.65.2.8 2003/10/10 22:52:28 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.65.2.11 2004/02/26 13:28:41 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -34,6 +34,7 @@ static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.65.2.8 2003/10/10 22:52:28 chopin 
 static	char	buf[BUFSIZE];
 
 static	int	check_link __P((aClient *));
+static	void	report_listeners __P((aClient *, char *));
 
 /*
 ** m_functions execute protocol messages on this server:
@@ -209,6 +210,15 @@ char	*parv[];
 		sendto_one(sptr, err_str(ERR_NOPRIVILEGES, parv[0]));
 		return 1;
 	    }
+	if (MyPerson(sptr))
+	{
+		char bufn[HOSTLEN+7];
+
+		sprintf(bufn, " (by %s)", sptr->name);
+		if (strlen(comment) > TOPICLEN)
+			comment[TOPICLEN] = '\0';
+		strcat(comment, bufn);
+	}
 	if (!MyConnect(acptr) && (cptr != acptr->from))
 	    {
 		/*
@@ -1348,7 +1358,7 @@ char	*to;
 				   buf, cp->lseq, cp->lrecvd,
 				   cp->ping / (cp->recvd ? cp->recvd : 1),
 				   tmp->pref);
-			sendto_flag(SCH_DEBUG, "%s: %d", buf, cp->seq);
+			/* sendto_flag(SCH_DEBUG, "%s: %d", buf, cp->seq); */
 		    }
 	return;
 }
@@ -1366,17 +1376,40 @@ char	*parv[];
 	int	wilds, doall;
 	char	*name, *cm;
 
-	if (IsServer(cptr) &&
-	    (stat != 'd' && stat != 'p' && stat != 'q' && stat != 's' &&
-	     stat != 'u' && stat != 'v') &&
-	    !((stat == 'o' || stat == 'c') && IsOper(sptr)))
+	if (IsServer(cptr))
 	    {
+		switch(stat)
+                {
+		/* These stats are available with no penalty for all. */
+		case 'd': case 'D':     /* defines */
+		case 'p':               /* ping stats */
+		case 'P':               /* ports listening */
+		case 'q': case 'Q':     /* Q:lines */
+		case 's': case 'S':     /* services */
+		case 'u': case 'U':     /* uptime */
+		case 'v': case 'V':     /* V:lines */
+		case 'l': case 'L':     /* links (wildcard is dropped later) */
+			break;
+		/* These are available with no penalty for opers. */
+		/* Although I have no idea, why only for opers. --B. */
+		case 'o': case 'O':     /* O:lines */
+		case 'c': case 'C':     /* C:/N: lines */
+		case 'h': case 'H':     /* H:/D: lines */
+		case 'a': case 'A':     /* iauth conf */
+		case 'b': case 'B':     /* B:lines */
+			if (IsOper(sptr))
+			{
+				break;
+			}
+			/* else fallthrough */
+                default:
 		if (check_link(cptr))
 		    {
 			sendto_one(sptr, rpl_str(RPL_TRYAGAIN, parv[0]),
 				   "STATS");
 			return 5;
 		    }
+		}
 	    }
 	if (parc == 3)
 	    {
@@ -1407,6 +1440,12 @@ char	*parv[];
 		 */
 		if (doall || wilds)
 		    {
+			if (IsServer(cptr) && check_link(cptr))
+                        {
+				sendto_one(sptr, rpl_str(RPL_TRYAGAIN, parv[0]),
+				   "STATS");
+                                return 5;
+                        }
 			for (i = 0; i <= highest_fd; i++)
 			    {
 				if (!(acptr = local[i]))
@@ -1479,7 +1518,10 @@ char	*parv[];
 	case 'o' : case 'O' : /* O (and o) lines */
 		report_configured_links(cptr, parv[0], CONF_OPS);
 		break;
-	case 'p' : case 'P' : /* ircd ping stats */
+	case 'P' : /* ports listening */
+		report_listeners(sptr, parv[0]);
+		break;
+	case 'p' : /* ircd ping stats */
 		report_ping(sptr, parv[0]);
 		break;
 	case 'Q' : case 'q' : /* Q lines */
@@ -2452,4 +2494,20 @@ aClient	*cptr;
 	}
     ircstp->is_cklno++;
     return -1;
+}
+
+static void report_listeners(aClient *sptr, char *to)
+{
+	aConfItem *tmp;
+
+	for (tmp = conf; tmp; tmp = tmp->next)
+	{
+		if ((tmp->status & CONF_LISTEN_PORT))
+		{
+			sendto_one(sptr, ":%s %d %s :%s %d %d", ME,
+				RPL_STATSDEFINE, to, BadPtr(tmp->host) ?
+				"*" : tmp->host, tmp->port,
+				tmp->clients);
+		}
+	}
 }

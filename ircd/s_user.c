@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.86.2.26 2003/10/12 19:52:47 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.86.2.29 2004/02/26 18:00:59 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1965,6 +1965,14 @@ user_finish:
 	return 2;
 }
 
+
+int	m_post(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+	sendto_flag(SCH_LOCAL, "Denied http-post connection from %s.",
+		cptr->sockhost);
+	m_quit(cptr, sptr, parc, parv);
+}
+
 /*
 ** m_quit
 **	parv[0] = sender prefix
@@ -1975,15 +1983,19 @@ aClient *cptr, *sptr;
 int	parc;
 char	*parv[];
     {
-	static	char	quitc[] = "I Quit";
-	register char *comment = (parc > 1 && parv[1]) ? parv[1] : quitc;
+	static char comment[TOPICLEN+1];
 
 	if (MyClient(sptr) || MyService(sptr))
-		if (!strncmp("Local Kill", comment, 10) ||
-		    !strncmp(comment, "Killed", 6))
-			comment = quitc;
-	if (strlen(comment) > (size_t) TOPICLEN)
-		comment[TOPICLEN] = '\0';
+	{
+		(void) snprintf(comment, TOPICLEN, "\"%s",
+			(parc > 1 && parv[1]) ? parv[1] : "");
+		(void) strcat(comment, "\"");
+	}
+	else
+	{
+		(void) snprintf(comment, TOPICLEN + 1, "%s",
+			(parc > 1 && parv[1]) ? parv[1] : "");
+	}
 	return IsServer(sptr) ? 0 : exit_client(cptr, sptr, sptr, comment);
     }
 
@@ -2530,6 +2542,15 @@ char	*parv[];
 		sendto_one(cptr, err_str(ERR_NEEDMOREPARAMS, parv[0]), "PASS");
 		return 1;
 	    }
+	strncpyzt(cptr->passwd, password, sizeof(cptr->passwd));
+	if (cptr->user || cptr->service)
+	{
+		/* If we have one of these structures allocated, it means
+		** that PASS was issued after USER or SERVICE. No need to
+		** copy PASS parameters to info field, then. */
+		return 1;
+	}
+
 	/* Temporarily store PASS pwd *parameters* into info field */
 	if (parc > 2 && parv[2])
 	    {
@@ -2548,7 +2569,6 @@ char	*parv[];
 			MyFree(cptr->info);
 		cptr->info = mystrdup(buf);
 	    }
-	strncpyzt(cptr->passwd, password, sizeof(cptr->passwd));
 	return 1;
     }
 

@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.109.2.24 2003/10/11 11:03:23 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.109.2.27 2004/02/25 16:47:41 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -2203,10 +2203,13 @@ char	*parv[];
 		else
 			clean_channelname(name), s = NULL;
 
-		if (MyConnect(sptr) &&
+		chptr = get_channel(sptr, name, !CREATE);
+
+		if (chptr && IsMember(sptr, chptr))
+			continue;
+
+		if (MyConnect(sptr) && !(chptr && IsQuiet(chptr)) &&
 		    sptr->user->joined >= MAXCHANNELSPERUSER) {
-			/* Feature: Cannot join &flagchannels either
-			   if already joined MAXCHANNELSPERUSER times. */
 			sendto_one(sptr, err_str(ERR_TOOMANYCHANNELS,
 				   parv[0]), name);
 			/* can't return, need to send the info everywhere */
@@ -2221,12 +2224,17 @@ char	*parv[];
 			return exit_client(sptr, sptr, &me, "Virus Carrier");
 		    }
 
-		chptr = get_channel(sptr, name, CREATE);
+		if (!chptr)
+			chptr = get_channel(sptr, name, CREATE);
 
-		if (IsMember(sptr, chptr))
+		if (!chptr)
+		{
+			sendto_flag(SCH_ERROR, "Could not create channel!");
+			sendto_one(sptr, "%s *** %s :Could not create channel!",
+				ME, parv[0]);
 			continue;
-		if (!chptr ||
-		    (MyConnect(sptr) && (i = can_join(sptr, chptr, key))))
+		}
+		if (MyConnect(sptr) && (i = can_join(sptr, chptr, key)))
 		    {
 			sendto_one(sptr, err_str(i, parv[0]), name);
 			continue;
@@ -2539,6 +2547,7 @@ char	*parv[];
     {
 	Reg	aChannel *chptr;
 	char	*p = NULL, *name, *comment = "";
+	int	size;
 
 	if (parc < 2 || parv[1][0] == '\0')
 	    {
@@ -2547,6 +2556,20 @@ char	*parv[];
 	    }
 
 	*buf = '\0';
+
+	parv[1] = canonize(parv[1]);
+	comment = (BadPtr(parv[2])) ? "" : parv[2];
+	if (strlen(comment) > TOPICLEN)
+		comment[TOPICLEN] = '\0';
+
+	/*
+	** Broadcasted to other servers is ":nick PART #chan,#chans :comment",
+	** so we must make sure buf does not contain too many channels or later
+	** they get truncated! "10" comes from all fixed chars: ":", " PART "
+	** and ending "\r\n\0". We could subtract strlen(comment)+2 here too,
+	** but it's not something we care, is it? :->
+	*/
+	size = BUFSIZE - strlen(parv[0]) - 10;
 
 	for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
 	    {
@@ -2567,11 +2590,6 @@ char	*parv[];
 				   name);
 			continue;
 		    }
-		comment = (BadPtr(parv[2])) ? parv[0] : parv[2];
-		if (IsAnonymous(chptr) && (comment == parv[0]))
-			comment = "None";
-		if (strlen(comment) > (size_t) TOPICLEN)
-			comment[TOPICLEN] = '\0';
 
 		/*
 		**  Remove user from the old channel (if any)
@@ -2580,6 +2598,18 @@ char	*parv[];
 		    {	/* channel:*.mask */
 			if (*name != '&')
 			    {
+				/* We could've decreased size by 1 when
+				** calculating it, but I left it like that
+				** for the sake of clarity. --B. */
+				if (strlen(buf) + strlen(name) + 1
+					> size)
+				{
+					/* Anyway, if it would not fit in the
+					** buffer, send it right away. --B */
+					sendto_serv_butone(cptr, PartFmt,
+						parv[0], buf, comment);
+					*buf = '\0';
+				}
 				if (*buf)
 					(void)strcat(buf, ",");
 				(void)strcat(buf, name);
@@ -2706,6 +2736,9 @@ char	*parv[];
 				remove_user_from_channel(who,chptr);
 				penalty += 2;
 				if (penalty >= MAXPENALTY && MyPerson(sptr))
+					break;
+				/* user kicked himself out */
+				if (MyPerson(sptr) && who == sptr)
 					break;
 			    }
 			else

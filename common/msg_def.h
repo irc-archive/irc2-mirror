@@ -73,5 +73,6 @@
 #define	MSG_DIE	     "DIE"
 #define	MSG_HASH     "HAZH"	/* HASH */
 #define	MSG_DNS      "DNS"	/* DNS  -> DNSS */
+#define	MSG_POST     "POST"
 
 #define MAXPARA    15 

@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: parse.c,v 1.25.2.1 2000/05/16 17:53:13 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: parse.c,v 1.25.2.4 2004/02/26 19:51:31 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -121,6 +121,7 @@ struct Message msgtab[] = {
 # endif
 					, 0, 0, 0L},
 #endif
+  { MSG_POST,    m_post,     MAXPARA, MSG_NOU, 0, 0, 0L},
 #endif /* !CLIENT_COMPILE */
   { (char *) 0, (int (*)()) 0, 0, 0, 0, 0, 0L}
 };

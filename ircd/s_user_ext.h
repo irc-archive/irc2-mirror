@@ -43,6 +43,7 @@ EXTERN int m_notice __P((aClient *cptr, aClient *sptr, int parc,
 EXTERN int m_who __P((aClient *cptr, aClient *sptr, int parc, char *parv[]));
 EXTERN int m_whois __P((aClient *cptr, aClient *sptr, int parc, char *parv[]));
 EXTERN int m_user __P((aClient *cptr, aClient *sptr, int parc, char *parv[]));
+EXTERN int m_post __P((aClient *cptr, aClient *sptr, int parc, char *parv[]));
 EXTERN int m_quit __P((aClient *cptr, aClient *sptr, int parc, char *parv[]));
 EXTERN int m_kill __P((aClient *cptr, aClient *sptr, int parc, char *parv[]));
 EXTERN int m_away __P((aClient *cptr, aClient *sptr, int parc, char *parv[]));
