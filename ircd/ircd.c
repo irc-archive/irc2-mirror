@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: ircd.c,v 1.125 2004/03/21 18:24:38 jv Exp $";
+static  char rcsid[] = "@(#)$Id: ircd.c,v 1.129 2004/04/14 21:31:13 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -286,6 +286,12 @@ static	time_t	try_connections(time_t currenttime)
 				    "Connection to %s[%s] activated.",
 				    con_conf->name, con_conf->host);
 	    }
+	else
+	{
+		/* No suitable conf for AC was found, so why bother checking
+		** again? If some server quits, it'd get reenabled --B. */
+		next = 0;
+	}
 	Debug((DEBUG_NOTICE,"Next connection check : %s", myctime(next)));
 	/*
 	 * calculate preference value based on accumulated stats.
@@ -410,7 +416,7 @@ static	time_t	check_pings(time_t currenttime)
 
 	for (i = highest_fd; i >= 0; i--)
 	    {
-		if (!(cptr = local[i]))
+		if (!(cptr = local[i]) || IsListener(cptr))
 			continue;
 
 #ifdef TIMEDKLINES
@@ -914,8 +920,11 @@ int	main(int argc, char *argv[])
 
                 for (i = 0; i <= highest_fd; i++)
                     {   
-                        if ((acptr = listeners[i]))
-                                break;
+			if (!(acptr = local[i]))
+				continue;
+			if (IsListener(acptr))
+				break;
+			acptr = NULL;
 		    }
 		/* exit if there is nothing to listen to */
 		if (acptr == NULL && !(bootopt & BOOT_INETD))

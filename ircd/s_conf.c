@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.105 2004/03/21 18:19:06 jv Exp $";
+static  char rcsid[] = "@(#)$Id: s_conf.c,v 1.107 2004/04/17 02:33:58 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -226,11 +226,13 @@ int    match_ipmask(char *mask, aClient *cptr, int maskwithusername)
 	char	*p;
 	struct  IN_ADDR addr;
 	char	dummy[128];
+	char	*omask;
 	u_long	lmask;
 #ifdef	INET6
 	int	j;
 #endif
  
+	omask = mask;
 	strncpyzt(dummy, mask, sizeof(dummy));
 	mask = dummy;
 	if (maskwithusername && (p = index(mask, '@')))
@@ -290,7 +292,7 @@ int    match_ipmask(char *mask, aClient *cptr, int maskwithusername)
 #endif
 badmask:
 	if (maskwithusername)
-	sendto_flag(SCH_ERROR, "Ignoring bad mask: %s", mask);
+	sendto_flag(SCH_ERROR, "Ignoring bad mask: %s", omask);
 	return -1;
 }
 
@@ -815,8 +817,8 @@ aConfItem	*find_conf_name(char *name, int statmask)
 	for (tmp = conf; tmp; tmp = tmp->next)
 	    {
 		/*
-		** Accept if the *real* hostname (usually sockecthost)
-		** matches *either* host or name field of the configuration.
+		** Accept if the hostname matches name field
+		** of the configuration.
 		*/
 		if ((tmp->status & statmask) &&
 		    (!tmp->name || match(tmp->name, name) == 0))
@@ -2043,8 +2045,7 @@ aConfItem	*find_denied(char *name, int class)
 		    aServer	*asptr;
 
 		    for (asptr = svrtop; asptr; asptr = asptr->nexts)
-			    if (aconf->host &&
-				!match(aconf->host, asptr->bcptr->name))
+			    if (!match(aconf->host, asptr->bcptr->name))
 				    return aconf;
 		}
 	}

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.198 2004/03/21 00:52:39 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.201 2004/03/29 18:49:28 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -238,6 +238,7 @@ int	hunt_server(aClient *cptr, aClient *sptr, char *command, int server,
 **	'~'-character should be allowed, but
 **	a change should be global, some confusion would
 **	result if only few servers allowed it...
+**	It will be allowed in 2.11.1 (and is now accepted from servers).
 */
 
 int	do_nick_name(char *nick, int server)
@@ -260,6 +261,12 @@ int	do_nick_name(char *nick, int server)
 		if (!server && isscandinavian(*ch))
 		{
 			break;
+		}
+		/* 2.11.1 should remove this if() and fix
+		** match.c to make '~' NVALID --B. */
+		if (server && *ch == '~')
+		{
+			continue;
 		}
 		if (!isvalidnick(*ch))
 		{
@@ -818,7 +825,7 @@ int	m_nick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	aClient *acptr;
 	int	delayed = 0;
-	char	nick[NICKLEN+2], *s, *user, *host;
+	char	nick[NICKLEN+2], *user, *host;
 	Link	*lp = NULL;
 	int	donickname;
 
@@ -841,8 +848,6 @@ int	m_nick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		sendto_one(sptr, replies[ERR_NONICKNAMEGIVEN], ME, BadTo(parv[0]));
 		return 1;
 	    }
-	if (MyConnect(sptr) && (s = (char *)index(parv[1], '~')))
-		*s = '\0';
 	/* local clients' nick size can be ONICKLEN max */
 	strncpyzt(nick, parv[1], (MyConnect(sptr) ? ONICKLEN : NICKLEN)+1);
 
@@ -944,8 +949,7 @@ badparamcountkills:
 	 * creation) then reject it. If from a server and we reject it,
 	 * we have to KILL it. -avalon 4/4/92
 	 */
-	if (donickname == 0 ||
-	    (IsServer(cptr) && strcmp(nick, parv[1])))
+	if (donickname == 0 || strcmp(nick, parv[1]))
 	    {
 		sendto_one(sptr, replies[ERR_ERRONEOUSNICKNAME], ME, BadTo(parv[0]),
 			   parv[1]);

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.181 2004/03/24 23:25:02 chopin Exp $";
+static  char rcsid[] = "@(#)$Id: s_serv.c,v 1.186 2004/04/07 17:02:38 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -37,7 +37,7 @@ static	int	check_link (aClient *);
 static	int	get_version (char *, char *);
 static	void	trace_one (aClient *, aClient *);
 static	void	report_listeners(aClient *, char *);
-static	void	report_class(aClient *, char *);
+static	void	report_class_usage(aClient *, char *);
 const	char	*check_servername_errors[3][2] = {
 	{ "too long", "Bogus servername - too long" },
 	{ "invalid", "Bogus servername - invalid hostname" },
@@ -1996,6 +1996,7 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		/* Although I have no idea, why only for opers. --B. */
 		case 'o': case 'O':	/* O:lines */
 		case 'c': 		/* C:/N: lines */
+		case 'C': 		/* class usage */
 		case 'h': case 'H':	/* H:/D: lines */
 		case 'a': case 'A':	/* iauth conf */
 		case 'b': case 'B':	/* B:lines */
@@ -2124,7 +2125,7 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		report_configured_links(cptr, parv[0], CONF_BOUNCE);
 		break;
 	case 'C': /* class usage stats */
-		report_class(cptr, BadTo(parv[0]));
+		report_class_usage(cptr, BadTo(parv[0]));
 		break;
 	case 'c': /* C and N conf lines */
 		report_configured_links(cptr, parv[0], CONF_CONNECT_SERVER|
@@ -3758,7 +3759,9 @@ static void report_listeners(aClient *sptr, char *to)
 
 	for (i = 0; i <= highest_fd; i++)
 	{
-		if (!(acptr = listeners[i]))
+		if (!(acptr = local[i]))
+			continue;
+		if (!IsListener(acptr))
 			continue;
 		tmp = acptr->confs->value.aconf;
 		sendto_one(sptr, ":%s %d %s %d %s %s %u %lu %llu %lu %llu %u"
@@ -3775,20 +3778,17 @@ static void report_listeners(aClient *sptr, char *to)
 	}
 }
 
-static void report_class(aClient *sptr, char *to)
+/* Reports class usage */
+static void report_class_usage(aClient *sptr, char *to)
 {
-	/* Report Class usage */
-	if (IsPerson(sptr))
-	{
-		aClass  *tmp;
+	aClass  *tmp;
 
-	    	for (tmp = FirstClass(); tmp; tmp = NextClass(tmp))
-	    	{
-			if (Links(tmp) > 0)
-			{
-				sendto_one(sptr, replies[RPL_TRACECLASS],
-					ME, to, Class(tmp), Links(tmp));
-			}
-   		}
+	for (tmp = FirstClass(); tmp; tmp = NextClass(tmp))
+	{
+		if (Links(tmp) > 0)
+		{
+			sendto_one(sptr, replies[RPL_TRACECLASS],
+				ME, to, Class(tmp), Links(tmp));
+		}
 	}
 }

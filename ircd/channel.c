@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static	char rcsid[] = "@(#)$Id: channel.c,v 1.195 2004/03/17 15:06:35 chopin Exp $";
+static	char rcsid[] = "@(#)$Id: channel.c,v 1.198 2004/04/10 11:54:52 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -245,12 +245,10 @@ static	int	add_modeid(int type, aClient *cptr, aChannel *chptr,
 					ME, BadTo(cptr->name),
 					chptr->chname, modeid->nick,
 					modeid->user, modeid->host);
-				free_bei(modeid);
 				return -1;
 			    }
 			if (type == mode->flags &&
-			    (BanMatch(mode->value.alist, modeid) ||
-			    BanMatch(modeid, mode->value.alist)))
+				BanExact(mode->value.alist, modeid))
 			    {
 				int rpl;
 
@@ -267,13 +265,11 @@ static	int	add_modeid(int type, aClient *cptr, aChannel *chptr,
 					chptr->chname, mode->value.alist->nick,
 					mode->value.alist->user,
 					mode->value.alist->host);
-				free_bei(modeid);
 				return -1;
 			    }
 		    }
 		else if (type == mode->flags && BanExact(mode->value.alist, modeid))
 		{
-			free_bei(modeid);
 			return -1;
 		}
 		
@@ -291,7 +287,7 @@ static	int	add_modeid(int type, aClient *cptr, aChannel *chptr,
 
 /*
  * del_modeid - delete an id belonging to chptr
- * if modeid is null, delete all ids belonging to chptr.
+ * if modeid is null, delete all ids belonging to chptr. (seems to be unused)
  */
 static	int	del_modeid(int type, aChannel *chptr, aListItem *modeid)
 {
@@ -312,6 +308,10 @@ static	int	del_modeid(int type, aChannel *chptr, aListItem *modeid)
 			free_link(tmp);
 			break;
 		}
+	}
+	if (modeid)
+	{
+		free_bei(modeid);
 	}
 	return 0;
 }
@@ -1754,6 +1754,18 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 					(void)strcat(upbuf, " ");
 					len++;
 					ulen++;
+				}
+				else
+				{
+					/* We have to free lp->value.alist
+					** allocated by make_bei, otherwise
+					** it is memleak. del_modeid always
+					** succeeds, so free_bei is there.
+					** If add_modeid succeeds, it uses
+					** pointer, if not, we free it here.
+					** This also covers all other cases,
+					** like !ischop. --B. */
+					free_bei(lp->value.alist);
 				}
 				break;
 			}

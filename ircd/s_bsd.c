@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.137 2004/03/22 14:15:14 jv Exp $";
+static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.144 2004/04/17 17:27:22 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -49,7 +49,6 @@ static  char rcsid[] = "@(#)$Id: s_bsd.c,v 1.137 2004/03/22 14:15:14 jv Exp $";
 #endif
 
 aClient	*local[MAXCONNECTIONS];
-aClient	*listeners[MAXCONNECTIONS];
 FdAry	fdas, fdall;
 int	highest_fd = 0, readcalls = 0, udpfd = -1, resfd = -1, adfd = -1;
 time_t	timeofday;
@@ -310,6 +309,7 @@ int	inetport(aClient *cptr, char *ip, char *ipmask, int port, int dolisten)
 	cptr->ip.s_addr = server.sin_addr.s_addr; /* broken on linux at least*/
 #endif
 	cptr->port = port;
+	local[cptr->fd] = cptr;
 
 	if (dolisten)
 	{
@@ -363,7 +363,6 @@ int	add_listener(aConfItem *aconf)
 		cptr->confs = make_link();
 		cptr->confs->next = NULL;
 		cptr->confs->value.aconf = aconf;
-		listeners[cptr->fd] = cptr;
 		add_fd(cptr->fd, &fdas);
 		add_fd(cptr->fd, &fdall);
 		set_non_blocking(cptr->fd, cptr);
@@ -427,6 +426,7 @@ int	unixport(aClient *cptr, char *path, int port)
 	(void)chmod(unixpath, 0777);
 	SetUnixSock(cptr);
 	cptr->port = 0;
+	local[cptr->fd] = cptr;
 
 	return 0;
 }
@@ -451,9 +451,9 @@ void	close_listeners(void)
 	 */
 	for (i = highest_fd; i >= 0; i--)
 	    {
-		if (!(cptr = listeners[i]))
+		if (!(cptr = local[i]))
 			continue;
-		if (cptr == &me)
+		if (cptr == &me || !IsListener(cptr))
 			continue;
 		aconf = cptr->confs->value.aconf;
 
@@ -479,9 +479,9 @@ void	activate_delayed_listeners(void)
 	
 	for (i = highest_fd; i >= 0; i--)
 	{
-		if (!(cptr = listeners[i]))
+		if (!(cptr = local[i]))
 			continue;
-		if (cptr == &me)
+		if (cptr == &me || !IsListener(cptr))
 			continue;
 
 		if (IsListenerInactive(cptr))
@@ -573,19 +573,51 @@ void	start_iauth(int rcvdsig)
 	if (first)
 		first = 0;
 	else
-	    {
+	{
 		int i;
 		aClient *cptr;
+		char	abuf[BUFSIZ];	/* size of abuf in vsendto_iauth */
+		/* 20 is biggest possible ending "%d O\n\0", which means
+		** 16-digit fd -- very unlikely :> */
+		char	*e = abuf + BUFSIZ - 20;
+		char	*s = abuf;
 
+		/* Build abuf to send big buffer once (or twice) to iauth,
+		** which goes faster than many consecutive small writes.
+		** BitKoenig claims it saves metadata overhead on Linux and
+		** does not harm other systems --B. */
 		for (i = 0; i <= highest_fd; i++)
-		    {   
+		{
 			if (!(cptr = local[i]))
 				continue;
 			if (IsServer(cptr) || IsService(cptr))
 				continue;
-			sendto_iauth("%d O", i);
-		    }
-	    }
+			
+			/* if not enough room in abuf, send whatever we have
+			** now and start writing from begin of abuf again. */
+			if (s > e)
+			{
+				/* sendto_iauth() appends "\n", so we
+				** remove last one */
+				*(s - 1) = '\0';	
+				sendto_iauth(abuf);
+				s = abuf;
+			}
+			/* A little trick: we sprintf onto s and move s (which 
+			** points inside abuf) forward, at the end of s (number
+			** of bytes returned by sprintf). This makes s always 
+			** point to the end of things written on abuf, which 
+			** allows both next sprintf at the end (no strcat!) and
+			** removing last \n when needed. */
+			s += sprintf(s, "%d O\n", i);
+		}
+		/* send the rest */
+		if (s != abuf)
+		{
+			*(s - 1) = '\0';
+			sendto_iauth(abuf);
+		}
+	}
 #endif
 }
 
@@ -656,11 +688,9 @@ void	init_sys(void)
 	fdas.highest = fdall.highest = -1;
 	/* we need stderr open, don't close() it, daemonize() will do it */
 	local[0] = local[1] = local[2] = NULL;
-	listeners[0] = listeners[1] = listeners[2] = NULL;
 	for (fd = 3; fd < MAXCONNECTIONS; fd++)
 	{
 		local[fd] = NULL;
-		listeners[fd] = NULL;
 		(void)close(fd);
 	}
 }
@@ -1240,13 +1270,9 @@ void	close_connection(aClient *cptr)
 		if (nextconnect > aconf->hold || nextconnect == 0)
 			nextconnect = aconf->hold;
 	    }
-	if (IsServer(cptr) && nextconnect == 0)
+	if (nextconnect == 0 && (IsHandshake(cptr) || IsConnecting(cptr)))
 	{
-		/*
-		 * If nextconnect is still 0, reset it, nevertheless
-		 * I see no way for this to happen. :-) --B.
-		 */
-		nextconnect = timeofday;
+		nextconnect = timeofday + HANGONRETRYDELAY;
 	}
 
 	if (cptr->authfd >= 0)
@@ -1267,7 +1293,7 @@ void	close_connection(aClient *cptr)
 		sendto_iauth("%d D", cptr->fd);
 #endif
 		flush_connections(i);
-		if (IsServer(cptr))
+		if (IsServer(cptr) || IsListener(cptr))
 		    {
 			del_fd(i, &fdas);
 #ifdef	ZIP_LINKS
@@ -1278,11 +1304,6 @@ void	close_connection(aClient *cptr)
 			zip_free(cptr);
 #endif
 		    }
-		else if (IsListening(cptr))
-		{
-			del_fd(i, &fdas);
-			listeners[i] = NULL;
-		}
 		else if (IsClient(cptr))
 		    {
 #ifdef	SO_LINGER
@@ -1378,7 +1399,7 @@ static	int	set_sock_opts(int fd, aClient *cptr)
 	 * Method borrowed from Wietse Venema's TCP wrapper.
 	 */
 	{
-	    if (!IsListening(cptr)
+	    if (!IsListener(cptr)
 #ifdef UNIXPORT
 		&& !IsUnixSocket(cptr)
 #endif
@@ -1985,10 +2006,7 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 		for (i = fdp->highest; i >= 0; i--)
 		    {
 			fd = fdp->fd[i];
-			cptr = local[fd];
-			if (!cptr)
-				cptr = listeners[fd];
-			if (!cptr)
+			if (!(cptr = local[fd]))
 				continue;
 			Debug((DEBUG_L11, "fd %d cptr %#x %d %#x %s",
 				fd, cptr, cptr->status, cptr->flags,
@@ -2030,7 +2048,7 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 			** Checking for new connections is only done up to
 			** once per second.
 			*/
-			if (IsListening(cptr))
+			if (IsListener(cptr))
 			    {
 				if (timeofday > cptr->lasttime + 1 && ro == 0)
 				    {
@@ -2187,10 +2205,7 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 	    {
 #if ! USE_POLL
 		fd = fdp->fd[i];
-		cptr = local[fd];
-		if (!cptr)
-			cptr = listeners[fd];
-		if (!cptr)
+		if (!(cptr = local[fd]))
 			continue;
 #else
 		fd = pfd->fd;
@@ -2222,10 +2237,7 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 #if USE_POLL
 		    }
 		fd = pfd->fd;
-		cptr = local[fd];
-		if (!cptr)
-			cptr = listeners[fd];
-		if (!cptr)
+		if (!(cptr = local[fd]))
 			continue;
 #else
 		fd = cptr->fd;
@@ -2233,7 +2245,7 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 		/*
 		 * accept connections
 		 */
-		if (TST_READ_EVENT(fd) && IsListening(cptr))
+		if (TST_READ_EVENT(fd) && IsListener(cptr))
 		    {
 			CLR_READ_EVENT(fd);
 			cptr->lasttime = timeofday;
@@ -2879,9 +2891,16 @@ void	get_my_name(aClient *cptr, char *name, int len)
 			strncpyzt(name, hp->h_name, len);
 		else
 			strncpyzt(name, tmp, len);
+#if 0
+/* If someone puts IP in M:, fine, use it as outgoing ip, but using
+resolved M: name for outgoing ip is... troublesome. It can resolve to IP of
+some other host or 127.0.0.1 (in which case we'd be getting strange errors
+from connect()); if left empty, OS will decide itself what IP to use; 
+if someone wants to control this, use M: or C: adequate fields. --B. */
 		if (BadPtr(aconf->passwd))
 			bcopy(hp->h_addr, (char *)&mysk.SIN_ADDR,
 			      sizeof(struct IN_ADDR));
+#endif
 		Debug((DEBUG_DEBUG,"local name is %s",
 				get_client_name(&me,TRUE)));
 	    }
