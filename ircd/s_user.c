@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static  char rcsid[] = "@(#)$Id: s_user.c,v 1.80 1999/06/27 17:53:26 kalt Exp $";
+static  char rcsid[] = "@(#)$Id: s_user.c,v 1.83 1999/07/02 17:12:30 kalt Exp $";
 #endif
 
 #include "os.h"
@@ -822,13 +822,21 @@ char	*parv[];
 		sptr->flags |= FLAGS_KILLED;
 		return exit_client(cptr, sptr, &me, "Nick/Server collision");
 	    }
+	if ((acptr = get_history(nick, (long)(KILLCHASETIMELIMIT))) &&
+	    !MyConnect(acptr))  
+		/*
+		** Lock nick for KCTL so one cannot nick collide (due to kill
+		** chase) people who recently changed their nicks. --Beeth
+		*/
+		delayed = 1;
+	else
+		delayed = find_history(nick, (long)DELAYCHASETIMELIMIT);
 	/*
 	** Nick is free, and it comes from another server or
 	** it has been free for a while here
 	*/
 	if (!(acptr = find_client(nick, NULL)) &&
-	    (IsServer(cptr) || !(bootopt & BOOT_PROT) ||
-	     !(delayed = find_history(nick, (long)DELAYCHASETIMELIMIT))))
+	    (IsServer(cptr) || !(bootopt & BOOT_PROT) || !delayed))
 		goto nickkilldone;  /* No collisions, all clear... */
 	/*
 	** If acptr == sptr, then we have a client doing a nick
@@ -1159,13 +1167,6 @@ int	parc, notice;
 			if (*s == '*' || *s == '?')
 			    {
 				sendto_one(sptr, err_str(ERR_WILDTOPLEVEL,
-					   parv[0]), nick);
-				continue;
-			    }
-			if ((s = (char *)rindex(ME, '.')) &&
-			    strcasecmp(rindex(nick, '.'), s))
-			    {
-				sendto_one(sptr, err_str(ERR_BADMASK,
 					   parv[0]), nick);
 				continue;
 			    }
@@ -1535,9 +1536,6 @@ aClient	*sptr, *acptr;
 		0,	/* joined */
 		0,	/* flags */
 		NULL,	/* servp */
-#ifndef NO_USRTOP
-		NULL, NULL,
-#endif
 		NULL,	/* next, prev, bcptr */
 		"<Unknown>",	/* user */
 		"<Unknown>",	/* host */
@@ -1842,37 +1840,7 @@ char	*parv[];
 	user->server = find_server_string(me.serv->snum);
 
 user_finish:
-#ifdef NO_USRTOP
 	reorder_client_in_list(sptr);
-#else
-	/* 
-	** servp->userlist's are pointers into usrtop linked list.
-	** Users aren't added to the top always, but only when they come
-	** from a new server.
-	*/
-	if ((user->nextu = user->servp->userlist) == NULL)
-	    {
-		/* First user on this server goes to top of anUser list */
-		user->nextu = usrtop;
-		usrtop->prevu = user;
-		usrtop = user;	/* user->prevu == usrtop->prevu == NULL */
-	    } else {
-		/*
-		** This server already has users,
-		** insert this new user in the middle of the anUser list,
-		** update its neighbours..
-		*/
-		if (user->servp->userlist->prevu) /* previous user */
-		    {
-			user->prevu = user->servp->userlist->prevu;
-			user->servp->userlist->prevu->nextu = user;
-		    } else	/* user->servp->userlist == usrtop */
-			usrtop = user; /* there is no previous user */
-		user->servp->userlist->prevu = user; /* next user */
-	    }
-	user->servp->userlist = user;
-#endif
-	
 	if (sptr->info != DefInfo)
 		MyFree(sptr->info);
 	if (strlen(realname) > REALLEN)
