@@ -29,7 +29,7 @@ struct Config
 };
 
 #ifdef CONFIG_DIRECTIVE_INCLUDE
-static aConfig	*config_read(int, int, aFile *);
+static aConfig	*config_read(FILE *, int, aFile *);
 static void	config_free(aConfig *);
 aFile	*new_config_file(char *, aFile *, int);
 void	config_error(int, aFile *, int, char *, ...);
@@ -49,54 +49,37 @@ void	config_error(int, char *, int, char *, ...);
 
 /* read from supplied fd, putting line by line onto aConfig struct.
 ** calls itself recursively for each #include directive */
-aConfig *config_read(int fd, int depth, aFile *curfile)
+aConfig *config_read(FILE *fd, int depth, aFile *curfile)
 {
-	int len, linenum;
-	struct stat fst;
-	char *i, *address;
+	int linenum = 0;
 	aConfig *ConfigTop = NULL;
 	aConfig *ConfigCur = NULL;
+	char	line[BUFSIZE+1];
+	FILE	*fdn;
 
 	if (curfile == NULL)
 	{
 		curfile = new_config_file(configfile, NULL, 0);
 	}
-	fstat(fd, &fst);
-	len = fst.st_size;
-	if ((address = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0))
-		== MAP_FAILED)
-	{
-		config_error(CF_ERR, curfile, 0, 
-			"mmap failed reading config");
-		return NULL;
-	}
-
-	i = address;
-	linenum = 0;
-	while (i < address + len)
+	while (NULL != (fgets(line, sizeof(line), fd)))
 	{
 		char *p;
 		aConfig	*new;
 		int linelen;
 
-		/* eat empty lines first */
-		while (*i == '\n' || *i == '\r')
-		{
-			if (*i == '\n')
-				linenum++;
-			i++;
-		}
-		p = strchr(i, '\n');
-		if (p == NULL)
-		{
-			/* EOF without \n, I presume */
-			p = address + len;
-		}
 		linenum++;
+		if ((p = strchr(line, '\n')) != NULL)
+			*p = '\0';
+		if ((p = strchr(line, '\r')) != NULL)
+			*p = '\0';
+		if (*line == '\0')
+			continue;
+		linelen = strlen(line);
 
-		if (*i == '#' && strncasecmp(i+1, "include ", 8) == 0)
+		if (*line == '#' && strncasecmp(line + 1, "include ", 8) == 0)
 		{
-			char	*start = i + 9, *end = p;
+			char	*start = line + 9;
+			char	*end = line + linelen - 1;
 			char	file[FILEMAX + 1];
 			char	*filep = file;
 			char	*savefilep;
@@ -119,7 +102,12 @@ aConfig *config_read(int fd, int depth, aFile *curfile)
 				start++;
 				end--;
 			}
-
+			if (start >= end)
+			{
+				config_error(CF_ERR, curfile, linenum,
+					"config: empty include");
+				goto eatline;
+			}
 			*filep = '\0';
 			if (depth >= MAXDEPTH)
 			{
@@ -130,9 +118,10 @@ aConfig *config_read(int fd, int depth, aFile *curfile)
 			}
 			if (*start != '/')
 			{
-				filep += sprintf(file, IRCDCONF_DIR);
+				filep += snprintf(file, FILEMAX,
+					"%s", IRCDCONF_DIR);
 			}
-			if (end - start + filep - file >= FILEMAX)
+			if ((end - start) + (filep - file) >= FILEMAX)
 			{
 				config_error(CF_ERR, curfile, linenum,
 					"too long filename (max %d with "
@@ -140,8 +129,8 @@ aConfig *config_read(int fd, int depth, aFile *curfile)
 				goto eatline;
 			}
 			savefilep = filep;
-			memcpy(filep, start, end - start + 1);
-			filep += end - start + 1;
+			memcpy(filep, start, (end - start) + 1);
+			filep += (end - start) + 1;
 			*filep = '\0';
 			for (tcf = curfile; tcf; tcf = tcf->parent)
 			{
@@ -153,15 +142,15 @@ aConfig *config_read(int fd, int depth, aFile *curfile)
 					goto eatline;
 				}
 			}
-			if ((fd = open(file, O_RDONLY)) < 0)
+			if ((fdn = fopen(file, "r")) == NULL)
 			{
 				config_error(CF_ERR, curfile, linenum,
 					"cannot open \"%s\"", savefilep);
 				goto eatline;
 			}
-			ret = config_read(fd, depth + 1,
+			ret = config_read(fdn, depth + 1,
 				new_config_file(file, curfile, linenum));
-			close(fd);
+			fclose(fdn);
 			if (ConfigCur)
 			{
 				ConfigCur->next = ret;
@@ -176,16 +165,12 @@ aConfig *config_read(int fd, int depth, aFile *curfile)
 				ConfigCur = ConfigCur->next;
 			}
 			/* good #include is replaced by its content */
-			i = p + 1;
 			continue;
 		}
 eatline:
-		linelen = p - i;
-		if (*(p - 1) == '\r')
-			linelen--;
 		new = (aConfig *)malloc(sizeof(aConfig));
 		new->line = (char *) malloc((linelen+1) * sizeof(char));
-		memcpy(new->line, i, linelen);
+		memcpy(new->line, line, linelen);
 		new->line[linelen] = '\0';
 		new->linenum = linenum;
 		new->file = curfile;
@@ -199,9 +184,7 @@ eatline:
 			ConfigTop = new;
 		}
 		ConfigCur = new;
-		i = p + 1;
 	}
-	munmap(address, len);
 	return ConfigTop;
 }
 
