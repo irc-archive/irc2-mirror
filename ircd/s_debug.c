@@ -183,6 +183,10 @@ va_dcl
 #endif
 	int	err = errno;
 
+#ifdef	USE_SYSLOG
+	if (level == DEBUG_ERROR)
+		syslog(LOG_ERR, form, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
+#endif
 	if ((debuglevel >= 0) && (level <= debuglevel))
 	    {
 #ifndef	USE_VARARGS

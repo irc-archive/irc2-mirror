@@ -774,9 +774,10 @@ char	*parv[], *mbuf, *pbuf;
 					break;
 				if (MyClient(sptr) && opcnt >= MAXMODEPARAMS)
 					break;
+				if (!(nusers = atoi(*++parv)))
+					continue;
 				lp = &chops[opcnt++];
 				lp->flags = MODE_ADD|MODE_LIMIT;
-				nusers = atoi(*++parv);
 				limitset = 1;
 				count++;
 				break;

@@ -1580,7 +1580,7 @@ char	*parv[];
 
 	if (strlen(awy2) > (size_t) TOPICLEN)
 		awy2[TOPICLEN] = '\0';
-	sendto_serv_butone(cptr, ":%s AWAY :%s", parv[0], parv[1]);
+	sendto_serv_butone(cptr, ":%s AWAY :%s", parv[0], awy2);
 #ifdef	USE_SERVICES
 	check_services_butonee(SERVICE_WANT_AWAY, ":%s AWAY :%s",
 				parv[0], parv[1]);
