@@ -304,7 +304,7 @@ AC_MSG_RESULT(no))
 AC_DEFUN(IRC_ALPHA_BETA,
 [AC_MSG_CHECKING(whether this is an alpha/beta release)
 AC_CACHE_VAL(irc_cv_alpha_beta,
-[AC_EGREP_CPP(^\"......00,
+[AC_EGREP_CPP(^ *\"......00,
 [#include "../common/patchlevel.h"
 #ifdef PATCHLEVEL
 PATCHLEVEL
@@ -674,7 +674,7 @@ dnl main
 dnl ----
 
 AC_INIT([irc],[2.11],[ircd-bugs@irc.org])
-AC_REVISION([$Id: configure.in,v 1.66 2004/12/06 17:20:07 chopin Exp $])
+AC_REVISION([$Id: configure.in,v 1.66.2.1 2005/02/15 21:36:50 chopin Exp $])
 AC_PREREQ(2.59)
 
 AC_ARG_WITH(logdir, [  --with-logdir=DIR       log files in DIR [[localstatedir/log]]], [

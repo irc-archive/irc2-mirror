@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: chkconf.c,v 1.42 2004/12/06 17:07:23 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: chkconf.c,v 1.42.2.2 2005/05/13 19:11:42 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -27,6 +27,7 @@ static const volatile char rcsid[] = "@(#)$Id: chkconf.c,v 1.42 2004/12/06 17:07
 #include "match_ext.h"
 #undef CHKCONF_C
 
+#define mystrdup(x)	strdup(x)
 #define MyMalloc(x)     malloc(x)
 /*#define MyFree(x)       free(x)*/
 
@@ -525,6 +526,8 @@ static	aConfItem 	*initconf()
 				case 'N':
 				case 'M':
 				case 'F':
+				case ' ':
+				case '\t':
 					break;
 				default:
 					config_error(CF_WARN, CK_FILE, CK_LINE,
@@ -561,6 +564,8 @@ static	aConfItem 	*initconf()
 				case 'p':
 				case 'P':
 				case 't':
+				case ' ':
+				case '\t':
 					break;
 				default:
 					config_error(CF_WARN, CK_FILE, CK_LINE,

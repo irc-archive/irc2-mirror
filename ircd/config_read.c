@@ -1,4 +1,4 @@
-/* "@(#)$Id: config_read.c,v 1.30 2004/12/12 19:10:07 chopin Exp $"; */
+/* "@(#)$Id: config_read.c,v 1.30.2.2 2005/05/13 19:11:42 chopin Exp $"; */
 
 /* used in config_error() */
 #define CF_NONE 0
@@ -10,6 +10,19 @@
 
 /* max nesting depth. ircd.conf itself is depth = 0 */
 #define MAXDEPTH 13
+
+#if defined(__sun) || defined(__sun__) || defined(sun)
+/* Sun has a buggy implementation of FILE functions
+** (they do not work when fds 0-255 are already used).
+** ircd-ratbox 1.5-3 had a nice reimplementation, so I took it. --B. */
+#define FILE FBFILE
+#define fclose fbclose
+#define fdopen fdbopen
+#define fgets fbgets
+#define fopen fbopen
+#define strlcpy(x, y, N) strncpy((x), (y), (N))
+#include "fileio.c"
+#endif
 
 typedef struct File aFile;
 struct File
@@ -169,8 +182,8 @@ aConfig *config_read(FILE *fd, int depth, aFile *curfile)
 			continue;
 		}
 eatline:
-		new = (aConfig *)malloc(sizeof(aConfig));
-		new->line = (char *) malloc((linelen+1) * sizeof(char));
+		new = (aConfig *) MyMalloc(sizeof(aConfig));
+		new->line = (char *) MyMalloc((linelen+1) * sizeof(char));
 		memcpy(new->line, line, linelen);
 		new->line[linelen] = '\0';
 		new->linenum = linenum;
@@ -220,9 +233,9 @@ void config_free(aConfig *cnf)
 
 aFile *new_config_file(char *filename, aFile *parent, int fnr)
 {
-	aFile *tmp = (aFile *) malloc(sizeof(aFile));
+	aFile *tmp = (aFile *) MyMalloc(sizeof(aFile));
 
-	tmp->filename = strdup(filename);
+	tmp->filename = mystrdup(filename);
 	tmp->includeline = fnr;
 	tmp->parent = parent;
 	tmp->next = NULL;

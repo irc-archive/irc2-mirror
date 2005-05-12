@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.241 2004/12/15 01:23:45 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.241.2.2 2005/05/13 19:11:42 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -2007,12 +2007,15 @@ static	int	check_channelmask(aClient *sptr, aClient *cptr, char *chname)
 	if ((t = index(s, '\007')))
 		*t = '\0';
 
-	s++;
-	if (*s == '\0')
+	if (*(s+1) == '\0')
 	{
 		/* ':' was last char (thus empty mask) --B. */
+		while (s >= chname && *s == ':')
+			s--;
+		*(s+1) = '\0';
 		return 0;
 	}
+	s++;
 	if (match(s, ME) || (IsServer(cptr) && match(s, cptr->name)))
 	    {
 		if (MyClient(sptr))
@@ -2243,6 +2246,7 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		if (*name == '0' && !atoi(name))
 		    {
 			(void)strcpy(jbuf, "0");
+			i = 1;
 			continue;
 		    }
 		if (MyClient(sptr))
@@ -3873,8 +3877,9 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 		sendto_channel_butserv(chptr, &me, ":%s MODE %s +o %s",
 			ME, chptr->chname, op.value.cptr->name);
 		chptr->reop = 0;
+		return 1;
 	}
-	return 1;
+	return 0;
 }
 
 /*
