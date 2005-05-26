@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.259 2005/05/13 15:13:21 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.261 2005/05/27 16:56:42 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1947,36 +1947,22 @@ void	clean_channelname(char *cn)
 */
 static	int	check_channelmask(aClient *sptr, aClient *cptr, char *chname)
 {
-	Reg	char	*s, *t;
+	char	*s;
 
 	if (*chname == '&' && IsServer(cptr))
 		return -1;
 	s = rindex(chname, ':');
 	if (!s)
 		return 0;
-	if ((t = index(s, '\007')))
-		*t = '\0';
-
-	if (*(s+1) == '\0')
-	{
-		/* ':' was last char (thus empty mask) --B. */
-		while (s >= chname && *s == ':')
-			s--; 
-		*(s+1) = '\0';
-		return 0;
-	}
 	s++;
-	if (match(s, ME) || (IsServer(cptr) && match(s, cptr->name)))
-	    {
+	if (*s == '\0'	/* ':' was last char, thus empty mask --B. */
+		|| match(s, ME) || (IsServer(cptr) && match(s, cptr->name)))
+	{
 		if (MyClient(sptr))
-			sendto_one(sptr, replies[ERR_BADCHANMASK], ME, BadTo(sptr->name),
-				   chname);
-		if (t)
-			*t = '\007';
+			sendto_one(sptr, replies[ERR_BADCHANMASK], ME,
+				BadTo(sptr->name), chname);
 		return -1;
-	    }
-	if (t)
-		*t = '\007';
+	}
 	return 0;
 }
 
