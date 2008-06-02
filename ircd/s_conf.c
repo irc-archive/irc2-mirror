@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.159 2005/04/13 23:14:38 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.173 2007/12/15 23:21:13 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -255,6 +255,8 @@ char	*oline_flags_to_string(long flags)
 		*s++ ='e';
 	if (flags & ACL_TKLINE)
 		*s++ ='T';
+	if (flags & ACL_KLINE)
+		*s++ ='q';
 #ifdef CLIENTS_CHANNEL
 	if (flags & ACL_CLIENTS)
 		*s++ ='&';
@@ -298,6 +300,7 @@ long	oline_flags_parse(char *string)
 		case 'D': tmp |= ACL_DIE; break;
 		case 'e': tmp |= ACL_SET; break;
 		case 'T': tmp |= ACL_TKLINE; break;
+		case 'q': tmp |= ACL_KLINE; break;
 #ifdef CLIENTS_CHANNEL
 		case '&': tmp |= ACL_CLIENTS; break;
 #endif
@@ -335,6 +338,9 @@ long	oline_flags_parse(char *string)
 #endif
 #ifndef OPER_TKLINE
 	tmp &= ~ACL_TKLINE;
+#endif
+#ifndef OPER_KLINE
+	tmp &= ~ACL_KLINE;
 #endif
 	return tmp;
 }
@@ -711,8 +717,13 @@ int	attach_conf(aClient *cptr, aConfItem *aconf)
 		return -1; /* EXITC_FAILURE, hmm */
 	if ((aconf->status & (CONF_OPERATOR | CONF_CLIENT )))
 	    {
-		if (aconf->clients >= ConfMaxLinks(aconf) &&
-		    ConfMaxLinks(aconf) > 0)
+		if (
+#ifdef YLINE_LIMITS_OLD_BEHAVIOUR
+			aconf->clients >= ConfMaxLinks(aconf)
+#else
+			ConfLinks(aconf) >= ConfMaxLinks(aconf)
+#endif
+			&& ConfMaxLinks(aconf) > 0)
 			return -3;    /* EXITC_YLINEMAX */
 	    }
 
@@ -931,8 +942,8 @@ aConfItem	*find_Oline(char *name, aClient *cptr)
 	sprintf(userhost, "%s@%s", cptr->username, cptr->sockhost);
 	sprintf(userip, "%s@%s", cptr->username, 
 #ifdef INET6
-		(char *)inetntop(AF_INET6, (char *)&cptr->ip, mydummy,
-			MYDUMMY_SIZE)
+		(char *)inetntop(AF_INET6, (char *)&cptr->ip, ipv6string,
+			sizeof(ipv6string))
 #else
 		(char *)inetntoa((char *)&cptr->ip)
 #endif
@@ -1185,8 +1196,14 @@ int	rehash(aClient *cptr, aClient *sptr, int sig)
 	for (cltmp = NextClass(FirstClass()); cltmp; cltmp = NextClass(cltmp))
 		MaxLinks(cltmp) = -1;
 
+	if (sig == 'a')
+		start_iauth(2);	/* 2 means kill iauth first */
 	if (sig == 'd')
+	{
 		flush_cache();
+		close(resfd);
+		resfd = init_resolver(0x1f);
+	}
 #ifdef TKLINE
 	if (sig == 't')
 		tkline_expire(1);
@@ -1310,7 +1327,6 @@ char	*ipv6_convert(char *orig)
 	int	i, j;
 	int	len = 1;	/* for the '\0' in case of no @ */
 	struct	in6_addr addr;
-	char	dummy[MYDUMMY_SIZE];
 
 	if ((s = strchr(orig, '@')))
 	    {
@@ -1334,7 +1350,7 @@ char	*ipv6_convert(char *orig)
 
 	if (i > 0)
 	    {
-		t = inetntop(AF_INET6, addr.s6_addr, dummy, MYDUMMY_SIZE);
+		t = inetntop(AF_INET6, addr.s6_addr, ipv6string, sizeof(ipv6string));
 	    }
 	
 	j = len - 1;
@@ -1594,7 +1610,9 @@ int 	initconf(int opt)
 			if (aconf->status == CONF_XLINE)
 			{
 				DupString(aconf->source_ip, tmp);
-				/* For X: we stop parsing after 4th field */
+				if ((tmp = getfield(NULL)) == NULL)
+					break;
+				DupString(aconf->name2, tmp);
 				break;
 			}
 #endif
@@ -1618,6 +1636,8 @@ int 	initconf(int opt)
 		istat.is_confmem += aconf->host ? strlen(aconf->host)+1 : 0;
 		istat.is_confmem += aconf->passwd ? strlen(aconf->passwd)+1 :0;
 		istat.is_confmem += aconf->name ? strlen(aconf->name)+1 : 0;
+		istat.is_confmem += aconf->name2 ? strlen(aconf->name2)+1 : 0;
+		istat.is_confmem += aconf->source_ip ? strlen(aconf->source_ip)+1 : 0;
 
 		/*
 		** Bounce line fields are mandatory
@@ -1929,8 +1949,8 @@ int	find_kill(aClient *cptr, int timedklines, char **comment)
 
 	host = cptr->sockhost;
 #ifdef INET6
-	ip = (char *) inetntop(AF_INET6, (char *)&cptr->ip, mydummy,
-			       MYDUMMY_SIZE);
+	ip = (char *) inetntop(AF_INET6, (char *)&cptr->ip, ipv6string,
+			       sizeof(ipv6string));
 #else
 	ip = (char *) inetntoa((char *)&cptr->ip);
 #endif
@@ -2362,70 +2382,16 @@ int	wdhms2sec(char *input, time_t *output)
 	}
 	return 0;
 }
-
-int	m_tkline(aClient *cptr, aClient *sptr, int parc, char **parv)
-{
-	int	status = CONF_TKILL;
-	time_t	time;
-	char	*user, *host, *reason;
-	int	i;
-
-	if (!is_allowed(sptr, ACL_TKLINE))
-		return m_nopriv(cptr, sptr, parc, parv);
-
-	/* sanity checks */
-	i = wdhms2sec(parv[1], &time);
-	user = parv[2];
-	host = strchr(user, '@');
-	if (i || !host)
-	{
-		/* error */
-		if (!IsPerson(sptr))
-		{
-			sendto_one(sptr, ":%s NOTICE %s "
-				":TKLINE: Incorrect format",
-				ME, parv[0]);
-			return exit_client(cptr, cptr, &me,
-				"TKLINE: Incorrect format");
-		}
-		sendto_one(sptr, ":%s NOTICE %s :TKLINE: Incorrect format",
-			ME, parv[0]);
-		return 2;
-	}
-
-	/* All seems fine. */
-#ifdef TKLINE_MAXTIME
-	if (time > TKLINE_MAXTIME)
-		time = TKLINE_MAXTIME;
 #endif
-	if (*user == '=')
-	{
-		status = CONF_TOTHERKILL;
-		user++;
-	}
-	*host++ = '\0';
-#ifdef INET6
-	host = ipv6_convert(host);
-#endif
-	reason = parv[3];
-	if (strlen(reason) > TOPICLEN)
-	{
-		reason[TOPICLEN] = '\0';
-	}
 
-	/* All parameters are now sane. Do the stuff. */
-	do_tkline(parv[0], time, user, host, reason, status);
-
-	return 1;
-}
-
+#if defined(TKLINE) || defined(KLINE)
 /* 
- * Adds tkline to tkconf.
+ * Adds t/kline to t/kconf.
  * If tkline already existed, its expire time is updated.
  *
  * Returns created tkline expire time.
  */
-void do_tkline(char *who, time_t time, char *user, char *host, char *reason, int status)
+void do_kline(int tkline, char *who, time_t time, char *user, char *host, char *reason, int status)
 {
 	char buff[BUFSIZE];
 	aClient	*acptr;
@@ -2435,7 +2401,7 @@ void do_tkline(char *who, time_t time, char *user, char *host, char *reason, int
 	buff[0] = '\0';
 
 	/* Check if such u@h already exists in tkconf. */
-	for (aconf = tkconf; aconf; aconf = aconf->next)
+	for (aconf = tkline?tkconf:kconf; aconf; aconf = aconf->next)
 	{
 		if (0==strcasecmp(aconf->host, host) && 
 			0==strcasecmp(aconf->name, user))
@@ -2459,17 +2425,30 @@ void do_tkline(char *who, time_t time, char *user, char *host, char *reason, int
 		istat.is_confmem += strlen(aconf->host) + 1;
 		istat.is_confmem += strlen(aconf->passwd) + 1;
 
-		/* put on top of tkconf */
-		if (tkconf)
+		/* put on top of t/kconf */
+		if (tkline)
 		{
-			aconf->next = tkconf;
+			if (tkconf)
+			{
+				aconf->next = tkconf;
+			}
+			tkconf = aconf;
+			sendto_flag(SCH_TKILL, "TKLINE %s@%s (%u) by %s :%s",
+				aconf->name, aconf->host, time, who, reason);
 		}
-		tkconf = aconf;
+		else
+		{
+			if (kconf)
+			{
+				aconf->next = kconf;
+			}
+			kconf = aconf;
+			sendto_flag(SCH_TKILL, "KLINE %s@%s by %s :%s",
+				aconf->name, aconf->host, who, reason);
+		}
 	}
-	sendto_flag(SCH_TKILL, "TKLINE %s@%s (%u) by %s :%s",
-		aconf->name, aconf->host, time, who, reason);
 
-	/* get rid of tklined clients */
+	/* get rid of klined clients */
 	for (i = highest_fd; i >= 0; i--)
 	{
 		if (!(acptr = local[i]) || !IsPerson(acptr)
@@ -2535,7 +2514,7 @@ void do_tkline(char *who, time_t time, char *user, char *host, char *reason, int
 				ME, acptr->name, aconf->name, aconf->host,
 				": ", aconf->passwd);
 			sendto_flag(SCH_TKILL,
-				"TKill line active for %s",
+				"%sKill line active for %s", tkline?"T":"",
 				get_client_name(acptr, FALSE));
 			if (buff[0] == '\0')
 			{
@@ -2547,15 +2526,166 @@ void do_tkline(char *who, time_t time, char *user, char *host, char *reason, int
 	}
 	if (count > 4)
 	{
-		sendto_flag(SCH_TKILL, "TKill reaped %d souls", count);
+		sendto_flag(SCH_TKILL, "%sKline reaped %d souls",
+			tkline?"T":"", count);
 	}
 
+#ifdef TKLINE
 	/* do next tkexpire, but not more often than once a minute */
 	if (!nexttkexpire || nexttkexpire > aconf->hold)
 	{
 		nexttkexpire = MAX(timeofday + 60, aconf->hold);
 	}
+#endif
 	return;
+}
+
+int	prep_kline(int tkline, aClient *cptr, aClient *sptr, int parc, char **parv)
+{
+	int	status = tkline ? CONF_TKILL : CONF_KILL;
+	time_t	time;
+	char	*user, *host, *reason;
+	int	i = 0;
+
+	/* sanity checks */
+	if (tkline)
+	{
+		i = wdhms2sec(parv[1], &time);
+#ifdef TKLINE_MAXTIME
+		if (time > TKLINE_MAXTIME)
+			time = TKLINE_MAXTIME;
+		if (time < 0) /* overflown, must have wanted bignum :) */
+			time = TKLINE_MAXTIME;
+#endif
+		user = parv[2];
+		reason = parv[3];
+	}
+	else
+	{
+		user = parv[1];
+		reason = parv[2];
+	}
+	host = strchr(user, '@');
+	
+	if (strlen(user) > USERLEN+HOSTLEN+1)
+	{
+		/* induce error */
+		i = 1;
+	}
+	if (!strcmp("@*", user) || !strcmp("*@", user) || !strcmp("@", user))
+	{
+		/* Note that we don't forbid "*@*", only those, that lack
+		** some crucial parts, which can be seen as a typo. --Beeth */
+		i = 1;
+	}
+badkline:
+	if (i || !host)
+	{
+		/* error */
+		if (!IsPerson(sptr))
+		{
+			sendto_one(sptr, ":%s NOTICE %s "
+				":T/KLINE: Incorrect format",
+				ME, parv[0]);
+			return exit_client(cptr, cptr, &me,
+				"T/KLINE: Incorrect format");
+		}
+		sendto_one(sptr, ":%s NOTICE %s :%sKLINE: Incorrect format",
+			ME, parv[0], tkline?"T":"");
+		return 2;
+	}
+
+	/* All seems fine. */
+	if (*user == '=')
+	{
+		status = tkline ? CONF_TOTHERKILL : CONF_OTHERKILL;
+		user++;
+	}
+	*host++ = '\0';
+#ifdef INET6
+	host = ipv6_convert(host);
+#endif
+	if (strlen(reason) > TOPICLEN)
+	{
+		reason[TOPICLEN] = '\0';
+	}
+
+#ifdef KLINE
+	if (!tkline)
+	{
+		int	kfd, ksize, kret;
+		char	kbuf[2*BUFSIZE];
+		char	*utmp, *htmp, *rtmp;
+
+		if (!strcmp(KLINE_PATH, IRCDCONF_PATH))
+		{
+			sendto_flag(SCH_ERROR,
+				"Invalid kline configuration file.");
+			return MAXPENALTY;
+		}
+		utmp = strchr(user, IRCDCONF_DELIMITER);
+		htmp = strchr(host, IRCDCONF_DELIMITER);
+		rtmp = strchr(reason, IRCDCONF_DELIMITER);
+		if (utmp || htmp || rtmp)
+		{
+			/* Too lazy to copy it here. --B. */
+			i = 1;
+			goto badkline;
+		}
+
+		kfd = open(KLINE_PATH, O_WRONLY|O_APPEND|O_NDELAY);
+		if (kfd < 0)
+		{
+			sendto_flag(SCH_ERROR,
+				"Cannot open kline configuration file.");
+			return MAXPENALTY;
+		}
+		ksize = snprintf(kbuf, sizeof(kbuf),
+			"%c%c%s%c%s%c%s%c0%c #%s%s%s%s%s#%d\n",
+			(status == CONF_OTHERKILL ? 'k' : 'K'),
+			IRCDCONF_DELIMITER, host, IRCDCONF_DELIMITER, reason,
+			IRCDCONF_DELIMITER, user, IRCDCONF_DELIMITER,
+			IRCDCONF_DELIMITER, sptr->name,
+			sptr->user ? "!" : "",
+			sptr->user ? sptr->user->username : "",
+			sptr->user ? "@" : "",
+			sptr->user ? sptr->user->host : "", (int)timeofday);
+		kret = write(kfd, kbuf, ksize);
+		close(kfd);
+		if (kret != ksize)
+		{
+			sendto_flag(SCH_ERROR, "Error writing (%d!=%d) "
+				"to kline configuration file.", kret, ksize);
+			sendto_one(sptr, ":%s NOTICE %s :KLINE: error writing "
+				"(%d!=%d) to kline configuration file",
+				ME, parv[0], kret, ksize);
+			return MAXPENALTY;
+		}
+	}
+#endif /* KLINE */
+
+	/* All parameters are now sane. Do the stuff. */
+	do_kline(tkline, parv[0], time, user, host, reason, status);
+
+	return 1;
+}
+#endif /* TKLINE || KLINE */
+
+#ifdef KLINE
+int	m_kline(aClient *cptr, aClient *sptr, int parc, char **parv)
+{
+	if (!is_allowed(sptr, ACL_KLINE))
+		return m_nopriv(cptr, sptr, parc, parv);
+	return prep_kline(0, cptr, sptr, parc, parv);
+}
+#endif
+
+#ifdef TKLINE
+int	m_tkline(aClient *cptr, aClient *sptr, int parc, char **parv)
+{
+	if (!is_allowed(sptr, ACL_TKLINE))
+		return m_nopriv(cptr, sptr, parc, parv);
+	return prep_kline(1, cptr, sptr, parc, parv);
 }
 
 int	m_untkline(aClient *cptr, aClient *sptr, int parc, char **parv)
@@ -2641,4 +2771,4 @@ time_t	tkline_expire(int all)
 		min = nexttkexpire + 60;
 	return min;
 }
-#endif
+#endif /* TKLINE */

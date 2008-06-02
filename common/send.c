@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: send.c,v 1.104 2005/02/22 16:34:02 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: send.c,v 1.107 2008/06/03 22:32:46 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -783,7 +783,7 @@ void	sendto_match_servs(aChannel *chptr, aClient *from, char *format, ...)
 	    {
 		if (*chptr->chname == '&')
 			return;
-		if ((mask = (char *)rindex(chptr->chname, ':')))
+		if ((mask = get_channelmask(chptr->chname)))
 			mask++;
 	    }
 	else
@@ -796,6 +796,10 @@ void	sendto_match_servs(aChannel *chptr, aClient *from, char *format, ...)
 			continue;
 		if (!BadPtr(mask) && match(mask, cptr->name))
 			continue;
+#ifdef JAPANESE
+		if (!jp_valid(cptr, chptr, 0))
+			continue;
+#endif
 		if (!len)
 		    {
 			va_list	va;
@@ -818,7 +822,7 @@ int	sendto_match_servs_v(aChannel *chptr, aClient *from, int ver,
 	    {
 		if (*chptr->chname == '&')
 			return 0;
-		if ((mask = (char *)rindex(chptr->chname, ':')))
+		if ((mask = get_channelmask(chptr->chname)))
 			mask++;
 	    }
 	else
@@ -831,6 +835,11 @@ int	sendto_match_servs_v(aChannel *chptr, aClient *from, int ver,
 			continue;
 		if (!BadPtr(mask) && match(mask, cptr->name))
 			continue;
+#ifdef JAPANESE
+		if (!jp_valid(cptr, chptr, 0))
+			continue;
+#endif
+
 #if 0
 /* We're not using it for now, so just save some cpu.
 ** Revive once we need it --B. */
@@ -866,7 +875,7 @@ int	sendto_match_servs_notv(aChannel *chptr, aClient *from, int ver,
 	    {
 		if (*chptr->chname == '&')
 			return 0;
-		if ((mask = (char *)rindex(chptr->chname, ':')))
+		if ((mask = get_channelmask(chptr->chname)))
 			mask++;
 	    }
 	else
@@ -879,6 +888,10 @@ int	sendto_match_servs_notv(aChannel *chptr, aClient *from, int ver,
 			continue;
 		if (!BadPtr(mask) && match(mask, cptr->name))
 			continue;
+#ifdef JAPANESE
+		if (!jp_valid(cptr, chptr, 0))
+			continue;
+#endif
 		if ((ver & cptr->serv->version) != 0)
 		    {
 			rc = 1;
@@ -1343,7 +1356,7 @@ void	sendto_flog(aClient *cptr, char msg, char *username, char *hostname)
 		/* client IP */
 		cptr->user ? cptr->user->sip :
 #ifdef INET6
-		inetntop(AF_INET6, (char *)&cptr->ip, mydummy, MYDUMMY_SIZE),
+		inetntop(AF_INET6, (char *)&cptr->ip, ipv6string, sizeof(ipv6string)),
 #else
 		inetntoa((char *)&cptr->ip),
 #endif

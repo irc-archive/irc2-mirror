@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.157 2005/03/29 22:50:15 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: ircd.c,v 1.162 2006/08/30 12:16:49 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -115,7 +115,10 @@ static RETSIGTYPE s_rehash(int s)
 #else
 	(void)signal(SIGHUP, s_rehash);	/* sysV -argv */
 #endif
-	dorehash = 1;
+	if (dorehash >= 1)
+		dorehash = 2;
+	else
+		dorehash = 1;
 }
 
 void	restart(char *mesg)
@@ -219,6 +222,9 @@ static	time_t	try_connections(time_t currenttime)
 	int	i;
 #endif
 
+	if ((bootopt & BOOT_STANDALONE))
+		return 0;
+
 	Debug((DEBUG_NOTICE,"Connection check at   : %s",
 		myctime(currenttime)));
 	for (aconf = conf; aconf; aconf = aconf->next )
@@ -229,6 +235,11 @@ static	time_t	try_connections(time_t currenttime)
 
 		/* not a candidate for AC */
 		if (aconf->port <= 0)
+			continue;
+
+		cltmp = Class(aconf);
+		/* not a candidate for AC */
+		if (MaxLinks(cltmp) == 0)
 			continue;
 
 		/* minimize next to lowest hold time of all AC-able C-lines */
@@ -242,7 +253,6 @@ static	time_t	try_connections(time_t currenttime)
 		/* at least one candidate not held for future, good */
 		allheld = 0;
 
-		cltmp = Class(aconf);
 		/* see if another link in this conf is allowed */
 		if (Links(cltmp) >= MaxLinks(cltmp))
 			continue;
@@ -848,6 +858,8 @@ int	main(int argc, char *argv[])
 				bootopt |= BOOT_PROT;
 			else if (!strcmp(p, "off"))
 				bootopt &= ~(BOOT_PROT|BOOT_STRICTPROT);
+			else if (!strcmp(p, "standalone"))
+				bootopt |= BOOT_STANDALONE;
 			else
 				bad_command();
 			break;
@@ -864,13 +876,14 @@ int	main(int argc, char *argv[])
 			tunefile = p;
 			break;
 		    case 'v':
-			(void)printf("ircd %s %s\n\tzlib %s\n\t%s #%s\n",
+			(void)printf("ircd %s %s\n\tzlib %s\n\tircd.conf delimiter %c\n\t%s #%s\n",
 				     version, serveropts,
 #ifndef	ZIP_LINKS
 				     "not used",
 #else
 				     zlib_version,
 #endif
+					IRCDCONF_DELIMITER,
 				     creation, generation);
 			  exit(0);
 		    case 'x':
@@ -1024,10 +1037,10 @@ int	main(int argc, char *argv[])
 			"Fatal Error: No M-line in ircd.conf.\n");
 			exit(-1);
 		}
-		if (check_servername(ME))
+		if ((i=check_servername(ME)))
 		{
 			fprintf(stderr,
-			"Fatal Error: Invalid server name.\n");
+			"Fatal Error: %s.\n", check_servername_errors[i-1][1]);
 			exit(-1);
 		}
 		if (!me.serv->sid)
@@ -1238,11 +1251,11 @@ static	void	io_loop(void)
 
 	if (dorestart)
 		restart("Caught SIGINT");
-	if (dorehash)
+	if (dorehash > 0)
 	    {	/* Only on signal, not on oper /rehash */
 		ircd_writetune(tunefile);
 		(void)rehash(&me, &me, 1);
-		dorehash = 0;
+		dorehash--;
 	    }
 	if (restart_iauth || timeofday >= nextiarestart)
 	    {

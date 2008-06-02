@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.103 2005/03/28 23:33:27 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.110 2007/12/15 23:21:13 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -200,7 +200,7 @@ char	*get_client_name(aClient *sptr, int showip)
 #ifdef INET6 
 					      inetntop(AF_INET6,
 						       (char *)&sptr->ip,
-						       mydummy, MYDUMMY_SIZE)
+						       ipv6string, sizeof(ipv6string))
 #else
 					      inetntoa((char *)&sptr->ip)
 #endif
@@ -759,16 +759,16 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 		; /* Nothing */
 	}
 	else if (sptr->name[0] && !IsService(sptr)) /* clean with QUIT... */
-	    {
+	{
 		/*
 		** If this exit is generated from "m_kill", then there
 		** is no sense in sending the QUIT--KILL's have been
 		** sent instead.
 		*/
 		if ((sptr->flags & FLAGS_KILLED) == 0)
-		    {
+		{
 			if ((sptr->flags & FLAGS_SPLIT) == 0)
-			    {
+			{
 				sendto_serv_butone(cptr, ":%s QUIT :%s",
 						   sptr->user->uid, comment);
 #ifdef	USE_SERVICES
@@ -780,9 +780,9 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 						      ":%s QUIT :%s",
 						      sptr->name, comment);
 #endif
-			    }
+			}
 			else
-			    {
+			{
 				if (sptr->flags & FLAGS_HIDDEN)
 					/* joys of hostmasking */
 					for (i = fdas.highest; i >= 0; i--)
@@ -804,8 +804,23 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 						      ":%s QUIT :%s",
 						      sptr->name, comment);
 #endif
-			    }
-		    }
+			}
+		}
+#ifdef USE_SERVICES
+		else
+		{
+			/* Send QUIT to services which desire such as well.
+			** Services with both _QUIT and _KILL will get both
+			** for now --jv
+			*/
+			check_services_butone(SERVICE_WANT_QUIT, 
+					     (sptr->user) ? sptr->user->server
+						      : NULL, cptr,
+						      ":%s QUIT :%s",
+						      sptr->name, comment);
+
+		}
+#endif
 		/*
 		** If a person is on a channel, send a QUIT notice
 		** to every client (person) on the same channel (so
@@ -992,6 +1007,12 @@ void	initruntimeconf(void)
 	/* Defaults set in config.h */
 	iconf.split_minservers = SPLIT_SERVERS;
 	iconf.split_minusers = SPLIT_USERS;
+
+	if ((bootopt & BOOT_STANDALONE))
+	{
+		/* standalone mode */
+		iconf.split = 3;
+	}
 }
 
 void	tstats(aClient *cptr, char *name)
@@ -1065,6 +1086,8 @@ void	tstats(aClient *cptr, char *name)
 		ME, RPL_STATSDEBUG, name, istat.is_delayclosewait,
 		istat.is_delayclose);
 #endif
+	sendto_one(cptr, ":%s %d %s :local channels reops %d remote %d",
+		ME, RPL_STATSDEBUG, name, sp->is_reop, sp->is_rreop);
 	sendto_one(cptr, ":%s %d %s :Client - Server",
 		   ME, RPL_STATSDEBUG, name);
 	sendto_one(cptr, ":%s %d %s :connected %lu %lu",
@@ -1139,6 +1162,9 @@ void	read_motd(char *filename)
 
 void	check_split(void)
 {
+	if ((bootopt & BOOT_STANDALONE))
+		return;
+
 	if (istat.is_eobservers < iconf.split_minservers ||
 	    istat.is_user[0] + istat.is_user[1] < iconf.split_minusers)
 	{

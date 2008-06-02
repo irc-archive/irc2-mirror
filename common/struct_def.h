@@ -17,7 +17,7 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
- *   $Id: struct_def.h,v 1.135 2005/03/29 23:23:49 chopin Exp $
+ *   $Id: struct_def.h,v 1.144 2008/06/03 22:32:46 chopin Exp $
  */
 
 typedef	struct	ConfItem aConfItem;
@@ -41,6 +41,11 @@ typedef struct        LineItem aExtData;
 
 #define	HOSTLEN		63	/* Length of hostname.  Updated to         */
 				/* comply with RFC1123                     */
+
+#if defined(INET6) && (INET6_ADDRSTRLEN > HOSTLEN)
+#error HOSTLEN must not be smaller than INET6_ADDRSTRLEN
+#endif
+
 #define	NICKLEN		15	/* Must be the same network-wide. */
 #define UIDLEN		9	/* must not be bigger than NICKLEN --Beeth */
 #define	USERLEN		10
@@ -104,6 +109,7 @@ typedef struct        LineItem aExtData;
 #define	BOOT_PROT	0x100
 #define	BOOT_STRICTPROT	0x200
 #define	BOOT_NOIAUTH	0x400
+#define	BOOT_STANDALONE	0x800
 
 typedef enum Status {
 	STAT_CONNECTING = -4,
@@ -175,6 +181,9 @@ typedef enum Status {
 				  ** a SQUIT. */
 #define	FLAGS_EOB	0x4000000 /* EOB received */
 #define FLAGS_LISTENINACTIVE 0x8000000 /* Listener does not listen() */
+#ifdef JAPANESE
+#define	FLAGS_JP	0x10000000 /* jp version, used both for chans and servs */
+#endif
 	
 #define	FLAGS_OPER	0x0001 /* operator */
 #define	FLAGS_LOCOP	0x0002 /* local operator -- SRB */
@@ -298,6 +307,7 @@ struct	ConfItem	{
 	char	*host;
 	char	*passwd;
 	char	*name;
+	char	*name2;
 	int	port;
 	long	flags;		/* I-line flags */
 	int	pref;		/* preference value */
@@ -545,6 +555,14 @@ struct Client	{
 	char	passwd[PASSWDLEN+1];
 	char	exitc;
 	char	*reason;	/* additional exit message */
+#ifdef XLINE
+	/* Those logically should be in anUser struct, but would be null for
+	** all remote users... so better waste two pointers for all local
+	** non-users than two pointers for all remote users. --B. */
+	char	*user2;	/* 2nd param of USER */
+	char	*user3;	/* 3rd param of USER */
+#endif
+
 };
 
 #define	CLIENT_LOCAL_SIZE sizeof(aClient)
@@ -574,6 +592,8 @@ struct	stats {
 	u_int	is_kill; /* number of kills generated on collisions */
 	u_int	is_save; /* number of saved clients */
 	u_int	is_fake; /* MODE 'fakes' */
+	u_int	is_reop; /* number of local reops */
+	u_int	is_rreop; /* number of remote reops */
 	u_int	is_asuc; /* successful auth requests */
 	u_int	is_abad; /* bad auth requests */
 	u_int	is_udpok;	/* packets recv'd on udp port */
@@ -675,6 +695,9 @@ struct Channel	{
 	Link	*clist;		/* list of local! connections which are members */
 	time_t	history;	/* channel history (aka channel delay) */
 	time_t	reop;		/* server reop stamp for !channels */
+#ifdef JAPANESE
+	int flags;
+#endif
 	char	chname[1];
 };
 
@@ -1004,6 +1027,7 @@ typedef struct
 #define ACL_CANFLOOD		0x10000
 #define ACL_NOPENALTY		0x20000
 #define ACL_TRACE		0x40000
+#define ACL_KLINE		0x80000
 
 #define ACL_ALL_REMOTE		(ACL_KILLREMOTE|ACL_SQUITREMOTE|ACL_CONNECTREMOTE)
 #define ACL_ALL			0xFFFFF

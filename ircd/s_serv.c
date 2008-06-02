@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.274 2005/05/14 20:51:26 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.284 2008/06/03 22:32:46 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -40,7 +40,7 @@ static	void	report_listeners(aClient *, char *);
 static	void	count_servers_users(aClient *, int *, int *);
 const	char	*check_servername_errors[3][2] = {
 	{ "too long", "Bogus servername - too long" },
-	{ "invalid", "Bogus servername - invalid hostname" },
+	{ "invalid", "Bogus servername - invalid chars in hostname" },
 	{ "bogus", "Bogus servername - no dot"}};
 static	int	send_users(aClient *, aClient *, int, char **);
 
@@ -151,6 +151,10 @@ int	m_squit(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	** The following allows wild cards in SQUIT. Only useful
 	** when the command is issued by an oper.
 	*/
+	if (!acptr)
+	{
+		acptr = find_server(server, NULL);
+	}
 	if (!acptr)
 	{
 		for (acptr = client;
@@ -385,6 +389,11 @@ int	check_version(aClient *cptr)
 		}
 	}
 
+#ifdef JAPANESE
+	if (link && strchr(link, 'j'))	/* jp version */
+		cptr->flags |= FLAGS_JP;
+#endif
+
 	/* right now, I can't code anything good for this */
 	/* Stop whining, and do it! ;) */
 	if (link && strchr(link, 'Z'))	/* Compression requested */
@@ -567,6 +576,13 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
                 sendto_one(sptr, replies[ERR_ALREADYREGISTRED], ME, BadTo(parv[0]));
                 return 1;
             }
+	if ((bootopt & BOOT_STANDALONE))
+	{
+		sendto_flag(SCH_ERROR,
+			"Running in standalone mode, cannot accept %s/%s", parv[1], parv[3]);
+		return exit_client(cptr, cptr, &me,
+			"Running in standalone mode");
+	}
 	info[0] = info[REALLEN] = '\0';	/* strncpy() doesn't guarantee NULL */
 	inpath = get_client_name(cptr, FALSE);
 	if (parc < 2 || *parv[1] == '\0')
@@ -1026,16 +1042,19 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 		    }
 
 		if (bconf->passwd[0])
-#ifndef	ZIP_LINKS
-			sendto_one(cptr, "PASS %s %s IRC|%s %s", bconf->passwd,
-				   pass_version, serveropts,
-				   (bootopt & BOOT_STRICTPROT) ? "P" : "");
+			sendto_one(cptr, "PASS %s %s IRC|%s %s%s%s",
+				bconf->passwd, pass_version, serveropts,
+				(bootopt & BOOT_STRICTPROT) ? "P" : "",
+#ifdef	JAPANESE
+				"j",
 #else
-			sendto_one(cptr, "PASS %s %s IRC|%s %s%s",
-				   bconf->passwd, pass_version, serveropts,
-			   (bconf->status == CONF_ZCONNECT_SERVER) ? "Z" : "",
-				   (bootopt & BOOT_STRICTPROT) ? "P" : "");
+				"",
 #endif
+#ifdef	ZIP_LINKS
+				(bconf->status == CONF_ZCONNECT_SERVER) ? "Z" :
+#endif
+				""
+				);
 		/*
 		** Pass my info to the new server
 		*/
@@ -1202,8 +1221,8 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 			      ":%s SERVER %s %d %s :%s", ME, cptr->name,
 			      cptr->hopcount+1, cptr->serv->sid, cptr->info);
 #endif
-	sendto_flag(SCH_SERVER, "Received SERVER %s (%d %s)", cptr->name,
-		    1, cptr->info);
+	sendto_flag(SCH_SERVER, "Received SERVER %s from %s (%d %s)",
+		cptr->name, ME, 1, cptr->info);
 	introduce_server(cptr, cptr);
 	
 	/*
@@ -1699,10 +1718,11 @@ static  void    report_x_lines(aClient *sptr, char *to)
 		if (tmp->status != CONF_XLINE)
 			continue;
 
-		sendto_one(sptr,":%s %d %s X :%s %s %s %s", 
+		sendto_one(sptr,":%s %d %s X :%s %s %s %s %s", 
 			ME, RPL_STATSDEBUG, to,
 			BadTo(tmp->host), BadTo(tmp->passwd),
-			BadTo(tmp->name), BadTo(tmp->source_ip));
+			BadTo(tmp->name), BadTo(tmp->source_ip),
+			BadTo(tmp->name2));
 	}
 }
 #endif
@@ -1816,7 +1836,7 @@ static void report_fd(aClient *sptr, aClient *acptr, char *to)
 #ifdef INET6
 		inetntop(AF_INET6,
 		(char *)&acptr->acpt->ip,
-		mydummy, MYDUMMY_SIZE);
+		ipv6string, sizeof(ipv6string));
 #else
 		inetntoa((char *)&acptr->acpt->ip);
 #endif
@@ -1831,7 +1851,7 @@ static void report_fd(aClient *sptr, aClient *acptr, char *to)
 #ifdef INET6
 		inetntop(AF_INET6,
 		(char *)&acptr->ip,
-		mydummy, MYDUMMY_SIZE),
+		ipv6string, sizeof(ipv6string)),
 #else
 		inetntoa((char *)&acptr->ip),
 #endif
@@ -2373,6 +2393,13 @@ int	m_connect(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	    {
 		return m_nopriv(cptr, sptr, parc, parv);
 	    }
+
+	if ((bootopt & BOOT_STANDALONE))
+	{
+		sendto_one(sptr, ":%s NOTICE %s :Connect disabled, running in"
+			" standalone mode", ME, parv[0]);
+		return 0;
+	}
 
 	if (hunt_server(cptr,sptr,":%s CONNECT %s %s :%s",
 		       3,parc,parv) != HUNTED_ISME)
@@ -3034,6 +3061,11 @@ int	m_eob(aClient *cptr, aClient *sptr, int parc, char *parv[])
 int	m_eoback(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
 	cptr->flags &= ~FLAGS_CBURST;
+	if (cptr->serv && cptr->serv->byuid[0])
+	{
+		/* no need to report link break few days later, is there? --B. */
+		cptr->serv->byuid[0] = '\0';
+	}
 	return 0;
 }
 
@@ -3174,6 +3206,11 @@ int	m_set(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				else if (!mycmp(parv[2], "ON"))
 				{
 					iconf.caccept = 1;
+					/* Well... give admin the chance. */
+					if (!firstrejoindone)
+					{
+						activate_delayed_listeners();
+					}
 				}
 				else if (!mycmp(parv[2], "SPLIT"))
 				{

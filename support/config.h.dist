@@ -102,6 +102,11 @@
  */
 #undef	DEFAULT_INVISIBLE
 
+/* 
+ * Define this if you want to have KLINE command for opers and services.
+ */
+#undef KLINE
+
 /*
  * Define this if you want to have TKLINE and UNTKLINE commands
  * for opers and services.
@@ -126,6 +131,7 @@
 #define	OPER_RESTART
 #define	OPER_SET
 #define	OPER_SQUIT
+#define	OPER_KLINE
 #define	OPER_TKLINE
 /* In a perfect world these two (or at least second) would be undefined. */
 #define	OPER_KILL
@@ -263,7 +269,7 @@
 #undef LOG_SCH_ERROR	/* &ERRORS */
 #undef LOG_SCH_NOTICE	/* &NOTICES */
 #undef LOG_SCH_KILL	/* &KILLS */
-#undef LOG_SCH_CHAN	/* &CHANNELS */
+#undef LOG_SCH_CHAN	/* &CHANNEL */
 #undef LOG_SCH_NUM	/* &NUMERICS */
 #undef LOG_SCH_SERVER	/* &SERVERS */
 #undef LOG_SCH_HASH	/* &HASH */
@@ -588,6 +594,19 @@
 */
 #define FASTER_ILINE_REHASH
 
+/*
+** Restores old behaviour of Y-lines maxlinks limit, which was counted
+** separately per each I-line using it.
+** Note: if you use it with FASTER_ILINE_REHASH, clients will be able
+** to exceed maxlinks limits after each rehash. Sorry.
+*/
+#undef YLINE_LIMITS_OLD_BEHAVIOUR
+
+/*
+** Define this if you want to use Japanese channel names in JIS encoding.
+*/
+#undef JAPANESE
+
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /* You shouldn't change anything below this line, unless absolutely needed. */
 
@@ -715,6 +734,12 @@
 ** restrict length of their dnicks here.
 */
 #define LOCALNICKLEN 15
+
+/*
+** If you don't want your users to have too short nicknames, define
+** minimum nicklen allowed.
+*/
+/* #define MINLOCALNICKLEN 2 */
 
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
@@ -853,4 +878,18 @@
 
 #if defined(CLIENTS_CHANNEL) && !defined(CLIENTS_CHANNEL_LEVEL)
 #error define CLIENTS_CHANNEL_LEVEL
+#endif
+
+#if defined(MINLOCALNICKLEN) && ((MINLOCALNICKLEN + 0) < 2)
+#undef MINLOCALNICKLEN
+#endif
+
+#if defined(MINLOCALNICKLEN) && (MINLOCALNICKLEN > LOCALNICKLEN)
+#error MINLOCALNICKLEN bigger than (max)LOCALNICKLEN
+#endif
+
+/* we should probably not bother with that :) */
+#if !defined(NBLOCK_POSIX) && !defined(NBLOCK_BSD) && !defined(NBLOCK_SYSV)
+#undef LISTENER_MAXACCEPT
+#define LISTENER_MAXACCEPT 1
 #endif

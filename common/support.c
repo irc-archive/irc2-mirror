@@ -18,7 +18,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: support.c,v 1.42 2005/02/04 18:08:48 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: support.c,v 1.44 2008/06/03 22:32:46 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -26,6 +26,10 @@ static const volatile char rcsid[] = "@(#)$Id: support.c,v 1.42 2005/02/04 18:08
 #define SUPPORT_C
 #include "s_externs.h"
 #undef SUPPORT_C
+
+#ifdef INET6
+char ipv6string[INET6_ADDRSTRLEN];
+#endif
 
 unsigned char minus_one[]={ 255, 255, 255, 255, 255, 255, 255, 255, 255,
                                         255, 255, 255, 255, 255, 255, 255, 0};
@@ -42,6 +46,12 @@ char	*mystrdup(char *s)
 		return ((char *)strcpy(t, s));
 	return NULL;
 }
+
+#if defined(JAPANESE) && defined(HAVE_STRTOKEN)
+/* I doubt library strtoken knows about JIS encoding and commas. --Beeth */
+#undef HAVE_STRTOKEN
+#undef strtoken
+#endif
 
 #if !defined(HAVE_STRTOKEN)
 /*
@@ -66,8 +76,40 @@ char	*strtoken(char **save, char *str, char *fs)
 
     tmp = pos; 			/* now, keep position of the token */
 
+#ifdef JAPANESE
+    /* We have to make special case for Japanese names when comma is
+    ** a separator, as they may contain it between JIS marks. --Beeth. */
+    if (fs[0] == ',' && fs[1] == '\0')
+    {
+       int flag = 0;
+       while (*pos)
+       {
+	   if (!flag && *pos == ',')
+           {
+	       break;
+	   }
+           else if (pos[0] == '\033' && pos[2] == 'B' &&
+	   	(pos[1] == '$' || pos[1] == '('))
+           {
+	       pos += 3;
+	       flag = (pos[1] == '$') ? 1 : 0;
+	   }
+           else
+           {
+               pos++;
+	   }
+       }
+    }
+    else
+    /* This came from original jp patch, but I believe it is wrong for
+    ** cases when fs is two or more letters (index() allows it) and contains 
+    ** comma. Fortunately ircd does not use such, yet it is something 
+    ** to remember. --Beeth. */
+#endif
+    {
     while (*pos && index(fs, *pos) == NULL)
 	pos++; 			/* skip content of the token */
+    }
 
     if (*pos)
 	*pos++ = '\0';		/* remove first sep after the token */
@@ -164,14 +206,14 @@ char	*mybasename(char *path)
  */
 char	*inetntop(int af, const void *in, char *out, size_t the_size)
 {
-	static char local_dummy[MYDUMMY_SIZE];
+	static char local_ipv6string[INET6_ADDRSTRLEN];
 
-	if (the_size > sizeof(local_dummy))
+	if (the_size > sizeof(local_ipv6string))
 	{
-		the_size = sizeof(local_dummy);
+		the_size = sizeof(local_ipv6string);
 	}
 	
-	if (!inet_ntop(af, in, local_dummy, the_size))
+	if (!inet_ntop(af, in, local_ipv6string, the_size))
 	{
 		/* good that every function calling this one
 		 * checks the return value ... NOT */
@@ -183,17 +225,17 @@ char	*inetntop(int af, const void *in, char *out, size_t the_size)
 	{
 		char	*p;
 
-		if (!(p = strstr(local_dummy, ":ffff:")) &&
-			!(p = strstr(local_dummy, ":FFFF:")))
+		if (!(p = strstr(local_ipv6string, ":ffff:")) &&
+			!(p = strstr(local_ipv6string, ":FFFF:")))
 		{
 			return NULL;	/* crash and burn */
 		}
 		strcpy(out, p + 6);
 		return out;
 	}
-	if (strstr(local_dummy, "::"))
+	if (strstr(local_ipv6string, "::"))
 	    {
-		char cnt = 0, *cp = local_dummy, *op = out;
+		char cnt = 0, *cp = local_ipv6string, *op = out;
 
 		while (*cp)
 		    {
@@ -205,13 +247,13 @@ char	*inetntop(int af, const void *in, char *out, size_t the_size)
 				break;
 			    }
 		    }
-		cp = local_dummy;
+		cp = local_ipv6string;
 		while (*cp)
 		    {
 			*op++ = *cp++;
 			if (*(cp-1) == ':' && *cp == ':')
 			    {
-				if ((cp-1) == local_dummy)
+				if ((cp-1) == local_ipv6string)
 				    {
 					op--;
 					*op++ = '0';
@@ -229,12 +271,12 @@ char	*inetntop(int af, const void *in, char *out, size_t the_size)
 		if (*(op-1)==':') *op++ = '0';
 		*op = '\0';
 #ifndef	CLIENT_COMPILE
-		Debug((DEBUG_DNS,"Expanding `%s' -> `%s'", local_dummy,
+		Debug((DEBUG_DNS,"Expanding `%s' -> `%s'", local_ipv6string,
 		       out));
 #endif
 	    }
 	else
-		bcopy(local_dummy, out,	the_size);
+		bcopy(local_ipv6string, out,	the_size);
 
 	return out;
 }

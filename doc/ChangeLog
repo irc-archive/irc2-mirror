@@ -1,3 +1,164 @@
+2.11.2a1
+
+2008-06-03  Piotr Kucharski
+
+	* common/send.c common/struct_def.h common/support.c
+	  ircd/channel.c ircd/channel_ext.h ircd/s_bsd.c ircd/s_debug.c
+	  ircd/s_serv.c support/config.h.dist: added JP patch (huge!).
+
+2007-12-16  Piotr Kucharski
+
+	* s_conf.c/prep_kline(): tiny bug squashed, added more checks.
+	* os.h, send.c, struct_def.h, support.c, support_ext.h, res.c, s_auth.c, 
+	  s_bsd.c, s_conf.c, s_misc.c, s_serv.c, s_user.c: clean mydummy stuff, 
+	  use better descriptive name ipv6string and standard name and length for 
+	  INET6_ADDRSTRLEN (patch from fiction).
+	* s_serv.c/m_server_estab(), s_bsd.c/completed_connection(): make
+	  sending additional options in PASS more compact.
+	* channel_ext.h: define get_channelmask to rindex-find ':' in name.
+	* send.c/sendto_match_servs(), send.c/sendto_match_servs_v(),
+	  send.c/sendto_match_servs_notv(), channel.c/check_channelmask(),
+	  channel.c/m_join(), channel.c/m_part(), s_send.c/esendto_match_servs():
+	  use get_channelmask() instead of rindex() where appropriate.
+	* channel.c: change name or parv to chptr->chname where appropriate;
+	  tiny sideffect: clients will see channel names cased as created,
+	  not as they issued.
+
+2007-10-28  Jakub Vlasek
+
+	* s_misc.c/exit_one_client(): Send QUITs of killed users to services
+	  with SERVICE_WANTS_QUIT.
+
+2007-04-10  Jakub Vlasek
+
+	* struct_def.h: Added is_rreop to struct stats.
+	* channel.c/set_mode(): Count number of remote reops.
+	* s_misc.c/tstats(): Report number of remote reops seen.
+
+2007-03-30  Jakub Vlasek
+
+	* struct_def.h: Added is_reop to struct stats.
+	* channel.c/reop_channel(): Keep count of local reops made.
+	* s_misc.c/tstats(): Report number of local reops made. 
+
+2007-03-15  Kurt Roeckx
+
+	* common/os.h: Define _GNU_SOURCE on all systems making use
+	  of glibc.  This should fix build problems on *BSD systems
+	  using glibc.  Patch from Cyril Brulebois.
+
+2006-08-30  Piotr Kucharski
+
+	* ircd.c/try_connections(): maxlinks of 0 would incorrectly, even if only
+	  temporarily, disable calling try_connections (noted by fiction).
+
+2006-06-17  Piotr Kucharski
+
+	* s_serv.c, s_serv_ext.h, ircd.c/main(): be a bit more verbose about
+	  startup errors about server name.
+	* s_serv.c/m_server_estab(): show "from my.server.name" in directly
+	  received SERVER message, so it is the same as remote SERVER.
+	* s_conf.c/attach_conf(), config.h.dist: new behaviour of Y-line limits.
+
+2006-05-03  Piotr Kucharski
+
+	* struct_def.h: extend ConfItem to have another text field.
+	* struct_def.h: add UnregItem for temp storage of USER params.
+	* s_conf.c/initconf(): read 5th field (ie. nick) of X-line.
+	* s_user.c: remember 2nd and 3rd USER param in unregList.
+	* s_user.c: move X-line check from m_user to register_user, use
+	  unregList for it; also move exit_client for X-line up.
+	* s_misc.c/exit_client(): remove client data from unregList.
+	* list.c/make_conf(), free_conf(): update for name2 field.
+	* struct_def.h, s_user.c: get rid of unregList and remember 2nd and 3rd
+	  USER param directly in aClient struct, so it is accessible also after
+	  register_user().
+	* list.c/make_client(), free_client(): update for user2, user3 fields.
+	* s_misc.c/exit_client(): get rid of unregList.
+	* s_serv.c/report_x_lines(): show 5th field.
+
+2006-04-30  Kurt Roeckx
+
+	* s_bsd.c/CHECK_PFD(): Initialise revents to 0 too.
+
+2006-04-28  Piotr Kucharski
+
+	* ircd.c/main(): show IRCDCONF_DELIMITER in 'ircd -v'.
+
+2006-04-26  Piotr Kucharski
+
+	* channel.c/remove_user_from_channel(), set_mode(): make reop a bit random,
+	  so not always one server wins.
+	* struct_def.h, ircd.c/main(), try_connections(), s_misc.c/check_split(),
+	  initruntimeconf(), s_serv.c/m_server(), m_connect(): standalone mode.
+	* s_bsd.c/start_iauth(), s_conf.c/rehash(): "rehash a" restarts iauth
+	  (no other way to reread iauth.conf currently).
+	* s_conf.c/rehash(): "rehash d" reinitializes dns (rereads resolv.conf).
+	* ircd.c/s_rehash(), io_loop(): deal with consecutive SIGHUPs properly.
+
+2006-04-25  Piotr Kucharski
+
+	* configure, configure.in: detect Solaris 10 properly.
+	* mod_pipe.c/pipe_start(): pass chars, not integers (from Zobo).
+	* s_debug.c/show_defines(): show compiled in SPLIT_SERVERS and SPLIT_USERS.
+	* s_serv.c/m_eoback(): clear byuid so it won't notice oper later.
+
+2005-12-27  Piotr Kucharski
+
+	* list.c/free_client(): MyConnect is not a valid check in free_client()
+	  (noticed by fiction).
+	* bsd.c/deliver_it(): return correct errno eagain. (noticed by fiction).
+
+2005-12-06  Piotr Kucharski
+
+	* s_user.c/do_nick_name(), config.h.dist: MINLOCALNICKLEN allows
+	  enforcing minimum length of nickname for local clients.
+	* s_debug.c/send_defines(): show MINLOCALNICKLEN (as N0).
+
+2005-12-05  Piotr Kucharski
+
+	* bsd.c/deliver_it(): return correct errno (not always EPERM) also when
+	  not in debug mode (noticed by fiction).
+
+2005-11-17  Piotr Kucharski
+
+	* s_conf.c, s_conf_ext.h: added m_kline().
+	* s_conf.c/prep_kline(), do_kline(): updated for kline cmd.
+	* parse.c: add KLINE cmd.
+	* struct_def.h: add ACL_KLINE.
+	* s_conf.c/oline_flags_to_string(), oline_flags_parse(): add ACL_KLINE.
+	* Makefile.in: add KLINE_PATH define.
+	* config.h.dist: add KLINE (default off) and OPER_KLINE defines.
+	* s_conf.c/prep_kline(): u@h length checks.
+	* s_conf.c/prep_kline(): writing klines to kline file.
+
+2005-11-15  Piotr Kucharski
+
+	* chkconf.c: compile warnings about redefining MyMalloc.
+	* service.c/m_squery(): use UID as source if service wants UIDs.
+	* s_conf.c: renamed do_tkline to do_kline, renamed m_tkline to
+	  prep_kline, added small m_tkline calling prep_kline.
+
+2005-09-02  Piotr Kucharski
+
+	* s_serv.c/m_squit(): find_server() before searching among clients.
+
+2005-07-10  Piotr Kucharski
+
+	* channel.c/m_njoin(): get rid of ^V in mbuf, we never use it.
+	* hash.c/bigger_hash_table(): don't add ME to uid hash.
+	* s_bsd.c/connect_inet(): don't parse empty source ip (reported by
+	  fantomas).
+	* s_bsd.c/inetport(): do not sscanf null ipmask (reported by MJRider).
+
+2005-06-01  Piotr Kucharski
+
+	* s_serv.c/m_set(): manual SET CACCEPT ON activates delayed listeners.
+	* s_bsd.c/init_sys(): set soft limit on core size to its hard value;
+	  warn if not unlimited.
+
+2.11.1p1
+
 2005-05-27  Piotr Kucharski
 
 	* channel.c/check_channelmask(): don't bother removing, simply

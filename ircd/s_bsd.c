@@ -35,7 +35,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_bsd.c,v 1.176 2005/02/21 12:52:24 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_bsd.c,v 1.185 2008/06/03 22:32:46 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -212,6 +212,13 @@ int	inetport(aClient *cptr, char *ip, char *ipmask, int port, int dolisten)
 	SOCK_LEN_TYPE len = sizeof(server);
 	char	ipname[20];
 
+	/* broken config? why allow such broken line to live?
+	** XXX: fix initconf()? --B. */
+	if (!ipmask)
+	{
+		sendto_flag(SCH_ERROR, "Invalid P-line");
+		return -1;
+	}
 	ad[0] = ad[1] = ad[2] = ad[3] = 0;
 
 	/*
@@ -550,9 +557,18 @@ void	start_iauth(int rcvdsig)
 	static time_t last = 0;
 	static char first = 1;
 	int sp[2], fd, val;
+	static pid_t iauth_pid = 0;
 
 	if ((bootopt & BOOT_NOIAUTH) != 0)
 		return;
+	if (rcvdsig == 2)
+	{
+		sendto_flag(SCH_AUTH, "Killing iauth...");
+		if (iauth_pid)
+			kill(iauth_pid, SIGTERM);
+		iauth_pid = 0;
+	}
+	else
 	if (adfd >= 0)
 	    {
 		if (rcvdsig)
@@ -594,7 +610,7 @@ void	start_iauth(int rcvdsig)
 	    sizeof(val)) < 0)
 			sendto_flag(SCH_AUTH,
 			    "IAUTH_BUFFER too big for sp1 rcvbuf, using default");
-	switch (vfork())
+	switch ((iauth_pid = vfork()))
 	    {
 		case -1:
 			sendto_flag(SCH_ERROR, "vfork() failed!");
@@ -697,6 +713,23 @@ void	init_sys(void)
 			exit(-1);
 		    }
 	    }
+	/* Let's assume that if it has define for fd limit, then
+	   it can do core limits, too. --B. */
+	if (!getrlimit(RLIMIT_CORE, &limit))
+	{
+		limit.rlim_cur = limit.rlim_max;
+		if (limit.rlim_cur != RLIM_INFINITY)
+		{
+			(void)fprintf(stderr, "warning: max core"
+				" is not unlimited\n");
+		}
+		if (setrlimit(RLIMIT_CORE, &limit) == -1)
+		{
+			(void)fprintf(stderr, "error setting max core to %d\n",
+				(int) limit.rlim_cur);
+			exit(-1);
+		}
+	}
 #endif
 #if !defined(USE_POLL)
 # ifdef sequent
@@ -847,7 +880,7 @@ static	int	check_init(aClient *cptr, char *sockn)
 		return -1;
 	    }
 #ifdef INET6
-	inetntop(AF_INET6, (char *)&sk.sin6_addr, sockn, MYDUMMY_SIZE);
+	inetntop(AF_INET6, (char *)&sk.sin6_addr, sockn, INET6_ADDRSTRLEN);
 	Debug((DEBUG_DNS,"sockn %x",sockn));
 	Debug((DEBUG_DNS,"sockn %s",sockn));
 #else
@@ -868,14 +901,14 @@ static	int	check_init(aClient *cptr, char *sockn)
  */
 int	check_client(aClient *cptr)
 {
-	static	char	sockname[HOSTLEN+1];
+	char	sockname[HOSTLEN+1];
 	Reg	struct	hostent *hp = NULL;
 	Reg	int	i;
  
 #ifdef INET6
 	Debug((DEBUG_DNS, "ch_cl: check access for %s[%s]",
-		cptr->name, inet_ntop(AF_INET6, (char *)&cptr->ip, mydummy,
-				      MYDUMMY_SIZE)));
+		cptr->name, inet_ntop(AF_INET6, (char *)&cptr->ip, ipv6string,
+				      sizeof(ipv6string))));
 #else
 	Debug((DEBUG_DNS, "ch_cl: check access for %s[%s]",
 		cptr->name, inetntoa((char *)&cptr->ip)));
@@ -904,7 +937,7 @@ int	check_client(aClient *cptr)
 			sendto_flag(SCH_ERROR,
 				    "IP# Mismatch: %s != %s[%08x%08x%08x%08x]",
 				    inetntop(AF_INET6, (char *)&cptr->ip,
-					      mydummy,MYDUMMY_SIZE),hp->h_name,
+					      ipv6string,sizeof(ipv6string)), hp->h_name,
 				    ((unsigned long *)hp->h_addr)[0],
 				    ((unsigned long *)hp->h_addr)[1],
 				    ((unsigned long *)hp->h_addr)[2],
@@ -1072,7 +1105,7 @@ check_serverback:
 			sendto_flag(SCH_ERROR,
 				    "IP# Mismatch: %s != %s[%08x%08x%08x%08x]",
 				    inetntop(AF_INET6, (char *)&cptr->ip,
-					      mydummy,MYDUMMY_SIZE),hp->h_name,
+					      ipv6string, sizeof(ipv6string)),hp->h_name,
 				    ((unsigned long *)hp->h_addr)[0],
 				    ((unsigned long *)hp->h_addr)[1],
 				    ((unsigned long *)hp->h_addr)[2],
@@ -1230,16 +1263,19 @@ static	int completed_connection(aClient *cptr)
 		return -1;
 	    }
 	if (!BadPtr(aconf->passwd))
-#ifndef	ZIP_LINKS
-		sendto_one(cptr, "PASS %s %s IRC|%s %s", aconf->passwd,
-			   pass_version, serveropts,
-			   (bootopt & BOOT_STRICTPROT) ? "P" : "");
+		sendto_one(cptr, "PASS %s %s IRC|%s %s%s%s", aconf->passwd,
+			pass_version, serveropts,
+			(bootopt & BOOT_STRICTPROT) ? "P" : "",
+#ifdef JAPANESE
+			"j",
 #else
-		sendto_one(cptr, "PASS %s %s IRC|%s %s%s", aconf->passwd,
-			   pass_version, serveropts,
-			   (bootopt & BOOT_STRICTPROT) ? "P" : "",
-			   (aconf->status == CONF_ZCONNECT_SERVER) ? "Z" : "");
+			"",
 #endif
+#ifdef ZIP_LINKS
+			(aconf->status == CONF_ZCONNECT_SERVER) ? "Z" :
+#endif
+			""
+			);
 
 	aconf = find_conf(cptr->confs, cptr->name, CONF_NOCONNECT_SERVER);
 	if (!aconf)
@@ -1706,9 +1742,9 @@ aClient	*add_connection(aClient *cptr, int fd)
 		 * have something valid to put into error messages...
 		 */
 #ifdef INET6
-		inetntop(AF_INET6, (char *)&addr.sin6_addr, mydummy,
-			  MYDUMMY_SIZE);
-		get_sockhost(acptr, (char *)mydummy);
+		inetntop(AF_INET6, (char *)&addr.sin6_addr, ipv6string,
+			  sizeof(ipv6string));
+		get_sockhost(acptr, (char *)ipv6string);
 #else
 		get_sockhost(acptr, (char *)inetntoa((char *)&addr.sin_addr));
 #endif
@@ -1741,7 +1777,7 @@ aClient	*add_connection(aClient *cptr, int fd)
 #ifdef INET6
 		Debug((DEBUG_DNS, "lookup %s",
 		       inet_ntop(AF_INET6, (char *)&addr.sin6_addr,
-				 mydummy, MYDUMMY_SIZE)));
+				 ipv6string, sizeof(ipv6string))));
 #else
 		Debug((DEBUG_DNS, "lookup %s",
 		       inetntoa((char *)&addr.sin_addr)));
@@ -2047,6 +2083,7 @@ static	int	read_packet(aClient *cptr, int msg_ready)
 		** it on the end of the receive queue and do it when its
 		** turn comes around.
 		*/
+		/* why no poolsize increase here like in send? --B. */
 		if (length && dbuf_put(&cptr->recvQ, readbuf, length) < 0)
 			return exit_client(cptr, cptr, &me, "dbuf_put fail");
 
@@ -2107,6 +2144,7 @@ int	read_message(time_t delay, FdAry *fdp, int ro)
 		pfd = &poll_fdarray[nbr_pfds++];\
 		pfd->fd     = thisfd;		\
 		pfd->events = 0;		\
+		pfd->revents = 0;		\
 	}
 
 	struct pollfd   poll_fdarray[MAXCONNECTIONS];
@@ -2517,8 +2555,8 @@ int	connect_server(aConfItem *aconf, aClient *by, struct hostent *hp)
 #ifdef INET6
 	Debug((DEBUG_NOTICE,"Connect to %s[%s] @%s",
 	       aconf->name, aconf->host,
-	       inet_ntop(AF_INET6, (char *)&aconf->ipnum, mydummy,
-			 MYDUMMY_SIZE)));
+	       inet_ntop(AF_INET6, (char *)&aconf->ipnum, ipv6string,
+			 sizeof(ipv6string))));
 #else
 	Debug((DEBUG_NOTICE,"Connect to %s[%s] @%s",
 	       aconf->name, aconf->host,
@@ -2704,7 +2742,7 @@ static	struct	SOCKADDR *connect_inet(aConfItem *aconf, aClient *cptr,
 	server.SIN_FAMILY = AFINET;
 	get_sockhost(cptr, aconf->host);
 	
-	if (aconf->source_ip)
+	if (!BadPtr(aconf->source_ip))
 	{
 		memset(&outip, 0, sizeof(outip));
 		outip.SIN_PORT = 0;
@@ -3178,7 +3216,7 @@ void	send_ping(aConfItem *aconf)
 	(void)gettimeofday(&pi.pi_tv, NULL);
 #ifdef INET6
 	Debug((DEBUG_SEND,"Send ping to %s,%d fd %d, %d bytes",
-	       inet_ntop(AF_INET6, (char *)&aconf->ipnum,mydummy,MYDUMMY_SIZE),
+	       inet_ntop(AF_INET6, (char *)&aconf->ipnum, ipv6string, sizeof(ipv6string)),
 	       cp->port, udpfd, sizeof(pi)));
 #else
 	Debug((DEBUG_SEND,"Send ping to %s,%d fd %d, %d bytes",
@@ -3279,7 +3317,7 @@ static	void	polludp(void)
 				== 0 ? "unknown" :
 #ifdef INET6
 				inetntop(AF_INET6, (char *)&from.sin6_addr,
-					mydummy, MYDUMMY_SIZE)
+					ipv6string, sizeof(ipv6string))
 #else
 				inetntoa((char *)&from.sin_addr)
 #endif
@@ -3300,8 +3338,8 @@ static	void	polludp(void)
 				    "udp packet dropped: %d bytes from %s.%d",
 #ifdef INET6
 					    n, inetntop(AF_INET6,
-					 (char *)&from.sin6_addr, mydummy,
-							 MYDUMMY_SIZE),
+					 (char *)&from.sin6_addr, ipv6string,
+							 sizeof(ipv6string)),
 #else
 					    n,inetntoa((char *)&from.sin_addr),
 #endif
@@ -3317,8 +3355,8 @@ static	void	polludp(void)
 
 #ifdef INET6
 	Debug((DEBUG_NOTICE, "udp (%d) %d bytes from %s,%d", cnt, n,
-	       inet_ntop(AF_INET6, (char *)&from.sin6_addr, mydummy,
-			 MYDUMMY_SIZE),
+	       inet_ntop(AF_INET6, (char *)&from.sin6_addr, ipv6string,
+			 sizeof(ipv6string)),
 	       ntohs(from.SIN_PORT)));
 #else
 	Debug((DEBUG_NOTICE, "udp (%d) %d bytes from %s,%d", cnt, n,

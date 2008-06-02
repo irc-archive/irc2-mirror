@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: list.c,v 1.40 2005/01/30 13:42:03 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: list.c,v 1.43 2006/05/03 18:56:01 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -137,6 +137,10 @@ aClient	*make_client(aClient *from)
 #ifdef	ZIP_LINKS
 		cptr->zip = NULL;
 #endif
+#ifdef XLINE
+		cptr->user2 = NULL;
+		cptr->user3 = NULL;
+#endif
 	    }
 	return (cptr);
 }
@@ -145,20 +149,28 @@ void	free_client(aClient *cptr)
 {
 	if (cptr->info != DefInfo)
 		MyFree(cptr->info);
-	if (MyConnect(cptr) && cptr->auth != cptr->username)
-	{
-	    sendto_flag(SCH_ERROR, "Please report to ircd-bug@irc.org about cptr->auth allocated but not free()d!");
-		istat.is_authmem -= strlen(cptr->auth) + 1;
-		istat.is_auth -= 1;
-		MyFree(cptr->auth);
-	}
 	/* True only for local clients */
 	if (cptr->hopcount == 0 || (IsServer(cptr) && cptr->hopcount == 1))
 	{
+		if (cptr->auth != cptr->username)
+		{
+			sendto_flag(SCH_ERROR, "Please report to ircd-bug@"
+				"irc.org about cptr->auth allocated but not"
+				" free()d!");
+			istat.is_authmem -= strlen(cptr->auth) + 1;
+			istat.is_auth -= 1;
+			MyFree(cptr->auth);
+		}
 		if (cptr->reason)
 		{
 			MyFree(cptr->reason);
 		}
+#ifdef XLINE
+		if (cptr->user2)
+			MyFree(cptr->user2);
+		if (cptr->user3)
+			MyFree(cptr->user3);
+#endif
 	}
 	MyFree(cptr);
 }
@@ -577,7 +589,7 @@ aConfItem	*make_conf(void)
 	bzero((char *)&aconf->ipnum, sizeof(struct IN_ADDR));
 	aconf->clients = aconf->port = 0;
 	aconf->next = NULL;
-	aconf->host = aconf->passwd = aconf->name = NULL;
+	aconf->host = aconf->passwd = aconf->name = aconf->name2 = NULL;
 	aconf->ping = NULL;
 	aconf->status = CONF_ILLEGAL;
 	aconf->pref = -1;
@@ -611,6 +623,7 @@ void	free_conf(aConfItem *aconf)
 	istat.is_confmem -= aconf->host ? strlen(aconf->host)+1 : 0;
 	istat.is_confmem -= aconf->passwd ? strlen(aconf->passwd)+1 : 0;
 	istat.is_confmem -= aconf->name ? strlen(aconf->name)+1 : 0;
+	istat.is_confmem -= aconf->name2 ? strlen(aconf->name2)+1 : 0;
 	istat.is_confmem -= aconf->ping ? sizeof(*aconf->ping) : 0;
 	istat.is_confmem -= sizeof(aConfItem);
 
@@ -623,6 +636,7 @@ void	free_conf(aConfItem *aconf)
 		MyFree(aconf->source_ip);
 	MyFree(aconf->passwd);
 	MyFree(aconf->name);
+	MyFree(aconf->name2);
 	MyFree(aconf);
 #ifdef	DEBUGMODE
 	aconfs.inuse--;

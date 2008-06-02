@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_debug.c,v 1.50 2005/04/13 23:21:52 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_debug.c,v 1.53 2008/06/03 22:32:46 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -65,6 +65,9 @@ char	serveropts[] = {
 #endif
 #ifdef	DEFAULT_INVISIBLE
 'I',
+#endif
+#ifdef	JAPANESE
+'j',
 #endif
 #ifdef	OPER_DIE
 'J',
@@ -294,8 +297,14 @@ void	send_defines(aClient *cptr, char *nick)
 		   ME, RPL_STATSDEFINE, nick, KILLCHASETIMELIMIT,
 		   DELAYCHASETIMELIMIT, LDELAYCHASETIMELIMIT,
 		   CLIENT_FLOOD, MAXCHANNELSPERUSER);
-	sendto_one(cptr, ":%s %d %s :H:%d N:%d D:%d U:%d R:%d T:%d C:%d P:%d K:%d",
-		   ME, RPL_STATSDEFINE, nick, HOSTLEN, LOCALNICKLEN, UIDLEN, USERLEN,
+	sendto_one(cptr, ":%s %d %s :H:%d N:%d N0:%d D:%d U:%d R:%d T:%d C:%d P:%d K:%d",
+		   ME, RPL_STATSDEFINE, nick, HOSTLEN, LOCALNICKLEN, 
+#ifdef MINLOCALNICKLEN
+		   MINLOCALNICKLEN,
+#else
+		   1,
+#endif
+		   UIDLEN, USERLEN,
 		   REALLEN, TOPICLEN, CHANNELLEN, PASSWDLEN, KEYLEN);
 	sendto_one(cptr, ":%s %d %s :BS:%d MXR:%d MXB:%d MXBL:%d PY:%d",
 		   ME, RPL_STATSDEFINE, nick, BUFSIZE, MAXRECIPIENTS, MAXBANS,
@@ -318,10 +327,10 @@ void	send_defines(aClient *cptr, char *nick)
 		-1
 #endif
 		);
-	sendto_one(cptr, ":%s %d %s :AC:%d CA:%d S:%d SS:%d(%d) SU:%d(%d)",
+	sendto_one(cptr, ":%s %d %s :AC:%d CA:%d S:%d SS:%d/%d/%d SU:%d/%d/%d",
 		ME, RPL_STATSDEFINE, nick, iconf.aconnect, iconf.caccept, 
-		iconf.split, iconf.split_minservers, istat.is_eobservers,
-		iconf.split_minusers, istat.is_user[0] + istat.is_user[1]);
+		iconf.split, SPLIT_SERVERS, iconf.split_minservers, istat.is_eobservers,
+		SPLIT_USERS, iconf.split_minusers, istat.is_user[0] + istat.is_user[1]);
 #ifdef CLIENTS_CHANNEL
 	sendto_one(cptr, ":%s %d %s :CCL:0x%X", ME, RPL_STATSDEFINE, nick,
 		CLIENTS_CHANNEL_LEVEL);

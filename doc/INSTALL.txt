@@ -1,6 +1,6 @@
   Installing IRC - The Internet Relay Chat Program
   SGML version by Christophe Kalt, updated by Piotr Kucharski
-  $Id: INSTALL.txt,v 1.75 2005/05/13 15:10:29 chopin Exp $
+  $Id: INSTALL.txt,v 1.80 2006/06/16 18:52:41 chopin Exp $
 
   This document describes how to install, and configure IRC 2.11.0
 
@@ -364,7 +364,7 @@
         sections.
 
      GGeeooggrraapphhiicc LLooccaattiioonn
-        Geographic Location is used to say WHERE YOUR SERVER is, and
+        Geographic Location is used to say where your server is, and
         gives people in other parts of the world a good idea of where
         you are!  If your server is in the USA, it is usually best to
         say: <CITY> <STATE>, USA.  Like for Denver I say: ``Denver
@@ -577,7 +577,8 @@
         This field defines the maximum number of links this class will
         allow from automatic connections (C lines).  Using /CONNECT
         overrides this feature.  Also defines the maximum number of
-        users in this class for I/O lines per I/O line.
+        users in this class for all I/O lines being in that class (or
+        per I/O line, if defined).
 
      SSeennddQQ
         This field defines the ``SendQ'' (data awaiting to be sent to
@@ -588,7 +589,6 @@
 
         +o  y: defines maximum size of sendq during burst, defaults to x
            if unset.
-
 
      LLooccaall lliimmiitt
         This field is used to limit the number of local concurrent
@@ -618,7 +618,9 @@
         for the connection.  If no reply was given then it defaults to
         ``unknown'' and thus the effective limit will be per host, not
         per user@host. Also, some ident servers return encrypted data
-        which changes for every connection making the limit void.
+        which changes for every connection making the limit void. If you
+        think limits do not work, check ircd logs, the auth reply can be
+        longer than what ircd shows on-line.
 
      NNoottee
         Only the local limitation is accurate.
@@ -651,6 +653,9 @@
         address, or more than 5 other connections on the net from the
         same hostname.
 
+     NNoottee
+        The default maxlinks behaviour has changed in 2.11.2, see
+        config.h for details.
         Y:2:60:0:50:20000:2.1:5: (client class)
 
         In case of a client class, the fields are interpreted a bit
@@ -720,7 +725,6 @@
         Using this field to enforce that clients have no Host Name set
         is not working (they will rather be denied connection). Use
         ``N'' ffllaagg.
-
 
      PPoorrtt
         Specifies the port number for which this configuration line is
@@ -914,6 +918,7 @@
 
         +o  h - allows HAZH
 
+
         +o  K - allows local and remote KILL
 
         +o  k - allows local KILL
@@ -929,6 +934,8 @@
         +o  s - allows local SQUIT
 
         +o  T - allows TKLINE
+
+        +o  q - allows KLINE
 
         +o  t - enables full TRACE and STATS L
 
@@ -959,10 +966,10 @@
         Obviously it is hoped that you wouldn't have to use this
         command.  Unfortunately sometimes a user can become unmanageable
         and this is your only recourse - the KILL USER command.  THIS
-        COMMAND ONLY AFFECTS YOUR SERVER - If this user can connect to
-        another SERVER somewhere else in the IRC-Network then you would
+        COMMAND ONLY AFFECTS YOUR SERVER - if this user can connect to
+        another server somewhere else in the IRC network then you would
         have to talk to the administrator on that site to disable his
-        access from that IRCD Server as well.
+        access from that IRCD server as well.
 
      FFoorrmmaatt
 
@@ -1067,14 +1074,14 @@
         Obviously it is hoped that you wouldn't have to use this
         command.  Unfortunately sometimes a virus can become difficult
         to remove by other means and this is your only recourse - the
-        XKILL USER command.  THIS COMMAND ONLY AFFECTS YOUR SERVER - If
-        this user can connect to another SERVER somewhere else in the
-        IRC-Network then you would have to talk to the administrator on
-        that site to disable his access from that IRCD Server as well.
+        XKILL USER command.  THIS COMMAND ONLY AFFECTS YOUR SERVER - if
+        this user can connect to another server somewhere else in the
+        IRC network then you would have to talk to the administrator on
+        that site to disable his access from that IRCD server as well.
 
      FFoorrmmaatt
 
-        X:<USER 1st arg>:<USER 2nd arg>:<USER 3rd arg>:<USER 4th arg>:
+        X:<USER 1st arg>:<USER 2nd arg>:<USER 3rd arg>:<USER 4th arg>:<Nick>:
 
 
 
@@ -1083,8 +1090,11 @@
 
      UUSSEERR nn--tthh aarrgg
         Given field will be matched against corresponding parameter of
-        client USER command. If left empty it matches any. It may
+        client USER command.  If left empty it matches any.  It may
         contain wildcards.
+
+     NNiicckk
+        If left empty it matches any.  It may contain wildcards.
 
      EExxaammpplleess
 
@@ -1094,6 +1104,17 @@
      If user registers with the following USER command
 
      USER guest anything anything :guest
+
+
+     then IMMEDIATELY REMOVE HIM from my IRCD.
+
+     X:abc:::def:woof:
+
+
+     If user registers with the following NICK and USER commands
+
+     NICK woof
+     USER abc anything anything :def
 
 
      then IMMEDIATELY REMOVE HIM from my IRCD.
@@ -1293,6 +1314,7 @@
         ``nic.funet.fi'' and that is what you should place in this
         field.
 
+
      DDoommaaiinn MMaasskk
         Domain masking, see below.
 
@@ -1382,6 +1404,7 @@
         present on the network matches ``*.edu''.
 
         D::2:eff.org:3:
+
         Do not auto-connect to ``eff.org'', or any server in class ``3''
         if a server defined to be in class ``2'' is currently present on
         the network.
@@ -1424,7 +1447,6 @@
         have.
 
         H:*:616*:eff.org::
-
         Allows ``eff.org'' to introduce (and act as a hub for) any
         server which SID begins with ``616''.
 
@@ -1512,6 +1534,7 @@
      FFllaaggss
         If any flag specified in this field is found in the peer's flags
         string, it will be rejected.
+
      SSeerrvveerr MMaasskk
         This field is used to match server names.  The V line will be
         used for servers matching the mask given in this field.
@@ -1555,8 +1578,6 @@
      FFllaaggss
         are not standard.  Therefore, this field sshhoouulldd aallwwaayyss contain a
         specific identification.
-
-
   44..1144..  EExxcclluuddeedd mmaacchhiinneess
 
   Disallowing SERVERS in your irc net.
@@ -1578,6 +1599,7 @@
 
      EExxaammppllee
         Q::of the security holes:foo.bar.baz::
+
         This command excludes a server named ``foo.bar.baz'', the reason
         is given to be security holes (you should give a reason, it is
         polite). The first field is unused, so leave it empty.
@@ -1621,6 +1643,7 @@
      CCllaassss
         The class field should refer to an existing class.
 
+
      NNootteess
         A service is not a very useful sort of client, it cannot join
         channels or issue certain commands although most are available
@@ -1642,6 +1665,7 @@
      FFoorrmmaatt
 
         B:<Class|Host Mask>::<Server Name>:<Port>:
+
 
 
      BB  This specifies a Bounce record.
@@ -1686,7 +1710,6 @@
 
         When the server is completely full, clients should use the
         secondary server.
-
         B:-1::our.server.example:6667:
 
         Clients that connected to server-only port should really use
@@ -1751,6 +1774,7 @@
         If the bug results in a crash, please include the backtrace.
         (This can be done, for example, by running ``gdb'' on the core
         file, and typing ``where'').
+
 
      FFiixx
         If you have a fix, don't forget to include it.

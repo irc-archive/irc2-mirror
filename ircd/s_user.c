@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_user.c,v 1.259 2005/04/13 23:10:37 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_user.c,v 1.263 2007/12/15 23:21:14 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -252,6 +252,11 @@ int	do_nick_name(char *nick, int server)
 	if (strcasecmp(nick, "anonymous") == 0)
 		return 0;
 
+#ifdef MINLOCALNICKLEN
+	if (!server && nick[MINLOCALNICKLEN-1] == '\0')
+		return 0;
+#endif
+
 	for (ch = nick; *ch && (ch-nick) < (server?NICKLEN:LOCALNICKLEN); ch++)
 	{
 		if (!isvalidnick(*ch))
@@ -337,6 +342,39 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 		char *reason = NULL;
 #ifdef RESTRICT_USERNAMES
 		char *lbuf = NULL;
+#endif
+#ifdef XLINE
+		aConfItem *xtmp;
+
+		for (xtmp = conf; xtmp; xtmp = xtmp->next)
+		{
+			if (xtmp->status != CONF_XLINE)
+				continue;
+			if (!BadPtr(xtmp->source_ip) && 
+				match(xtmp->source_ip, sptr->info))
+				continue;
+			if (!BadPtr(xtmp->host) && 
+				match(xtmp->host, username))
+				continue;
+			if (!BadPtr(xtmp->passwd) && 
+				match(xtmp->passwd, sptr->user2))
+				continue;
+			if (!BadPtr(xtmp->name) && 
+				match(xtmp->name, sptr->user3))
+				continue;
+			if (!BadPtr(xtmp->name2) && 
+				match(xtmp->name2, nick))
+				continue;
+			SetXlined(sptr);
+			break;
+		}
+
+		if (IsXlined(sptr))
+		{
+			sptr->exitc = EXITC_XLINE;
+			return exit_client(cptr, sptr, &me,
+				XLINE_EXIT_REASON);
+		}
 #endif
 
 #if defined(USE_IAUTH)
@@ -575,14 +613,6 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 			return exit_client(cptr, sptr, &me,
 				(reason) ? buf : "K-lined");
 		}
-#ifdef XLINE
-		if (IsXlined(sptr))
-		{
-			sptr->exitc = EXITC_XLINE;
-			return exit_client(cptr, sptr, &me,
-				XLINE_EXIT_REASON);
-		}
-#endif
 	}
 	else
 	{
@@ -2176,28 +2206,6 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #ifdef	DEFAULT_INVISIBLE
 	SetInvisible(sptr);
 #endif
-#ifdef XLINE
-	{
-		aConfItem *tmp;
-
-		for (tmp = conf; tmp; tmp = tmp->next)
-		{
-			if (tmp->status != CONF_XLINE)
-				continue;
-			if (!BadPtr(tmp->source_ip) && match(tmp->source_ip, realname))
-				continue;
-			if (!BadPtr(tmp->host) && match(tmp->host, username))
-				continue;
-			if (!BadPtr(tmp->passwd) && match(tmp->passwd, umodes))
-				continue;
-			if (!BadPtr(tmp->name) && match(tmp->name, server))
-				continue;
-			SetXlined(sptr);
-			break;
-               }
-       }
-#endif
-
 	/* parse desired user modes sent in USER */
 	/* rfc behaviour - bits */
 	if (isdigit(*umodes))
@@ -2259,6 +2267,10 @@ int	m_user(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (strlen(realname) > REALLEN)
 		realname[REALLEN] = '\0';
 	sptr->info = mystrdup(realname);
+#ifdef XLINE
+	sptr->user2 = mystrdup(umodes);
+	sptr->user3 = mystrdup(server);
+#endif
 	if (sptr->name[0]) /* NICK already received, now we have USER... */
 	{
 		return register_user(cptr, sptr, sptr->name, username);
@@ -2764,8 +2776,8 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			IsUnixSocket(sptr) ? sptr->sockhost :
 #endif
 #ifdef INET6
-                       inet_ntop(AF_INET6, (char *)&sptr->ip, mydummy,
-			       MYDUMMY_SIZE)
+                       inet_ntop(AF_INET6, (char *)&sptr->ip, ipv6string,
+			       sizeof(ipv6string))
 #else
                        inetntoa((char *)&sptr->ip)
 #endif
@@ -2805,7 +2817,7 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 #endif
 #ifdef INET6
 				inetntop(AF_INET6, (char *)&sptr->ip,
-					mydummy, MYDUMMY_SIZE)
+					ipv6string, sizeof(ipv6string))
 #else
 				inetntoa((char *)&sptr->ip)
 #endif

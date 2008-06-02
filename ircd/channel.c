@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.261 2005/05/27 16:56:42 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.269 2008/06/03 22:32:46 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -53,6 +53,11 @@ static	void	add_invite (aClient *, aClient *, aChannel *);
 static	int	can_join (aClient *, aChannel *, char *);
 void	channel_modes (aClient *, char *, char *, aChannel *);
 static	int	check_channelmask (aClient *, aClient *, char *);
+
+#ifdef JAPANESE
+static	int	jp_chname (char *);
+#endif
+
 static	aChannel *get_channel (aClient *, char *, int);
 static	int	set_mode (aClient *, aClient *, aChannel *, int *, 
 			int, char **);
@@ -482,7 +487,8 @@ void	remove_user_from_channel(aClient *sptr, aChannel *chptr)
 			 */
 			if (tmp->flags & CHFL_CHANOP)
 			{
-				chptr->reop = timeofday + LDELAYCHASETIMELIMIT;
+				chptr->reop = timeofday + LDELAYCHASETIMELIMIT +
+					myrand() % 300;
 			}
 
 			*curr = tmp->next;
@@ -617,6 +623,83 @@ int	can_send(aClient *cptr, aChannel *chptr)
 
 	return 0;
 }
+
+#ifdef JAPANESE
+char	*get_channelmask(char *chname)
+{
+	char	*mask;
+
+	mask = rindex(chname, ':');
+	if (!mask || index(mask, '\033'))
+	{
+		/* If '\033' is in the mask, well, it's not a real mask,
+		** but a JIS encoded channel name. --Beeth */
+		return NULL;
+	}
+	return mask;
+}
+
+/* This tries to find out if given chname is JIS encoded:
+** a) ":" followed somewhere by '\033'
+** b) comma in chname (impossible if not for JIS)
+** c) one of {, }, ~, \ between JIS marks.
+**
+** Returns 1 if seems JIS encoded, 0 otherwise.
+*/
+int	jp_chname(char *chname)
+{
+	char *mask, *cn;
+	int flag = 0;
+
+	if (!chname || !*chname)
+		return 0;
+	mask = rindex(chname, ':');
+	if (mask && index(mask, '\033'))
+		return 1;
+	if (index(chname, ','))
+		return 1;
+
+	cn = chname;
+	while (*cn)
+	{
+		if (cn[0] == '\033' && cn[2] == 'B'
+			&& (cn[1] == '$' || cn[1] == '('))
+		{
+			flag = (cn[1] == '$') ? 1 : 0;
+			cn += 2;
+		}
+		else if (flag == 1 &&
+			(*cn == '{' || *cn == '}' || *cn == '~' || *cn == '\\'))
+		{
+			return 1;
+		}
+		cn++; 
+	}
+	return 0;
+}
+
+#define IsJPFlag(x)	(((x)->flags & FLAGS_JP))
+#define IsJPChan(x, y)	( ((x) && IsJPFlag((x))) || jp_chname((y)) )
+
+/* 
+** This checks for valid combination of channel name and server,
+** so Japanese channels are not sent to non-Japanese servers.
+**
+** If cptr is NULL, then function is reduced to checking if channel name
+** is (likely to be) Japanese (if it is not, it can be sent anywhere).
+**
+** Otherwise cptr should be a JP flagged server or not a server at all.
+**
+** Returns 1 if it is safe to use given combination of params or 0 if not.
+**
+** Note: this should be split in two functions for clarity.
+*/
+int	jp_valid(aClient *cptr, aChannel *chptr, char *chname)
+{
+	return ( !IsJPChan(chptr, chname) ||
+		(cptr && (!IsServer(cptr) || IsJPFlag(cptr))) );
+}
+#endif
 
 aChannel	*find_channel(char *chname, aChannel *chptr)
 {
@@ -843,6 +926,12 @@ void	send_channel_modes(aClient *cptr, aChannel *chptr)
 
 	if (check_channelmask(&me, cptr, chptr->chname))
 		return;
+#ifdef JAPANESE
+	/* We did not send channel members, we don't send channel
+	** modes to servers that are not prepared to handle JIS encoding. */
+	if (!jp_valid(cptr, chptr, NULL))
+                return;
+#endif
 
 	*modebuf = *parabuf = '\0';
 	channel_modes(cptr, modebuf, parabuf, chptr);
@@ -885,6 +974,12 @@ void	send_channel_members(aClient *cptr, aChannel *chptr)
 
 	if (check_channelmask(&me, cptr, chptr->chname) == -1)
 		return;
+#ifdef JAPANESE
+	/* We do not send channel members to servers that are not prepared 
+	** to handle JIS encoding. */
+	if (!jp_valid(cptr, chptr, NULL))
+                return;
+#endif
 	sprintf(buf, ":%s NJOIN %s :", me2, chptr->chname);
 	len = strlen(buf);
 
@@ -976,7 +1071,7 @@ int	m_mode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			modebuf[1] = '\0';
 			channel_modes(sptr, modebuf, parabuf, chptr);
 			sendto_one(sptr, replies[RPL_CHANNELMODEIS], ME, BadTo(parv[0]),
-				   name, modebuf, parabuf);
+				   chptr->chname, modebuf, parabuf);
 			penalty += 1;
 		    }
 		else	/* Check parameters for the channel */
@@ -1011,6 +1106,7 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 	u_int	whatt = MODE_ADD;
 	int	limitset = 0, count = 0, chasing = 0;
 	int	nusers = 0, ischop, new, len, ulen, keychange = 0, opcnt = 0;
+	int	reopseen = 0;
 	aClient *who;
 	Mode	*mode, oldm;
 	Link	*plp = NULL;
@@ -1155,6 +1251,10 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 			    			(*curr == 'o') ? MODE_CHANOP:
 								  MODE_VOICE;
 				lp->flags |= MODE_ADD;
+				if (chptr->reop && IsServer(sptr) && !IsBursting(sptr))
+				{
+					reopseen = 1;
+				}
 			    }
 			else if (whatt == MODE_DEL)
 			    {
@@ -1474,6 +1574,11 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 #endif
 	    } /* end of while loop for MODE processing */
 
+	if (reopseen)
+	{
+		ircstp->is_rreop++;
+	}
+
 	whatt = 0;
 
 	for (ip = flags; *ip; ip += 2)
@@ -1699,7 +1804,8 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				    lp->flags == (MODE_CHANOP|MODE_DEL))
 				{
 					chptr->reop = timeofday + 
-						LDELAYCHASETIMELIMIT;
+						LDELAYCHASETIMELIMIT +
+						myrand() % 300;
 				}
 			case MODE_UNIQOP :
 			case MODE_VOICE :
@@ -1747,7 +1853,8 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 					if (IsServer(sptr))
 					{
 						chptr->reop = timeofday +
-							LDELAYCHASETIMELIMIT;
+							LDELAYCHASETIMELIMIT +
+							myrand() % 300;
 					}
 				}
 				if (ischop &&
@@ -1934,12 +2041,31 @@ static	int	can_join(aClient *sptr, aChannel *chptr, char *key)
 
 void	clean_channelname(char *cn)
 {
-	for (; *cn; cn++)
-		if (*cn == '\007' || *cn == ' ' || *cn == ',')
-		    {
+	int flag = 0;
+
+	while (*cn)
+	{
+		if (*cn == '\007' || *cn == ' ' || (!flag && *cn == ','))
+		{
 			*cn = '\0';
 			return;
-		    }
+		}
+#ifdef JAPANESE
+		/* Japanese channel names can have comma in their name, but
+		** only between "\033$B" (begin) and "\033(B" (end) markers.
+		** So we mark it (using flag) for above check. --Beeth */
+		if (cn[0] == '\033' && cn[2] == 'B' &&
+			(cn[1] == '$' || cn[1] == '('))
+		{
+			flag = (cn[1] == '$') ? 1 : 0;
+			cn += 2;
+		}
+#endif
+		cn++;
+	}
+	/* XXX Shouldn't we check, if flag==1 here? Wouldn that mean
+	** that Japanese channel name is incomplete? Would that be
+	** an error? --Beeth */
 }
 
 /*
@@ -1951,7 +2077,7 @@ static	int	check_channelmask(aClient *sptr, aClient *cptr, char *chname)
 
 	if (*chname == '&' && IsServer(cptr))
 		return -1;
-	s = rindex(chname, ':');
+	s = get_channelmask(chname);
 	if (!s)
 		return 0;
 	s++;
@@ -1959,8 +2085,8 @@ static	int	check_channelmask(aClient *sptr, aClient *cptr, char *chname)
 		|| match(s, ME) || (IsServer(cptr) && match(s, cptr->name)))
 	{
 		if (MyClient(sptr))
-			sendto_one(sptr, replies[ERR_BADCHANMASK], ME,
-				BadTo(sptr->name), chname);
+                       sendto_one(sptr, replies[ERR_BADCHANMASK], ME,
+                               BadTo(sptr->name), chname);
 		return -1;
 	}
 	return 0;
@@ -1980,10 +2106,18 @@ static	aChannel *get_channel(aClient *cptr, char *chname, int flag)
 
 	len = strlen(chname);
 	if (MyClient(cptr) && len > CHANNELLEN)
-	    {
+	{
 		len = CHANNELLEN;
 		*(chname+CHANNELLEN) = '\0';
-	    }
+#ifdef JAPANESE
+#if 0
+		/* XXX-JP: I think I know why it is here, but it
+		** seems it is completely unneeded. */
+		if (check_channelmask(cptr, cptr, chname) == -1)
+			return NULL;
+#endif
+#endif
+	}
 	if ((chptr = find_channel(chname, (aChannel *)NULL)))
 		return (chptr);
 	if (flag == CREATE)
@@ -1996,6 +2130,11 @@ static	aChannel *get_channel(aClient *cptr, char *chname, int flag)
 		chptr->prevch = NULL;
 		chptr->nextch = channel;
 		chptr->history = 0;
+#ifdef JAPANESE
+		chptr->flags = 0;
+		if (jp_chname(chname))
+			chptr->flags = FLAGS_JP;
+#endif
 		channel = chptr;
 		(void)add_to_channel_hash_table(chname, chptr);
 	    }
@@ -2407,19 +2546,19 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		add_user_to_channel(chptr, sptr, flags);
 		/* Notify all users on the channel */
 		sendto_channel_butserv(chptr, sptr, ":%s JOIN :%s",
-			parv[0], name);
+			parv[0], chptr->chname);
 
 		del_invite(sptr, chptr);
 		if (chptr->topic[0] != '\0')
 		{
 			sendto_one(sptr, replies[RPL_TOPIC], ME,
-				BadTo(parv[0]), name, chptr->topic);
+				BadTo(parv[0]), chptr->chname, chptr->topic);
 #ifdef TOPIC_WHO_TIME
 			if (chptr->topic_t > 0)
 			{
 				sendto_one(sptr, replies[RPL_TOPIC_WHO_TIME],
 					ME, BadTo(parv[0]),
-					name, IsAnonymous(chptr) ?
+					chptr->chname, IsAnonymous(chptr) ?
 					"anonymous!anonymous@anonymous." :
 					chptr->topic_nuh,
 					chptr->topic_t);
@@ -2436,7 +2575,13 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		/*
 	        ** notify other servers
 		*/
-		if (index(name, ':') || *chptr->chname == '!') /* compat */
+		if (get_channelmask(name) || *chptr->chname == '!' /* compat */
+#ifdef JAPANESE
+			/* sendto_match_servs_v() is checking the same
+			** and NOT sending things out. --B. */
+			|| !jp_valid(NULL, chptr, NULL)
+#endif
+			)
 		{
 			sendto_match_servs_v(chptr, cptr, SV_UID,
 				":%s NJOIN %s :%s%s", me.serv->sid, name,
@@ -2464,7 +2609,8 @@ int	m_join(aClient *cptr, aClient *sptr, int parc, char *parv[])
 */
 int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 {
-	char *name, *target, mbuf[MAXMODEPARAMS + 1];
+	char *name, *target;
+	char mbuf[3] /* "ov" */;
 	char uidbuf[BUFSIZE], *u;
 	char *p = NULL;
 	int chop, cnt = 0;
@@ -2522,17 +2668,16 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		{
 			if (*(target+1) == '@')
 			{
-				/* actually never sends in a JOIN ^G */
 				if (*(target+2) == '+')
 				{
-					strcpy(mbuf, "\007ov");
+					strcpy(mbuf, "ov");
 					chop = CHFL_UNIQOP| \
 						CHFL_CHANOP|CHFL_VOICE;
 					name = target + 3;
 				}
 				else
 				{
-					strcpy(mbuf, "\007o");
+					strcpy(mbuf, "o");
 					chop = CHFL_UNIQOP|CHFL_CHANOP;
 					name = target + 2;
 				}
@@ -2541,13 +2686,13 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			{
 				if (*(target+1) == '+')
 				{
-					strcpy(mbuf, "\007ov");
+					strcpy(mbuf, "ov");
 					chop = CHFL_CHANOP|CHFL_VOICE;
 					name = target+2;
 				}
 				else
 				{
-					strcpy(mbuf, "\007o");
+					strcpy(mbuf, "o");
 					chop = CHFL_CHANOP;
 					name = target+1;
 				}
@@ -2555,7 +2700,7 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 		else if (*target == '+')
 		{
-			strcpy(mbuf, "\007v");
+			strcpy(mbuf, "v");
 			chop = CHFL_VOICE;
 			name = target+1;
 		}
@@ -2567,11 +2712,13 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		if (!(acptr = find_person(name, NULL)) &&
 			!(acptr = find_uid(name, NULL)))
 		{
+			/* shouldn't this be an error? --B. */
 			continue;
 		}
 		/* is user who we think? */
 		if (acptr->from != cptr)
 		{
+			/* shouldn't this be a squit-level error? --B. */
 			continue;
 		}
 		/* make sure user isn't already on channel */
@@ -2633,8 +2780,12 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		** join from netjoin. 2.10.x is using NJOIN only during
 		** burst, but 2.11 always. Hence we check for EOB from 2.11
 		** to know what kind of NJOIN it is. --B. */
-		sendto_channel_butserv(chptr, acptr, ":%s JOIN %s%s", acptr->name,
-			IsBursting(sptr) ? "" : ":", parv[1]);
+		sendto_channel_butserv(chptr, acptr, ":%s JOIN %s%s", acptr->name, (
+#ifdef JAPANESE
+			/* XXX-JP: explain why jp-patch had that! */
+			IsServer(sptr) ||
+#endif
+			IsBursting(sptr)) ? "" : ":", chptr->chname);
 		/* build MODE for local users on channel, eventually send it */
 		if (*mbuf)
 		    {
@@ -2650,14 +2801,14 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				*parabuf = '\0'; *modebuf = '\0';
 				/* fall through */
 			case 1:
-				strcat(modebuf, mbuf+1);
-				cnt += strlen(mbuf+1);
+				strcat(modebuf, mbuf);
+				cnt += strlen(mbuf);
 				if (*parabuf)
 				    {
 					strcat(parabuf, " ");
 				    }
 				strcat(parabuf, acptr->name);
-				if (mbuf[2])
+				if (mbuf[1])
 				    {
 					strcat(parabuf, " ");
 					strcat(parabuf, acptr->name);
@@ -2666,12 +2817,12 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			case 2:
 				sendto_channel_butserv(chptr, &me,
 					       ":%s MODE %s +%s%c %s %s",
-						       sptr->name, parv[1],
-						       modebuf, mbuf[1],
+						       sptr->name, chptr->chname,
+						       modebuf, mbuf[0],
 						       parabuf, acptr->name);
-				if (mbuf[2])
+				if (mbuf[1])
 				    {
-					strcpy(modebuf, mbuf+2);
+					strcpy(modebuf, mbuf+1);
 					strcpy(parabuf, acptr->name);
 					cnt = 1;
 				    }
@@ -2683,7 +2834,7 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			    {
 				sendto_channel_butserv(chptr, &me,
 						       ":%s MODE %s +%s %s",
-						       sptr->name, parv[1],
+						       sptr->name, chptr->chname,
 						       modebuf, parabuf);
 				cnt = 0;
 			    }
@@ -2692,7 +2843,7 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	/* send eventual MODE leftover */
 	if (cnt)
 		sendto_channel_butserv(chptr, &me, ":%s MODE %s +%s %s",
-				       sptr->name, parv[1], modebuf, parabuf);
+				       sptr->name, chptr->chname, modebuf, parabuf);
 
 	/* send NJOIN */
 	*u = '\0';
@@ -2733,31 +2884,42 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	*/
 	size = BUFSIZE - strlen(parv[0]) - 10;
 	for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
-	    {
+	{
 		chptr = get_channel(sptr, name, 0);
 		if (!chptr)
-		    {
+		{
 			if (MyPerson(sptr))
 				sendto_one(sptr,
-					   replies[ERR_NOSUCHCHANNEL], ME, BadTo(parv[0]),
-					   name);
+					replies[ERR_NOSUCHCHANNEL], ME, BadTo(parv[0]),
+					name);
 			continue;
-		    }
+		}
 		if (check_channelmask(sptr, cptr, name))
 			continue;
 		if (!IsMember(sptr, chptr))
-		    {
+		{
 			sendto_one(sptr, replies[ERR_NOTONCHANNEL], ME, BadTo(parv[0]),
 				   name);
 			continue;
-		    }
+		}
 		/*
 		**  Remove user from the old channel (if any)
 		*/
-		if (!index(name, ':') && (*chptr->chname != '!'))
-		    {	/* channel:*.mask */
+		if (!get_channelmask(name) && (*chptr->chname != '!')
+#ifdef JAPANESE
+			/* jp_valid here because in else{} there's
+			** sendto_match_servs() which ignores such
+			** channels when sending stuff. --B. */
+			&& jp_valid(NULL, chptr, NULL)	/* XXX-JP: why not 
+							jp_valid(NULL, chptr, name)?
+							because user cannot be on 
+							jp-named channel which is not 
+							flagged JP? --B. */
+#endif
+			)
+		{	/* channel:*.mask */
 			if (*name != '&')
-			    {
+			{
 				/* We could've decreased size by 1 when
 				** calculating it, but I left it like that
 				** for the sake of clarity. --B. */
@@ -2773,15 +2935,15 @@ int	m_part(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				if (*buf)
 					(void)strcat(buf, ",");
 				(void)strcat(buf, name);
-			    }
-		    }
+			}
+		}
 		else
 			sendto_match_servs(chptr, cptr, PartFmt,
 				   	   sptr->user->uid, name, comment);
 		sendto_channel_butserv(chptr, sptr, PartFmt,
-				       parv[0], name, comment);
+				       parv[0], chptr->chname, comment);
 		remove_user_from_channel(sptr, chptr);
-	    }
+	}
 	if (*buf)
 		sendto_serv_butone(cptr, PartFmt, sptr->user->uid, buf, comment);
 	return 4;
@@ -2885,7 +3047,7 @@ int	m_kick(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				/* Local clients. */
 				sendto_channel_butserv(chptr, sptr,
 					":%s KICK %s %s :%s", sptr->name,
-					name, who->name, comment);
+					chptr->chname, who->name, comment);
 
 				/* Nick buffer to kick out. */
 				/* as we need space for ",nick", we should add
@@ -3071,6 +3233,15 @@ int	m_invite(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	if (*parv[2] == '&' && !MyClient(acptr))
 		return 1;
 	chptr = find_channel(parv[2], NullChn);
+
+#ifdef JAPANESE
+	if (!jp_valid(acptr->from, chptr, parv[2]))
+	{
+		sendto_one(sptr, replies[ERR_BADCHANMASK], ME,
+			chptr ? chptr->chname : parv[2]);
+		return 1;
+	}
+#endif
 	if (!chptr && parv[2][0] == '!')
 	{
 		/* Try to find !channel using shortname */
@@ -3078,46 +3249,46 @@ int	m_invite(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	}
 
 	if (!chptr)
-	    {
+	{
 		sendto_prefix_one(acptr, sptr, ":%s INVITE %s :%s",
 				  parv[0], parv[1], parv[2]);
 		if (MyConnect(sptr))
-		    {
+		{
         	        sendto_one(sptr, replies[RPL_INVITING], ME, BadTo(parv[0]),
 	                           acptr->name, parv[2]);
 			if (acptr->user->flags & FLAGS_AWAY)
 					send_away(sptr, acptr);
-		    }
+		}
 		return 3;
-	    }
+	}
 
 	if (!IsMember(sptr, chptr))
-	    {
+	{
 		sendto_one(sptr, replies[ERR_NOTONCHANNEL], ME, BadTo(parv[0]), parv[2]);
 		return 1;
-	    }
+	}
 
 	if (IsMember(acptr, chptr))
-	    {
+	{
 		sendto_one(sptr, replies[ERR_USERONCHANNEL], ME, BadTo(parv[0]),
 			   parv[1], parv[2]);
 		return 1;
-	    }
+	}
 
 	if ((chptr->mode.mode & MODE_INVITEONLY) &&  !is_chan_op(sptr, chptr))
-	    {
+	{
 		sendto_one(sptr, replies[ERR_CHANOPRIVSNEEDED],
 			   ME, BadTo(parv[0]), chptr->chname);
 		return 1;
-	    }
+	}
 
 	if (MyConnect(sptr))
-	    {
+	{
 		sendto_one(sptr, replies[RPL_INVITING], ME, BadTo(parv[0]),
 			   acptr->name, ((chptr) ? (chptr->chname) : parv[2]));
 		if (acptr->user->flags & FLAGS_AWAY)
 			send_away(sptr, acptr);
-	    }
+	}
 
 	if (MyConnect(acptr))
 		if (chptr && /* (chptr->mode.mode & MODE_INVITEONLY) && */
@@ -3220,7 +3391,7 @@ int	m_list(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		
 		}
 		
-end_of_list:
+end_of_list:;
 #ifdef LIST_ALIS_NOTE
 		/* Send second notice if we listed more than 24 channels
 		 * - usual height of irc client in text mode.
@@ -3237,22 +3408,22 @@ end_of_list:
 	{
 		parv[1] = canonize(parv[1]);
 		for (; (name = strtoken(&p, parv[1], ",")); parv[1] = NULL)
-		    {
+		{
 			chptr = find_channel(name, NullChn);
 			if (chptr && ShowChannel(sptr, chptr) && sptr->user)
-			    {
+			{
 				rlen += sendto_one(sptr, replies[RPL_LIST],
-						   ME, BadTo(parv[0]), name,
+						   ME, BadTo(parv[0]), chptr->chname,
 						   chptr->users, chptr->topic);
 				if (!MyConnect(sptr) && rlen > CHREPLLEN)
 					break;
-			    }
+			}
 			if (*name == '!')
-			    {
+			{
 				chptr = NULL;
 				while ((chptr = hash_find_channels(name + 1,
 					chptr)))
-				    {
+				{
 					int scr = SecretChannel(chptr) &&
 							!IsMember(sptr, chptr);
 					rlen += sendto_one(sptr,
@@ -3266,16 +3437,16 @@ end_of_list:
 					if (!MyConnect(sptr) &&
 					    rlen > CHREPLLEN)
 						break;
-				    }		
-			    }
-		     }
+				}		
+			}
+		}
 	}
 	if (!MyConnect(sptr) && rlen > CHREPLLEN)
 		sendto_one(sptr, replies[ERR_TOOMANYMATCHES], ME,
-			   BadTo(parv[0]), "LIST");
+			BadTo(parv[0]), "LIST");
 	sendto_one(sptr, replies[RPL_LISTEND], ME, BadTo(parv[0]));
 	return 2;
-    }
+}
 /*
  * names_channel - send NAMES for one specific channel
  * sends RPL_ENDOFNAMES when sendeon > 0
@@ -3665,6 +3836,7 @@ static int	reop_channel(time_t now, aChannel *chptr, int reopmode)
 		sendto_channel_butserv(chptr, &me, ":%s MODE %s +o %s",
 			ME, chptr->chname, op.value.cptr->name);
 		chptr->reop = 0;
+		ircstp->is_reop++;
 		return 1;
 	}
 	return 0;
