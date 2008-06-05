@@ -540,7 +540,7 @@
  *
  * Defining to 0 disables entering split-mode.
  */
-#define SPLIT_USERS	85000
+#define SPLIT_USERS	70000
 #define SPLIT_SERVERS	85
 
 /*
@@ -622,7 +622,6 @@
 ** Require at least one alphanum and no more than two nonalphanum.
 */
 #define	RESTRICT_USERNAMES
-
 
 /* Maximum length the queue of pending connections to one port may grow to.
  * Note that your system limits this, too. FreeBSD, for instance, has sysctl
@@ -740,6 +739,12 @@
 ** minimum nicklen allowed.
 */
 /* #define MINLOCALNICKLEN 2 */
+
+/*
+** You probably don't want to disable it, but if you run into any problems,
+** here's the knob.
+*/
+#define ENABLE_CIDR_LIMITS 1
 
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
