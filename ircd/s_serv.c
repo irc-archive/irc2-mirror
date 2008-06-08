@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.284 2008/06/03 22:32:46 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.290 2008/06/08 21:48:24 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -802,7 +802,7 @@ int	m_server(aClient *cptr, aClient *sptr, int parc, char *parv[])
 
 		introduce_server(cptr, acptr);
 #ifdef	USE_SERVICES
-		check_services_butone(SERVICE_WANT_SERVER, acptr->name, acptr,
+		check_services_butone(SERVICE_WANT_SERVER, acptr->serv, acptr,
 				      ":%s SERVER %s %d %s :%s", parv[0],
 				      acptr->name, hop+1, acptr->serv->sid,
 				      acptr->info);
@@ -1217,7 +1217,7 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 		cptr->name, cptr->serv->version, cptr->serv->sid));
 	add_fd(cptr->fd, &fdas);
 #ifdef	USE_SERVICES
-	check_services_butone(SERVICE_WANT_SERVER, cptr->name, cptr,
+	check_services_butone(SERVICE_WANT_SERVER, cptr->serv, cptr,
 			      ":%s SERVER %s %d %s :%s", ME, cptr->name,
 			      cptr->hopcount+1, cptr->serv->sid, cptr->info);
 #endif
@@ -1268,7 +1268,8 @@ int	m_server_estab(aClient *cptr, char *sid, char *versionbuf)
 					   (*buf) ? buf : "+", acptr->info);
 		    }
 		else if (IsService(acptr) &&
-			 match(acptr->service->dist, cptr->name) == 0)
+			 (match(acptr->service->dist, cptr->name) == 0 ||
+				match(acptr->service->dist, cptr->serv->sid) == 0))
 		{
 			sendto_one(cptr, ":%s SERVICE %s %s %d :%s",
 						acptr->service->servp->sid,
@@ -1718,11 +1719,11 @@ static  void    report_x_lines(aClient *sptr, char *to)
 		if (tmp->status != CONF_XLINE)
 			continue;
 
-		sendto_one(sptr,":%s %d %s X :%s %s %s %s %s", 
+		sendto_one(sptr,":%s %d %s X :%s %s %s %s %s %s", 
 			ME, RPL_STATSDEBUG, to,
 			BadTo(tmp->host), BadTo(tmp->passwd),
-			BadTo(tmp->name), BadTo(tmp->source_ip),
-			BadTo(tmp->name2));
+			BadTo(tmp->name), BadTo(tmp->name2),
+			BadTo(tmp->name3), BadTo(tmp->source_ip));
 	}
 }
 #endif
@@ -1909,10 +1910,13 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	doall = !match(name, ME) && !match(cm, ME);
 	wilds = index(cm, '*') || index(cm, '?') || index(cm, '#');
 
+#if 0
+/* That's useless. Why bother? */
 	if (parc > 1 && parv[1][1] != '\0')
 	{
 		stat = '*';
 	}
+#endif
 
 	switch (stat)
 	{
@@ -2006,7 +2010,7 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					CONF_NOCONNECT_SERVER);
 		break;
 	case 'd' : case 'D' : /* defines */
-		send_defines(cptr, parv[0]);
+		send_defines(cptr, parv[0], parv[1]);
 		break;
 	case 'H' : case 'h' : /* H, L and D conf lines */
 		report_configured_links(cptr, parv[0],
@@ -2833,6 +2837,86 @@ int	m_trace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	
 	return 2;
 }
+
+/*
+ * m_etrace
+ * 	parv[0] = sender prefix
+ */
+int	m_etrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+	aClient *acptr;
+	int i = 0;
+
+	if (!MyClient(sptr) || !is_allowed(sptr, ACL_TRACE))
+		return m_nopriv(cptr, sptr, parc, parv);
+
+	if (parc > 1)
+	{
+		if ((acptr = find_person(parv[1], NULL)) && MyClient(acptr))
+			sendto_one(sptr, replies[RPL_ETRACE],
+				ME, sptr->name,
+				IsOper(acptr) ? "Oper" : "User",
+				get_client_class(acptr),
+				acptr->name, acptr->user->username,
+				acptr->user->host, acptr->user->sip,
+				acptr->info);
+	}
+	else
+	{
+		for (i = 0; i <= highest_fd; i++)
+		{
+			if (!(acptr = local[i]))
+				continue;
+
+			if (!IsPerson(acptr))
+				continue;
+		
+			sendto_one(sptr, replies[RPL_ETRACE],
+				ME, sptr->name, 
+				IsOper(acptr) ? "Oper" : "User", 
+				get_client_class(acptr), 
+				acptr->name, acptr->user->username, 
+				acptr->user->host, acptr->user->sip,
+				acptr->info);
+		}
+	}
+
+	sendto_one(sptr, replies[RPL_TRACEEND], ME, sptr->name, ME,
+			version, debugmode);
+	return 2;
+}
+
+#ifdef ENABLE_SIDTRACE
+int	m_sidtrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
+{
+	aClient *acptr;
+
+	if (!MyClient(sptr) || !is_allowed(sptr, ACL_SIDTRACE))
+		return m_nopriv(cptr, sptr, parc, parv);
+
+	for (acptr = client; acptr; acptr = acptr->next)
+	{
+		if (!IsPerson(acptr))
+			continue;
+
+		if (strncmp(acptr->user->uid, me.serv->sid, SIDLEN-1))
+			continue;
+
+		sendto_one(sptr, replies[RPL_ETRACE],
+			ME, sptr->name,
+			IsAnOper(acptr) ? "Oper" : "User", 
+			MyClient(acptr) ? get_client_class(acptr) : -1, 
+			acptr->name, acptr->user->username,
+			acptr->user->host, acptr->user->sip, 
+			acptr->info);
+	}
+
+	sendto_one(sptr, replies[RPL_TRACEEND], ME, sptr->name, "*",
+			version, debugmode);
+
+	return 3;
+}
+#endif
 
 /*
 ** m_motd

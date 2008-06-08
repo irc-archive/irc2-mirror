@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.174 2008/06/06 23:51:26 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.180 2008/06/09 18:51:20 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -270,6 +270,10 @@ char	*oline_flags_to_string(long flags)
 		*s++ = 'p';
 	if (flags & ACL_TRACE)
 		*s++ = 't';
+#ifdef ENABLE_SIDTRACE
+	if (flags & ACL_SIDTRACE)
+		*s++ = 'v';
+#endif
 	if (s == ofsbuf)
 		*s++ = '-';
 	*s++ = '\0';
@@ -310,6 +314,9 @@ long	oline_flags_parse(char *string)
 		case 'P': tmp |= ACL_NOPENALTY; break;
 		case 'p': tmp |= ACL_CANFLOOD; break;
 		case 't': tmp |= ACL_TRACE; break;
+#ifdef ENABLE_SIDTRACE
+		case 'v': tmp |= ACL_SIDTRACE; break;
+#endif
 		}
 	}
 	if (tmp & ACL_LOCOP)
@@ -707,7 +714,8 @@ int	detach_conf(aClient *cptr, aConfItem *aconf)
 					if (ConfLinks(aconf) > 0)
 						--ConfLinks(aconf);
 #ifdef ENABLE_CIDR_LIMITS
-					remove_cidr_limit(cptr, aconf);
+					if ((aconf->status & CONF_CLIENT))
+						remove_cidr_limit(cptr, aconf);
 #endif
 				}
 
@@ -793,6 +801,10 @@ int	attach_conf(aClient *cptr, aConfItem *aconf)
 		anUser *user = NULL;
 		/* check on local/global limits per host and per user@host */
 
+#ifdef ENABLE_CIDR_LIMITS
+		if(!add_cidr_limit(cptr, aconf))
+			return -4; /* EXITC_LHMAX */
+#endif
 		/*
 		** local limits first to save CPU if any is hit.
 		**	host check is done on the IP address.
@@ -801,15 +813,25 @@ int	attach_conf(aClient *cptr, aConfItem *aconf)
 		if (ConfMaxHLocal(aconf) > 0 || ConfMaxUHLocal(aconf) > 0 ||
 		    ConfMaxHGlobal(aconf) > 0 || ConfMaxUHGlobal(aconf) > 0 )
 		{
-			for ((user = hash_find_hostname(cptr->sockhost, NULL));
-			     user; user = user->hhnext)
+			for ((user = hash_find_ip(cptr->user->sip, NULL));
+			     user; user = user->iphnext)
 			{
-				if (!mycmp(cptr->sockhost, user->host))
+				if (!mycmp(cptr->user->sip, user->sip))
 				{
 					ghcnt++;
+					if (ConfMaxHGlobal(aconf) > 0 &&
+					     ghcnt >= ConfMaxHGlobal(aconf))
+					{
+						return -6; /* EXITC_GHMAX */
+					}
 					if (MyConnect(user->bcptr))
 					{
 						hcnt++;
+						if (ConfMaxHLocal(aconf) > 0 &&
+						    hcnt >= ConfMaxHLocal(aconf))
+						{
+							return -4; /* EXITC_LHMAX */
+						}
 						if (!mycmp(user->bcptr->auth,
 							   cptr->auth))
 						{
@@ -832,28 +854,14 @@ int	attach_conf(aClient *cptr, aConfItem *aconf)
 						return -5; /* EXITC_LUHMAX */
 					}
 	
-					if (ConfMaxHLocal(aconf) > 0 &&
-					    hcnt >= ConfMaxHLocal(aconf))
-					{
-						return -4; /* EXITC_LHMAX */
-					}
 					if (ConfMaxUHGlobal(aconf) > 0 &&
 					    gucnt >= ConfMaxUHGlobal(aconf))
 					{
 						return -7; /* EXITC_GUHMAX */
 					}
-					if (ConfMaxHGlobal(aconf) > 0 &&
-					     ghcnt >= ConfMaxHGlobal(aconf))
-					{
-						return -6; /* EXITC_GHMAX */
-					}
 				}
 			}
 		}
-#ifdef ENABLE_CIDR_LIMITS
-		if(!add_cidr_limit(cptr, aconf))
-			return -4; /* EXITC_LHMAX */
-#endif
 	}
 
 
@@ -1678,10 +1686,13 @@ int 	initconf(int opt)
 #ifdef XLINE
 			if (aconf->status == CONF_XLINE)
 			{
-				DupString(aconf->source_ip, tmp);
+				DupString(aconf->name2, tmp);
 				if ((tmp = getfield(NULL)) == NULL)
 					break;
-				DupString(aconf->name2, tmp);
+				DupString(aconf->name3, tmp);
+				if ((tmp = getfield(NULL)) == NULL)
+					break;
+				DupString(aconf->source_ip, tmp);
 				break;
 			}
 #endif
@@ -1710,6 +1721,9 @@ int 	initconf(int opt)
 		istat.is_confmem += aconf->passwd ? strlen(aconf->passwd)+1 :0;
 		istat.is_confmem += aconf->name ? strlen(aconf->name)+1 : 0;
 		istat.is_confmem += aconf->name2 ? strlen(aconf->name2)+1 : 0;
+#ifdef XLINE
+		istat.is_confmem += aconf->name3 ? strlen(aconf->name3)+1 : 0;
+#endif
 		istat.is_confmem += aconf->source_ip ? strlen(aconf->source_ip)+1 : 0;
 
 		/*
@@ -2655,7 +2669,9 @@ int	prep_kline(int tkline, aClient *cptr, aClient *sptr, int parc, char **parv)
 		** some crucial parts, which can be seen as a typo. --Beeth */
 		i = 1;
 	}
+#ifdef KLINE
 badkline:
+#endif
 	if (i || !host)
 	{
 		/* error */

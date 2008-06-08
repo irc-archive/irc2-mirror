@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.269 2008/06/03 22:32:46 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.273 2008/06/08 13:33:46 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -2008,6 +2008,11 @@ static	int	can_join(aClient *sptr, aChannel *chptr, char *key)
 
 	if (chptr->mode.limit && (chptr->users >= chptr->mode.limit))
 	{
+		/* ->reop is set when there are no chanops on the channel,
+		** so we allow people matching +R to join no matter limit,
+		** so they can get reopped --B. */
+		if (chptr->reop > 0 && match_modeid(CHFL_REOPLIST, sptr, chptr))
+			return 0;
 		if (lp == NULL)
 			return (ERR_CHANNELISFULL);
 		else

@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.110 2007/12/15 23:21:13 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.114 2008/06/09 17:40:56 jv Exp $";
 #endif
 
 #include "os.h"
@@ -233,8 +233,8 @@ char	*get_client_host(aClient *cptr)
 
 	if (!MyConnect(cptr))
 		return cptr->name;
-	if (!cptr->hostp)
-		return get_client_name(cptr, FALSE);
+	if (!cptr->user)
+		return get_client_name(cptr, TRUE);
 #ifdef UNIXPORT
 	if (IsUnixSocket(cptr))
 		sprintf(nbuf, "%s[%s]", cptr->name, ME);
@@ -243,7 +243,7 @@ char	*get_client_host(aClient *cptr)
 		(void)sprintf(nbuf, "%s[%-.*s@%-.*s]",
 			cptr->name, USERLEN,
 			(!(cptr->flags & FLAGS_GOTID)) ? "" : cptr->auth,
-			HOSTLEN, cptr->hostp->h_name);
+			HOSTLEN, cptr->user->sip);
 	return nbuf;
 }
 
@@ -741,7 +741,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 			}
 		}
 #ifdef	USE_SERVICES
-		check_services_butone(SERVICE_WANT_SQUIT, sptr->name, sptr,
+		check_services_butone(SERVICE_WANT_SQUIT, sptr->serv, sptr,
 				      ":%s SQUIT %s :%s", from->name,
 				      sptr->name, comment);
 #endif
@@ -775,7 +775,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 				check_services_butone(SERVICE_WANT_QUIT|
 						      SERVICE_WANT_RQUIT, 
 						      (sptr->user) ?
-						      sptr->user->server
+						      sptr->user->servp
 						      : NULL, cptr,
 						      ":%s QUIT :%s",
 						      sptr->name, comment);
@@ -799,7 +799,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 					}
 #ifdef	USE_SERVICES
 				check_services_butone(SERVICE_WANT_QUIT, 
-					      (sptr->user) ? sptr->user->server
+					      (sptr->user) ? sptr->user->servp
 						      : NULL, cptr,
 						      ":%s QUIT :%s",
 						      sptr->name, comment);
@@ -814,7 +814,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 			** for now --jv
 			*/
 			check_services_butone(SERVICE_WANT_QUIT, 
-					     (sptr->user) ? sptr->user->server
+					     (sptr->user) ? sptr->user->servp
 						      : NULL, cptr,
 						      ":%s QUIT :%s",
 						      sptr->name, comment);
@@ -904,6 +904,7 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 			off_history(sptr);
 			del_from_hostname_hash_table(sptr->user->host,
 						     sptr->user);
+			del_from_ip_hash_table(sptr->user->sip, sptr->user);
 		    }
 	    }
 	else if (sptr->name[0] && IsService(sptr))
@@ -928,7 +929,8 @@ static	void	exit_one_client(aClient *cptr, aClient *sptr, aClient *from,
 				{
 					continue;
 				}
-				if (match(sptr->service->dist, acptr->name))
+				if (match(sptr->service->dist, acptr->name) && 
+					match(sptr->service->dist, acptr->serv->sid))
 				{
 					continue;
 				}

@@ -1,3 +1,54 @@
+2.11.2b1
+
+2008-06-09  Piotr Kucharski
+
+	* configure.in, setup.h.in, os.h: check if strings.h can be included along
+	  with string.h
+
+2008-06-08  Piotr Kucharski
+
+	* channel.c/can_join(): if channel is opless, allow people matching
+	  reoplist to join channel overriding channel limit.
+	* s_misc.c, s_serv.c, s_service.c, s_service_ext.h, s_user.c: change
+	  "server" argument of check_services_butone from char to aServer.
+	* s_user.c/m_message(): allow services to send notices to uids.
+	* s_service.c/check_services_butone(), m_service(), m_servset(), 
+	  s_misc.c/exit_one_client(), s_serv.c/m_server_estab(), 
+	  s_user.c/hunt_server(): allow distribution to be based on SID,
+	  not only server name.
+	* s_misc.c/get_client_host(): show IP, not hostname, in all those &LOCAL
+	  notices about unauthorized access.
+	* struct_def.h: increased TOPICLEN, MAXBANS and MAXBANLENGHT.
+	* s_user.c/who_one(): show SID between hopcount and user info.
+	* s_serv.c/m_stats(): allow multichar stats.
+	* s_serv.c/m_stats(), s_debug.c/send_defines(): stats d5 return 005 as well.
+	* s_user.c/m_oper(): different message for failed oper attempt if
+	  attach_conf() failed with correct password (reported by MJRider).
+	* s_user.c/attach_conf(): move checks around to save some cpu cycles.
+	* services_def.h, send.c/sendto_flag(): add SERVICE_WANT_CLIENTS.
+	* s_err.c: extend replies[] up to 1000 entries.
+	* numeric_def.h, parse.c, struct_def.h, s_conf.c, s_err.c, s_serv_ext.h,
+	  s_serv.c, config.h.dist: added ETRACE and SIDTRACE commands (from anfl).
+
+2008-06-07  Piotr Kucharski
+
+	* s_user.c/who_find(): service can request who as well and it does not have
+	  user struct allocated => instant segv (reported by BR).
+	* service_def.h: add SERVICE_WANT_KLINE; unfortunately I had to change value
+	  of SERVICE_WANT_TKLINE, otherwise I'd have to rewrite a lot more for
+	  strtol() to work.
+	* s_user.c/is_allowed(): add kline acl for service.
+	* parse.c/parse(): tell service if command is unknown.
+	* struct_def.h: another field for aConf when XLINE (to keep hostmask/ip
+	  to match against).
+	* list.c/make_conf(), free_conf(): add new field.
+	* list.c/free_conf(): source_ip stats confmem stats were not updated.
+	* s_conf.c/initconf(): read new field if X-line conf (and change where
+	  they end up to be a bit more logical).
+	* s_user.c/register_user(): update changed fields and match on ip or
+	  host of the user.
+	* s_serv.c/report_x_lines(): update and add new field.
+
 2.11.2a2
 
 2008-06-06  Piotr Kucharski

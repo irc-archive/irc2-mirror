@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_user.c,v 1.264 2008/06/04 18:58:16 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_user.c,v 1.274 2008/06/09 18:51:38 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -207,7 +207,8 @@ int	hunt_server(aClient *cptr, aClient *sptr, char *command, int server,
 			parv[server] = acptr->name;
 		if (IsService(sptr)
 		    && (IsServer(acptr->from)
-			&& match(sptr->service->dist,acptr->name) != 0))
+			&& match(sptr->service->dist,acptr->name) != 0
+			&& match(sptr->service->dist,acptr->serv->sid) != 0))
 		    {
 			sendto_one(sptr, replies[ERR_NOSUCHSERVER], ME, BadTo(parv[0]), 
 				   parv[server]);
@@ -351,12 +352,22 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 #ifdef XLINE
 		aConfItem *xtmp;
 
+		/* Just for clarification, so there's less confusion:
+		   X-lines read from config have their fields stored
+		   in aConf in the following fields:
+		   host, passwd, name, name2, name3, source_ip.
+		   (see s_conf.c/initconf(), look for XLINE);
+		   these are used to check against USER and NICK
+		   commands parameters during registration:
+		   USER 1st 2nd 3rd :4th
+		   NICK 5th
+		   additionally user ip and/or hostname are
+		   being matched against X-line last field
+		   (conveniently kept in aconf->source_ip). --B. */
+
 		for (xtmp = conf; xtmp; xtmp = xtmp->next)
 		{
 			if (xtmp->status != CONF_XLINE)
-				continue;
-			if (!BadPtr(xtmp->source_ip) && 
-				match(xtmp->source_ip, sptr->info))
 				continue;
 			if (!BadPtr(xtmp->host) && 
 				match(xtmp->host, username))
@@ -368,7 +379,17 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 				match(xtmp->name, sptr->user3))
 				continue;
 			if (!BadPtr(xtmp->name2) && 
-				match(xtmp->name2, nick))
+				match(xtmp->name2, sptr->info))
+				continue;
+			if (!BadPtr(xtmp->name3) && 
+				match(xtmp->name3, nick))
+				continue;
+			if (!BadPtr(xtmp->source_ip) &&
+				(match(xtmp->source_ip, (sptr->hostp ?
+				sptr->hostp->h_name : sptr->sockhost)) &&
+				match(xtmp->source_ip, sptr->user->sip) &&
+				strchr(xtmp->source_ip, '/') && 
+				match_ipmask(xtmp->source_ip, sptr, 0)))
 				continue;
 			SetXlined(sptr);
 			break;
@@ -789,14 +810,14 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 	}	/* for(my-leaf-servers) */
 #ifdef	USE_SERVICES
 #if 0
-	check_services_butone(SERVICE_WANT_NICK, user->server, NULL,
+	check_services_butone(SERVICE_WANT_NICK, user->servp, NULL,
 			      "NICK %s :%d", nick, sptr->hopcount+1);
-	check_services_butone(SERVICE_WANT_USER, user->server, sptr,
+	check_services_butone(SERVICE_WANT_USER, user->servp, sptr,
 			      ":%s USER %s %s %s :%s", nick, user->username, 
 			      user->host, user->server, sptr->info);
 	if (MyConnect(sptr))	/* all modes about local users */
 		send_umode(NULL, sptr, 0, ALL_UMODES, buf);
-	check_services_butone(SERVICE_WANT_UMODE, user->server, sptr,
+	check_services_butone(SERVICE_WANT_UMODE, user->servp, sptr,
 			      ":%s MODE %s :%s", nick, nick, buf);
 #endif
 	if (MyConnect(sptr))	/* all modes about local users */
@@ -804,6 +825,7 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 	check_services_num(sptr, buf);
 #endif
 	add_to_hostname_hash_table(user->host, user);
+	add_to_ip_hash_table(user->sip, user);
 	return 1;
 }
 
@@ -1145,7 +1167,7 @@ nickkilldone:
 			add_history(sptr, sptr);
 #ifdef	USE_SERVICES
 			check_services_butone(SERVICE_WANT_NICK,
-					      sptr->user->server, sptr,
+					      sptr->user->servp, sptr,
 					      ":%s NICK :%s", parv[0], nick);
 #endif
 		}
@@ -1454,7 +1476,8 @@ static	int	m_message(aClient *cptr, aClient *sptr, int parc,
 		/*
 		** nickname addressed?
 		*/
-		if ((IsServer(cptr) && (acptr = find_uid(nick, NULL))) || 
+		if (((IsServer(cptr) || IsService(cptr))
+			&& (acptr = find_uid(nick, NULL))) || 
 			(acptr = find_person(nick, NULL)))
 		    {
 			if (!notice && MyConnect(sptr) &&
@@ -1676,7 +1699,7 @@ static	void	who_one(aClient *sptr, aClient *acptr, aChannel *repchan,
 	sendto_one(sptr, replies[RPL_WHOREPLY], ME, BadTo(sptr->name),
 		   (repchan) ? (repchan->chname) : "*", acptr->user->username,
 		   acptr->user->host, acptr->user->server, acptr->name,
-		   status, acptr->hopcount, acptr->info);
+		   status, acptr->hopcount, acptr->user->servp->sid, acptr->info);
 }
 
 
@@ -1728,6 +1751,7 @@ static	void	who_find(aClient *sptr, char *mask, int oper)
 	aClient	*acptr;
 	
 	/* first, show INvisible matching users on common channels */
+	if (sptr->user) /* service can request who as well */
 	for (lp = sptr->user->channel; lp ;lp = lp->next)
 	{
 		chptr = lp->value.chptr;
@@ -2754,7 +2778,7 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		send_umode_out(cptr, sptr, old);
  		sendto_one(sptr, replies[RPL_YOUREOPER], ME, BadTo(parv[0]));
 #ifdef	USE_SERVICES
-		check_services_butone(SERVICE_WANT_OPER, sptr->user->server, 
+		check_services_butone(SERVICE_WANT_OPER, sptr->user->servp, 
 				      sptr, ":%s MODE %s :+%c", parv[0],
 				      parv[0], IsOper(sptr) ? 'o' : 'O');
 #endif
@@ -2765,10 +2789,14 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 		logstring = "";
 	}	
-	else /* Wrong password */
+	else /* Wrong password or attach_conf() failed */
 	{
 		(void)detach_conf(sptr, aconf);
-		sendto_one(sptr,replies[ERR_PASSWDMISMATCH], ME, BadTo(parv[0]));
+		if (!StrEq(encr, aconf->passwd))
+			sendto_one(sptr,replies[ERR_PASSWDMISMATCH], ME, BadTo(parv[0]));
+		else
+			sendto_one(sptr,":%s %d %s :Too many connections",
+				ME, ERR_PASSWDMISMATCH, BadTo(parv[0]));
 #ifdef FAILED_OPERLOG
 		sendto_flag(SCH_NOTICE, "FAILED OPER attempt by %s!%s@%s",
 			parv[0], sptr->user->username, sptr->user->host);
@@ -3072,14 +3100,14 @@ int	m_umode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 					sptr->user->away = NULL;
 #ifdef  USE_SERVICES
 				check_services_butone(SERVICE_WANT_AWAY,
-						      sptr->user->server, sptr,
+						      sptr->user->servp, sptr,
 						      ":%s AWAY", parv[0]);
 #endif
 				    }
 #ifdef  USE_SERVICES
 				if (what == MODE_ADD)
 				check_services_butone(SERVICE_WANT_AWAY,
-						      sptr->user->server, sptr,
+						      sptr->user->servp, sptr,
 						      ":%s AWAY :", parv[0]);
 #endif
 			default :
@@ -3146,7 +3174,7 @@ int	m_umode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		istat.is_oper++;
 		sptr->user->servp->usercnt[2]++;
 #ifdef	USE_SERVICES
-		check_services_butone(SERVICE_WANT_OPER, sptr->user->server,
+		check_services_butone(SERVICE_WANT_OPER, sptr->user->servp,
 				      sptr, ":%s MODE %s :+o", parv[0],
 				      parv[0]);
 #endif
@@ -3156,7 +3184,7 @@ int	m_umode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		istat.is_oper--;
 		sptr->user->servp->usercnt[2]--;
 #ifdef	USE_SERVICES
-		check_services_butone(SERVICE_WANT_OPER, sptr->user->server,
+		check_services_butone(SERVICE_WANT_OPER, sptr->user->servp,
 				      sptr, ":%s MODE %s :-o", parv[0],
 				      parv[0]);
 #endif
@@ -3166,7 +3194,7 @@ int	m_umode(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		istat.is_oper--;
 		sptr->user->servp->usercnt[2]--;
 #ifdef USE_SERVICES
-		check_services_butone(SERVICE_WANT_OPER, sptr->user->server,
+		check_services_butone(SERVICE_WANT_OPER, sptr->user->servp,
 				      sptr, ":%s MODE %s :-O", parv[0],
 				      parv[0]);
 #endif
@@ -3253,7 +3281,7 @@ void	send_umode_out(aClient *cptr, aClient *sptr, int old)
 #ifdef USE_SERVICES
 	/* buf contains all modes for local users, and iow only for remotes */
 	if (*buf)
-		check_services_butone(SERVICE_WANT_UMODE, sptr->user->server,
+		check_services_butone(SERVICE_WANT_UMODE, sptr->user->servp,
 				      sptr, ":%s MODE %s :%s", sptr->name,
 				      sptr->name, buf);
 #endif
@@ -3286,7 +3314,7 @@ static	void	save_user(aClient *cptr, aClient *sptr, char *path)
 			       sptr->name, sptr->user->uid);
 	add_history(sptr, NULL);
 #ifdef	USE_SERVICES
-	check_services_butone(SERVICE_WANT_NICK, sptr->user->server, sptr,
+	check_services_butone(SERVICE_WANT_NICK, sptr->user->servp, sptr,
 			      ":%s NICK :%s", sptr->name, sptr->user->uid);
 #endif
 	sendto_serv_v(cptr, SV_UID, ":%s SAVE %s :%s%c%s", 
@@ -3346,6 +3374,9 @@ int	is_allowed(aClient *cptr, long function)
 	{
 		if (function == ACL_TKLINE &&
 			(cptr->service->wants & SERVICE_WANT_TKLINE))
+			return 1;
+		if (function == ACL_KLINE &&
+			(cptr->service->wants & SERVICE_WANT_KLINE))
 			return 1;
 		return 0;
 	}
