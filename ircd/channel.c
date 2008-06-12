@@ -32,7 +32,7 @@
  */
 
 #ifndef	lint
-static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.273 2008/06/08 13:33:46 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: channel.c,v 1.275 2008/06/11 18:16:12 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1344,9 +1344,8 @@ static	int	set_mode(aClient *cptr, aClient *sptr, aChannel *chptr,
 				    {
 					lp = &chops[opcnt++];
 					lp->value.cp = *parv;
-					if (strlen(lp->value.cp) >
-					    (size_t) KEYLEN)
-						lp->value.cp[KEYLEN] = '\0';
+					lp->value.cp[0] = '*';
+					lp->value.cp[1] = '\0';
 					lp->flags = MODE_KEY|MODE_DEL;
 					keychange = 1;
 				    }
@@ -2655,6 +2654,9 @@ int	m_njoin(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		{
 			chptr->history = timeofday + (*chptr->chname == '!' ?
 				LDELAYCHASETIMELIMIT : DELAYCHASETIMELIMIT);
+			istat.is_hchan++;
+			istat.is_hchanmem += sizeof(aChannel) +
+				strlen(chptr->chname);
 		}
 		/* There cannot be anything else in this NJOIN. */
 		return 0;

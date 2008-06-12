@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.290 2008/06/08 21:48:24 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_serv.c,v 1.292 2008/06/11 19:53:34 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1969,6 +1969,9 @@ int	m_stats(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			    {
 				if (!(acptr = local[i]))
 					continue;
+				if (IsUnknown(acptr) && 
+					!(IsAnOper(sptr) && SendWallops(sptr)))
+					continue;
 				if (IsPerson(acptr) && (!MyConnect(sptr)
 				    || !is_allowed(sptr, ACL_TRACE)) && acptr != sptr)
 					continue;
@@ -2819,13 +2822,9 @@ int	m_trace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 				continue;   /* then don't show the client */
 			}
 			
-			/* Report unknown connections to local users
-			 * and remote opers with +w set */
-			if (IsUnknown(a2cptr)
-			    && !((IsAnOper(sptr) || MyClient(sptr))
-				 && SendWallops(sptr)
-				)
-			    )
+			/* Report unknown connections to opers with +w set */
+			if (IsUnknown(a2cptr) &&
+				!(IsAnOper(sptr) && SendWallops(sptr)))
 			{
 				continue;
 			}
@@ -2881,7 +2880,7 @@ int	m_etrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		}
 	}
 
-	sendto_one(sptr, replies[RPL_TRACEEND], ME, sptr->name, ME,
+	sendto_one(sptr, replies[RPL_ETRACEEND], ME, sptr->name, ME,
 			version, debugmode);
 	return 2;
 }
@@ -2911,7 +2910,7 @@ int	m_sidtrace(aClient *cptr, aClient *sptr, int parc, char *parv[])
 			acptr->info);
 	}
 
-	sendto_one(sptr, replies[RPL_TRACEEND], ME, sptr->name, "*",
+	sendto_one(sptr, replies[RPL_ETRACEEND], ME, sptr->name, "*",
 			version, debugmode);
 
 	return 3;

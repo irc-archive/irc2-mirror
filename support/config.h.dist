@@ -589,20 +589,6 @@
 #undef DISABLE_NICK0_REGISTRATION
 
 /*
-** Define this to significantly speed up rehash with large amounts of I-lines.
-** Wastes some memory each rehash (luckily not indefinitely).
-*/
-#define FASTER_ILINE_REHASH
-
-/*
-** Restores old behaviour of Y-lines maxlinks limit, which was counted
-** separately per each I-line using it.
-** Note: if you use it with FASTER_ILINE_REHASH, clients will be able
-** to exceed maxlinks limits after each rehash. Sorry.
-*/
-#undef YLINE_LIMITS_OLD_BEHAVIOUR
-
-/*
 ** Define this if you want to use Japanese channel names in JIS encoding.
 */
 #undef JAPANESE
@@ -610,7 +596,8 @@
 /*
 ** If you want to allow your opers to be able to use SIDTRACE command to
 ** see all clients from all servers that share the same SID prefix as your 
-** own, enable this. Useful for server "clusters", like 0PN.
+** own, enable this. Useful for server "clusters", like 0PN. Requires also
+** proper ACLs in O-line.
 */
 #undef ENABLE_SIDTRACE
 
@@ -751,7 +738,41 @@
 ** You probably don't want to disable it, but if you run into any problems,
 ** here's the knob.
 */
-#define ENABLE_CIDR_LIMITS 1
+#define ENABLE_CIDR_LIMITS
+
+/*
+** Define this to significantly speed up rehash with large amounts of I-lines.
+** Wastes some memory each rehash (luckily not indefinitely).
+*/
+#define FASTER_ILINE_REHASH
+
+/*
+** Restores old behaviour of Y-lines maxlinks limit, which was counted
+** separately per each I-line using it.
+** Note: if you use it with FASTER_ILINE_REHASH, clients will be able
+** to exceed maxlinks limits after each rehash. Sorry.
+*/
+#undef YLINE_LIMITS_OLD_BEHAVIOUR
+
+/*
+** Y-line [user@]host limits are now using ip hash instead of hostname hash,
+** which means counts are against IPs, not hostnames.
+** If you don't like that behaviour, you can undefine it.
+*/
+#define YLINE_LIMITS_IPHASH
+
+/*
+** find_userhost (used in PRIVMSG user%host@server syntax) uses hostname
+** hash. Noone really used that syntax anyway, so noone should notice.
+** If you are rebellious or just don't want to waste memory -- define it.
+** Note that if there's a hostname hash needed (and thus compiled in) 
+** for other reasons, it will be used in find_userhost anyway.
+** Also note that defining this breaks compatibility with RFC 2812, as
+** clients no longer will be able to PRIVMSG user%host@server (though they 
+** will be able to use user%ip@server), but it would still be compatible 
+** with RFC 1459, which defined only "user@server" syntax.
+*/
+#undef FIND_USERHOST_IPHASH
 
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
 /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
@@ -905,3 +926,13 @@
 #undef LISTENER_MAXACCEPT
 #define LISTENER_MAXACCEPT 1
 #endif
+
+/* well, we save some memory if we don't actually need either of the hashes */
+#if defined(YLINE_LIMITS_IPHASH) || defined(FIND_USERHOST_IPHASH)
+#define USE_IPHASH
+#endif
+
+#if !defined(YLINE_LIMITS_IPHASH) || !defined(FIND_USERHOST_IPHASH)
+#define USE_HOSTHASH
+#endif
+
