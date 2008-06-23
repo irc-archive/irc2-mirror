@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.182 2008/06/10 13:52:18 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.187 2008/06/24 22:24:52 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1325,6 +1325,14 @@ int	openconf(void)
 {
 #ifdef	M4_PREPROC
 	int	pi[2], i;
+# ifdef HAVE_GNU_M4
+	char	*includedir, *includedirptr;
+
+	includedir = strdup(IRCDM4_PATH);
+	includedirptr = strrchr(includedir, '/');
+	if (includedirptr)
+		*includedirptr = '\0';
+# endif
 #else
 	int ret;
 #endif
@@ -1363,7 +1371,17 @@ int	openconf(void)
 		 * goes out with report_error.  Could be dangerous,
 		 * two servers running with the same fd's >:-) -avalon
 		 */
-		(void)execlp(M4_PATH, "m4", IRCDM4_PATH, configfile, 0);
+		(void)execlp(M4_PATH, "m4",
+#ifdef HAVE_GNU_M4
+#ifdef USE_M4_PREFIXES
+			"-P",
+#endif
+			"-I", includedir,
+#endif
+#ifdef INET6
+			"-DINET6",
+#endif
+			IRCDM4_PATH, configfile, 0);
 		if (serverbooting)
 		{
 			fprintf(stderr,"Fatal Error: Error executing m4 (%s)",
@@ -1825,10 +1843,22 @@ int 	initconf(int opt)
 		if (aconf->status & CONF_SERVICE)
 			aconf->port &= SERVICE_MASK_ALL;
 		if (aconf->status & (CONF_SERVER_MASK|CONF_SERVICE))
-			if (ncount > MAXCONFLINKS || ccount > MAXCONFLINKS ||
-			    !aconf->host || index(aconf->host, '*') ||
-			     index(aconf->host,'?') || !aconf->name)
-				continue;
+		{
+			char *hostptr = NULL;
+
+			/* since it's u@h syntax, let's ignore user part
+			   in checks below --B. */
+			hostptr = index(aconf->host, '@');
+			if (hostptr != NULL)
+				hostptr++;	/* move ptr after '@' */
+			else
+				hostptr = aconf->host;
+
+			if (ncount > MAXCONFLINKS || ccount > MAXCONFLINKS
+				|| !hostptr || index(hostptr, '*')
+				|| index(hostptr,'?') || !aconf->name)
+				continue;	/* next config line */
+		}
 
 		if (aconf->status &
 		    (CONF_SERVER_MASK|CONF_OPERATOR|CONF_SERVICE))
