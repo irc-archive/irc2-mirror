@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_user.c,v 1.275 2008/06/11 18:27:27 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_user.c,v 1.278 2009/03/15 01:47:29 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -349,6 +349,10 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 #ifdef RESTRICT_USERNAMES
 		char *lbuf = NULL;
 #endif
+#if defined(USE_IAUTH)
+		static time_t last = 0;
+		static u_int count = 0;
+#endif
 #ifdef XLINE
 		aConfItem *xtmp;
 
@@ -404,9 +408,6 @@ int	register_user(aClient *cptr, aClient *sptr, char *nick, char *username)
 #endif
 
 #if defined(USE_IAUTH)
-		static time_t last = 0;
-		static u_int count = 0;
-
 		if (iauth_options & XOPT_EARLYPARSE && DoingXAuth(cptr))
 		{
 			cptr->flags |= FLAGS_WXAUTH;
@@ -1872,10 +1873,9 @@ int	m_who(aClient *cptr, aClient *sptr, int parc, char *parv[])
 		if (sptr->user && sptr->user->channel)
 			channame = sptr->user->channel->value.chptr->chname;
 
-#if 0
-		/* I think it's useless --Beeth */
-		clean_channelname(mask);
-#endif
+		if (clean_channelname(mask) == -1)
+			/* maybe we should tell user? --B. */
+			continue;
 
 		/*
 		** We can never have here !mask 
@@ -2727,16 +2727,21 @@ int	m_oper(aClient *cptr, aClient *sptr, int parc, char *parv[])
 	password = parv[2];
 
 	if (IsAnOper(sptr))
-	    {
+	{
 		if (MyConnect(sptr))
 			sendto_one(sptr, replies[RPL_YOUREOPER], ME, BadTo(parv[0]));
 		return 1;
-	    }
+	}
 	if (!(aconf = find_Oline(name, sptr)))
-	    {
+	{
 		sendto_one(sptr, replies[ERR_NOOPERHOST], ME, BadTo(parv[0]));
 		return 1;
-	    }
+	}
+	if (aconf->clients >= MaxLinks(Class(aconf)))
+	{
+		sendto_one(sptr, ":%s %d %s :Too many opers", ME, ERR_NOOPERHOST, BadTo(parv[0]));
+		return 1;
+	}
 #ifdef CRYPT_OPER_PASSWORD
 	/* pass whole aconf->passwd as salt, let crypt() deal with it */
 

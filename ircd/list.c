@@ -19,7 +19,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: list.c,v 1.45 2008/06/07 21:36:07 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: list.c,v 1.47 2009/03/15 01:11:19 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -101,8 +101,7 @@ aClient	*make_client(aClient *from)
 	if (!from)
 		size = CLIENT_LOCAL_SIZE;
 
-	if (!(cptr = (aClient *)MyMalloc(size)))
-		outofmemory();
+	cptr = (aClient *)MyMalloc(size);
 	bzero((char *)cptr, (int)size);
 
 #ifdef	DEBUGMODE
@@ -569,8 +568,8 @@ aClass	*make_class(void)
 void	free_class(aClass *tmp)
 {
 #ifdef ENABLE_CIDR_LIMITS
-	if(tmp->ip_limits)
-		patricia_destroy(tmp->ip_limits);
+	if (tmp->ip_limits)
+		patricia_destroy(tmp->ip_limits, NULL);
 #endif
 
 	MyFree(tmp);

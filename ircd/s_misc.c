@@ -22,7 +22,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.116 2008/06/24 23:23:43 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_misc.c,v 1.119 2009/11/13 20:08:11 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -1011,8 +1011,8 @@ void	initruntimeconf(void)
 	iconf.caccept = 2; /* accept clients when no split */
 
 	/* Defaults set in config.h */
-	iconf.split_minservers = SPLIT_SERVERS;
-	iconf.split_minusers = SPLIT_USERS;
+	iconf.split_minservers = DEFAULT_SPLIT_SERVERS;
+	iconf.split_minusers = DEFAULT_SPLIT_USERS;
 
 	if ((bootopt & BOOT_STANDALONE))
 	{
@@ -1152,8 +1152,6 @@ void	read_motd(char *filename)
 		else
 			line[len] = '\0';
 		temp = (aMotd *)MyMalloc(sizeof(aMotd));
-		if (!temp)
-			outofmemory();
 		temp->line = mystrdup(line);
 		temp->next = NULL;
 		       if (!motd)
@@ -1179,7 +1177,7 @@ void	check_split(void)
 		{
 			sendto_flag(SCH_NOTICE,
 				"Network split detected, split mode activated");
-			iconf.split = 1;
+			iconf.split = timeofday;
 		}
 	}
 	else

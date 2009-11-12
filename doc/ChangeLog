@@ -1,3 +1,39 @@
+2.11.2p2
+
+2009-11-13  Piotr Kucharski
+
+	* channel.c/set_mode(): don't swap keys and limits on netjoin.
+	* s_misc.c/initruntimeconf(), config.h.dist: default and min. values
+	  of SPLIT vars; lower defaults to better match IRCnet status.
+	* struct_def.h, ircd.c/try_connections(), s_misc.c/check_split(),
+	  s_serv.c/m_set(): add "SET ACONNECT ND" to disable autoconnect
+	  after nickdelay expires (requested by BR); with nice sideeffect
+	  of showing in "stats d" when server entered split mode.
+	* s_conf.c/oline_flags_parse(), s_debug/serveropts[], config.h.dist:
+	  add OPER_SQUIT_REMOTE define and use it in version string (requested
+	  by BR to do V:line on it).
+
+2009-04-30  Piotr Kucharski
+
+	* s_conf.c/prep_kline(): check for erroneous netmasks in tkline.
+
+2009-03-15  Piotr Kucharski
+
+	* support.c/strtoken(): mysterious wallops from JP fix (kudos to jilles).
+	* list.c/free_class(), patricia.c, patricia_ext.h, s_externs.h: tidy up.
+	* s_conf.c/find_Oline(), s_user.c/m_oper(): better error msg for OPER
+	  failed due to class limits.
+	* s_user.c/register_user(): tiny fix for sunCC compiler.
+	* res.c: fix compilation with DEBUG problem.
+	* s_conf.c/find_Oline(): use user->sip.
+	* list.c/make_client(), s_misc.c/read_motd(): MyMalloc() does outofmemory
+	  on its own, no need to do that again.
+	* channel.c/jp_chname(), support.c/strtoken(): if cn[1] is null, cn[2]
+	  may access rubbish, reverse conditions to not allow it.
+	* channel.c/clean_channelname(): if japanese channel name is incorrect,
+	  return -1 to allow callee function to react; fix all functions that
+	  call clean_channelname() to deal with erroneous channel names.
+
 2.11.2p1
 
 2008-06-24  Piotr Kucharski

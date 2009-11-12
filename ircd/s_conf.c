@@ -48,7 +48,7 @@
  */
 
 #ifndef lint
-static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.187 2008/06/24 22:24:52 chopin Exp $";
+static const volatile char rcsid[] = "@(#)$Id: s_conf.c,v 1.192 2009/11/13 20:25:55 chopin Exp $";
 #endif
 
 #include "os.h"
@@ -333,6 +333,9 @@ long	oline_flags_parse(char *string)
 #endif
 #ifndef OPER_SQUIT
 	tmp &= ~ACL_SQUIT;
+#endif
+#ifndef OPER_SQUIT_REMOTE
+	tmp &= ~ACL_SQUITREMOTE;
 #endif
 #ifndef OPER_CONNECT
 	tmp &= ~ACL_CONNECT;
@@ -1010,20 +1013,12 @@ aConfItem	*find_conf_exact(char *name, char *user, char *host,
  */
 aConfItem	*find_Oline(char *name, aClient *cptr)
 {
-	Reg	aConfItem *tmp;
+	Reg	aConfItem *tmp, *tmp2 = NULL;
 	char	userhost[USERLEN+HOSTLEN+3];
 	char	userip[USERLEN+HOSTLEN+3];
 
 	sprintf(userhost, "%s@%s", cptr->username, cptr->sockhost);
-	sprintf(userip, "%s@%s", cptr->username, 
-#ifdef INET6
-		(char *)inetntop(AF_INET6, (char *)&cptr->ip, ipv6string,
-			sizeof(ipv6string))
-#else
-		(char *)inetntoa((char *)&cptr->ip)
-#endif
-	);
-
+	sprintf(userip, "%s@%s", cptr->username, cptr->user->sip);
 
 	for (tmp = conf; tmp; tmp = tmp->next)
 	    {
@@ -1040,8 +1035,10 @@ aConfItem	*find_Oline(char *name, aClient *cptr)
 			continue;
 		if (tmp->clients < MaxLinks(Class(tmp)))
 			return tmp;
+		else
+			tmp2 = tmp;
 	    }
-	return NULL;
+	return tmp2;
 }
 
 
@@ -1381,7 +1378,7 @@ int	openconf(void)
 #ifdef INET6
 			"-DINET6",
 #endif
-			IRCDM4_PATH, configfile, 0);
+			IRCDM4_PATH, configfile, (char *) NULL);
 		if (serverbooting)
 		{
 			fprintf(stderr,"Fatal Error: Error executing m4 (%s)",
@@ -2671,12 +2668,12 @@ int	prep_kline(int tkline, aClient *cptr, aClient *sptr, int parc, char **parv)
 	int	status = tkline ? CONF_TKILL : CONF_KILL;
 	time_t	time;
 	char	*user, *host, *reason;
-	int	i = 0;
+	int	err = 0;
 
 	/* sanity checks */
 	if (tkline)
 	{
-		i = wdhms2sec(parv[1], &time);
+		err = wdhms2sec(parv[1], &time);
 #ifdef TKLINE_MAXTIME
 		if (time > TKLINE_MAXTIME)
 			time = TKLINE_MAXTIME;
@@ -2695,19 +2692,24 @@ int	prep_kline(int tkline, aClient *cptr, aClient *sptr, int parc, char **parv)
 	
 	if (strlen(user) > USERLEN+HOSTLEN+1)
 	{
-		/* induce error */
-		i = 1;
+		err = 1;
 	}
 	if (!strcmp("@*", user) || !strcmp("*@", user) || !strcmp("@", user))
 	{
 		/* Note that we don't forbid "*@*", only those, that lack
 		** some crucial parts, which can be seen as a typo. --Beeth */
-		i = 1;
+		err = 1;
+	}
+	if (strchr(host, '/') && match_ipmask(host, sptr, 0) == -1)
+	{
+		/* check validity of 1.2.3.0/24 or it will be spewing errors
+		** for every connecting client. */
+		err = 1;
 	}
 #ifdef KLINE
 badkline:
 #endif
-	if (i || !host)
+	if (err || !host)
 	{
 		/* error */
 		if (!IsPerson(sptr))
@@ -2757,7 +2759,7 @@ badkline:
 		if (utmp || htmp || rtmp)
 		{
 			/* Too lazy to copy it here. --B. */
-			i = 1;
+			err = 1;
 			goto badkline;
 		}
 
